@@ -36,7 +36,6 @@
             background: #1a1a1a;
         }
 
-        /* ===== ЗАГРУЗЧИК ===== */
         #bootScreen {
             position: fixed;
             top: 0; left: 0;
@@ -99,7 +98,6 @@
             letter-spacing: 1px;
         }
 
-        /* ===== ОС ===== */
         #osApp {
             display: none;
             position: relative;
@@ -544,7 +542,6 @@
 </head>
 <body>
 
-    <!-- ЗАГРУЗЧИК -->
     <div id="bootScreen">
         <img src="logoos.png" alt="Shnuk OS" class="boot-logo" onerror="this.style.display='none'" />
         <div class="boot-progress">
@@ -554,7 +551,6 @@
         <div class="boot-counter" id="bootCounter"></div>
     </div>
 
-    <!-- ОС -->
     <div id="osApp">
         <div class="app-background" id="appBackground"></div>
 
@@ -590,37 +586,25 @@
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- ЗАГРУЗЧИК                                    -->
-    <!-- ============================================ -->
     <script>
     (function() {
         'use strict';
 
-        // ============================================
-        // ПОЛНЫЙ СПИСОК СИСТЕМНЫХ ФАЙЛОВ
-        // ВСЕ скрипты, которые должны обновляться
-        // ============================================
         const SYSTEM_FILES = [
-            // === ЯДРО И СИСТЕМА ===
-            'app-scanner.js',           // ← Сканер приложений
-            'store.js',                 // ← Магазин
-            'l.js',                     // ← Анимации
-            'svaer.js',                 // ← Сохранение
-            'settings.js',              // ← Настройки
-            'game.js',                  // ← ИГРА
-            'time.js',                  // ← Часы
-            'file.js',                  // ← Файлы
-            'windows.js',               // ← Окна
-            'widget-time.js',           // ← Виджет часов
-            'twirlay-core1.js',         // ← Ядро
-            'twirlay-core-save.js',     // ← Оффлайн
-            
-            // === HTML ПРИЛОЖЕНИЯ ===
+            'app-scanner.js',
+            'store.js',
+            'l.js',
+            'svaer.js',
+            'settings.js',
+            'game.js',
+            'time.js',
+            'file.js',
+            'windows.js',
+            'widget-time.js',
+            'twirlay-core1.js',
+            'twirlay-core-save.js',
             'site-store.html',
             'projects-store.html',
-            
-            // === РЕСУРСЫ ===
             'ST-SimpleSquare.ttf',
             'wall.png',
             'wall1.png',
@@ -665,10 +649,8 @@
         }
 
         function clearSystemFiles() {
-            console.log('[Boot] 🧹 Очистка системных файлов...');
             let removed = 0;
             const keysToRemove = [];
-            
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (!key) continue;
@@ -676,41 +658,19 @@
                     keysToRemove.push(key);
                 }
             }
-            
-            keysToRemove.forEach(k => { 
-                try { 
-                    localStorage.removeItem(k); 
-                    removed++; 
-                } catch(e) {} 
-            });
-            
-            console.log('[Boot] Удалено ключей:', removed);
-
-            // ВАЖНО: очищаем кеш браузера (Cache API)
+            keysToRemove.forEach(k => { try { localStorage.removeItem(k); removed++; } catch(e) {} });
             if ('caches' in window) {
                 caches.keys().then(function(names) {
-                    names.forEach(function(name) {
-                        caches.delete(name);
-                        console.log('[Boot] Удалён кеш:', name);
-                    });
+                    names.forEach(function(name) { caches.delete(name); });
                 });
             }
-            
             return removed;
         }
 
         function downloadFile(filename) {
             return new Promise(function(resolve) {
-                // ДОБАВЛЯЕМ timestamp чтобы обойти кеш браузера
-                const url = filename + '?nocache=' + Date.now() + '&v=' + Math.random();
-                
-                fetch(url, { 
-                    cache: 'no-store',
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache'
-                    }
-                })
+                const url = filename + '?nocache=' + Date.now();
+                fetch(url, { cache: 'no-store' })
                     .then(function(response) {
                         if (!response.ok) throw new Error('HTTP ' + response.status);
                         const isBinary = /\.(png|jpg|jpeg|gif|webp|ttf|woff|woff2|ico)$/i.test(filename);
@@ -730,17 +690,10 @@
                         if (!content) { resolve({ success: false, filename: filename }); return; }
                         try {
                             localStorage.setItem(STORAGE_PREFIX + filename, content);
-                            console.log('[Boot] ✅ Скачано:', filename);
                             resolve({ success: true, filename: filename });
-                        } catch(e) { 
-                            console.warn('[Boot] ❌ Ошибка записи ' + filename + ':', e.message);
-                            resolve({ success: false, filename: filename }); 
-                        }
+                        } catch(e) { resolve({ success: false, filename: filename }); }
                     })
-                    .catch(function(err) { 
-                        console.warn('[Boot] ❌ Ошибка ' + filename + ':', err.message);
-                        resolve({ success: false, filename: filename }); 
-                    });
+                    .catch(function(err) { resolve({ success: false, filename: filename }); });
             });
         }
 
@@ -760,7 +713,6 @@
                         localStorage.setItem(COMPLETE_KEY, 'true');
                     } catch(e) {}
                     updateStatus('Готово. Перезапуск...');
-                    console.log('[Boot] ✅ Загрузка завершена. Успешно:', downloaded.length, 'Ошибок:', errors);
                     setTimeout(() => location.reload(), 800);
                     return;
                 }
@@ -777,24 +729,11 @@
             next(0);
         }
 
-        function getUpdatesLock() {
-            return typeof window.UPDATES_LOCK !== 'undefined' ? window.UPDATES_LOCK : 0;
-        }
-
         function needDownload() {
-            const lock = getUpdatesLock();
+            const lock = typeof window.UPDATES_LOCK !== 'undefined' ? window.UPDATES_LOCK : 0;
             const complete = localStorage.getItem(COMPLETE_KEY) === 'true';
-            console.log('[Boot] UPDATES_LOCK =', lock, '| COMPLETE =', complete);
-            
-            if (lock === 1 || lock === '1') {
-                console.log('[Boot] 🔄 UPDATES_LOCK = 1 → принудительное обновление');
-                return true;
-            }
-            if (!complete) {
-                console.log('[Boot] 🚀 Первый запуск → загрузка');
-                return true;
-            }
-            console.log('[Boot] ✅ Используем кеш');
+            if (lock === 1 || lock === '1') return true;
+            if (!complete) return true;
             return false;
         }
 
@@ -823,27 +762,17 @@
                 }
                 const src = scripts[index];
                 const script = document.createElement('script');
-                // Добавляем timestamp для обхода кеша
                 script.src = src + '?t=' + Date.now();
                 script.async = false;
-                script.onload = function() { 
-                    loaded++; 
-                    console.log('[Boot] ✅ Загружен:', src);
-                    loadScript(index + 1); 
-                };
-                script.onerror = function() { 
-                    console.warn('[Boot] ❌ Ошибка загрузки:', src);
-                    loadScript(index + 1); 
-                };
+                script.onload = function() { loaded++; loadScript(index + 1); };
+                script.onerror = function() { loadScript(index + 1); };
                 document.head.appendChild(script);
             }
             loadScript(0);
         }
 
         function boot() {
-            console.log('[Boot] Запуск...');
             updateStatus('Проверка обновлений...');
-            
             loadUpdatesLock().then(function(lock) {
                 if (needDownload()) {
                     updateStatus('Подготовка к загрузке...');
@@ -864,9 +793,6 @@
     })();
     </script>
 
-    <!-- ============================================ -->
-    <!-- ГЛАВНЫЙ МОДУЛЬ ОС                            -->
-    <!-- ============================================ -->
     <script>
     window.initOS = function() {
         'use strict';
@@ -898,6 +824,12 @@
         let isWidgetMenuOpen = false;
         let isAppAnimating = false;
 
+        // ============================================
+        // ФИКСИРОВАННЫЙ ПОРЯДОК — СНИМОК ПРИ ЗАГРУЗКЕ
+        // ============================================
+        let appsOrderSnapshot = null;  // Фиксированный порядок приложений
+        let lastInstalledHash = '';
+
         const DESKTOP_KEY = 'shnuk_desktop_apps';
         const WIDGET_KEY = 'shnuk_widget';
         const INSTALLED_KEY = 'shnuk_installed_apps';
@@ -913,6 +845,39 @@
         function getAppName(appId) {
             const a = getAppData(appId);
             return a ? a.name : appId;
+        }
+
+        // ============================================
+        // СНИМОК ПОРЯДКА — фиксирует порядок приложений
+        // ============================================
+        function makeOrderSnapshot() {
+            appsOrderSnapshot = allApps.map(a => a.id);
+            console.log('[OS] 📸 Снимок порядка сохранён:', appsOrderSnapshot.length, 'приложений');
+        }
+
+        // Применяет снимок порядка к массиву allApps
+        function applyOrderSnapshot(apps) {
+            if (!appsOrderSnapshot || appsOrderSnapshot.length === 0) {
+                return apps;
+            }
+            
+            const appMap = new Map();
+            apps.forEach(a => appMap.set(a.id, a));
+            
+            const ordered = [];
+            // Сначала идут приложения в порядке снимка
+            for (const id of appsOrderSnapshot) {
+                if (appMap.has(id)) {
+                    ordered.push(appMap.get(id));
+                    appMap.delete(id);
+                }
+            }
+            // Потом новые (не в снимке) — в конце
+            for (const [, a] of appMap) {
+                ordered.push(a);
+            }
+            
+            return ordered;
         }
 
         // Открытие приложений
@@ -1003,7 +968,6 @@
                             openHtmlApp(appData);
                         } else {
                             const script = document.createElement('script');
-                            // Всегда добавляем timestamp чтобы получить свежую версию
                             script.src = appData.file + '?t=' + Date.now();
                             script.onload = function() {
                                 if (typeof window[appData.id + 'Init'] === 'function') {
@@ -1173,11 +1137,17 @@
             isWidgetMenuOpen = false;
         }
 
-        // Загрузка приложений
+        // ============================================
+        // ЗАГРУЗКА ПРИЛОЖЕНИЙ
+        // ============================================
         function loadApps() {
             AppScanner.scan().then(function(apps) {
                 allApps = apps;
                 console.log('[OS] ✅ Загружено:', allApps.length, 'приложений');
+                
+                // ВАЖНО: создаём снимок порядка ОДИН РАЗ
+                makeOrderSnapshot();
+                
                 loadDesktop();
                 if (desktopLoader) desktopLoader.style.display = 'none';
                 renderDesktop();
@@ -1188,12 +1158,26 @@
             });
         }
 
+        // ============================================
+        // ОБНОВЛЕНИЕ ПРИЛОЖЕНИЙ — сохраняем порядок!
+        // ============================================
         function refreshApps() {
             if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
                 AppScanner.rescan().then(function(apps) {
-                    allApps = apps;
+                    // Применяем снимок порядка к новым приложениям
+                    allApps = applyOrderSnapshot(apps);
+                    
+                    // Обновляем снимок если появились новые приложения
+                    const newIds = apps.filter(a => !appsOrderSnapshot.includes(a.id)).map(a => a.id);
+                    if (newIds.length > 0) {
+                        console.log('[OS] 🆕 Новые приложения:', newIds);
+                        appsOrderSnapshot = allApps.map(a => a.id);
+                    }
+                    
+                    // Фильтруем рабочий стол
                     desktopApps = desktopApps.filter(id => allApps.some(a => a.id === id));
                     saveDesktop();
+                    
                     renderDesktop();
                     renderAllApps();
                 });
@@ -1297,6 +1281,9 @@
             buttonGroup.classList.toggle('edit-mode', isEditMode);
         }
 
+        // ============================================
+        // ОТРИСОВКА МЕНЮ — использует ФИКСИРОВАННЫЙ ПОРЯДОК
+        // ============================================
         function renderAllApps() {
             iconGrid.innerHTML = '';
             if (allApps.length === 0) {
@@ -1304,7 +1291,12 @@
                 return;
             }
 
-            allApps.forEach(function(a) {
+            // ВАЖНО: используем фиксированный порядок из снимка
+            const sortedApps = appsOrderSnapshot 
+                ? applyOrderSnapshot(allApps)
+                : allApps;
+
+            sortedApps.forEach(function(a) {
                 const div = document.createElement('div');
                 div.className = 'icon-item';
                 if (desktopApps.includes(a.id)) div.classList.add('in-desktop');
@@ -1499,12 +1491,19 @@
             renderAllApps();
         }
 
+        // ============================================
+        // ЗАКРЫТИЕ МЕНЮ — БЕЗ refreshApps()
+        // ============================================
         function hideBottomPanel() {
             if (!isBottomVisible) return;
             isBottomVisible = false;
             topPanel.classList.remove('swiped-up');
             bottomPanel.classList.remove('visible');
-            refreshApps();
+            
+            // ВАЖНО: НЕ вызываем refreshApps() здесь
+            // Порядок уже фиксирован в appsOrderSnapshot
+            // Просто перерисовываем рабочий стол
+            renderDesktop();
         }
 
         closeAppsBtn.addEventListener('click', hideBottomPanel);
@@ -1548,15 +1547,18 @@
             }
         }, { passive: false });
 
-        // Наблюдатель
-        let lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || '';
+        // ============================================
+        // НАБЛЮДАТЕЛЬ — сохраняем порядок
+        // ============================================
+        lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || '';
         setInterval(function() {
             const installedRaw = localStorage.getItem(INSTALLED_KEY) || '';
             if (installedRaw !== lastInstalledHash) {
                 lastInstalledHash = installedRaw;
+                console.log('[OS] 🔄 Изменение установленных приложений');
                 refreshApps();
             }
-        }, 1500);
+        }, 2000);
 
         loadWallpaper();
         setTimeout(() => loadWidget(), 300);
