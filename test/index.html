@@ -36,7 +36,7 @@
             background: #1a1a1a;
         }
 
-        /* ===== ЧЁРНО-БЕЛЫЙ ЗАГРУЗЧИК ===== */
+        /* ===== ЗАГРУЗЧИК ===== */
         #bootScreen {
             position: fixed;
             top: 0; left: 0;
@@ -196,7 +196,6 @@
             z-index: 3;
         }
 
-        /* ===== КНОПКИ БЕЗ МАСКИ И ОБВОДКИ ===== */
         .btn {
             width: 80px;
             height: 80px;
@@ -422,7 +421,6 @@
             z-index: 1;
         }
 
-        /* ===== МЕНЮ ВИДЖЕТА ===== */
         .widget-menu {
             position: fixed;
             top: 50%; left: 50%;
@@ -478,9 +476,7 @@
             float: right;
             opacity: 0;
         }
-        .widget-menu .widget-btn.selected .check {
-            opacity: 1;
-        }
+        .widget-menu .widget-btn.selected .check { opacity: 1; }
         .widget-menu .cancel-btn {
             display: block;
             width: 100%;
@@ -494,11 +490,8 @@
             color: #888;
             transition: all 0.2s;
         }
-        .widget-menu .cancel-btn:hover {
-            background: #f0f0f0;
-        }
+        .widget-menu .cancel-btn:hover { background: #f0f0f0; }
 
-        /* ===== HTML APP WINDOW ===== */
         .html-app-window {
             position: fixed;
             top: 0; left: 0;
@@ -598,27 +591,36 @@
     </div>
 
     <!-- ============================================ -->
-    <!-- ЗАГРУЗЧИК                                     -->
+    <!-- ЗАГРУЗЧИК                                    -->
     <!-- ============================================ -->
     <script>
     (function() {
         'use strict';
 
+        // ============================================
+        // ПОЛНЫЙ СПИСОК СИСТЕМНЫХ ФАЙЛОВ
+        // ВСЕ скрипты, которые должны обновляться
+        // ============================================
         const SYSTEM_FILES = [
-            'windows.js',
-            'app-scanner.js',
-            'store.js',
-            'l.js',
-            'svaer.js',
-            'settings.js',
-            'game.js',
-            'time.js',
-            'file.js',
-            'widget-time.js',
-            'twirlay-core1.js',
-            'twirlay-core-save.js',
+            // === ЯДРО И СИСТЕМА ===
+            'app-scanner.js',           // ← Сканер приложений
+            'store.js',                 // ← Магазин
+            'l.js',                     // ← Анимации
+            'svaer.js',                 // ← Сохранение
+            'settings.js',              // ← Настройки
+            'game.js',                  // ← ИГРА
+            'time.js',                  // ← Часы
+            'file.js',                  // ← Файлы
+            'windows.js',               // ← Окна
+            'widget-time.js',           // ← Виджет часов
+            'twirlay-core1.js',         // ← Ядро
+            'twirlay-core-save.js',     // ← Оффлайн
+            
+            // === HTML ПРИЛОЖЕНИЯ ===
             'site-store.html',
             'projects-store.html',
+            
+            // === РЕСУРСЫ ===
             'ST-SimpleSquare.ttf',
             'wall.png',
             'wall1.png',
@@ -663,8 +665,10 @@
         }
 
         function clearSystemFiles() {
+            console.log('[Boot] 🧹 Очистка системных файлов...');
             let removed = 0;
             const keysToRemove = [];
+            
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (!key) continue;
@@ -672,13 +676,41 @@
                     keysToRemove.push(key);
                 }
             }
-            keysToRemove.forEach(k => { try { localStorage.removeItem(k); removed++; } catch(e) {} });
+            
+            keysToRemove.forEach(k => { 
+                try { 
+                    localStorage.removeItem(k); 
+                    removed++; 
+                } catch(e) {} 
+            });
+            
+            console.log('[Boot] Удалено ключей:', removed);
+
+            // ВАЖНО: очищаем кеш браузера (Cache API)
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    names.forEach(function(name) {
+                        caches.delete(name);
+                        console.log('[Boot] Удалён кеш:', name);
+                    });
+                });
+            }
+            
             return removed;
         }
 
         function downloadFile(filename) {
             return new Promise(function(resolve) {
-                fetch(filename + '?t=' + Date.now(), { cache: 'no-store' })
+                // ДОБАВЛЯЕМ timestamp чтобы обойти кеш браузера
+                const url = filename + '?nocache=' + Date.now() + '&v=' + Math.random();
+                
+                fetch(url, { 
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    }
+                })
                     .then(function(response) {
                         if (!response.ok) throw new Error('HTTP ' + response.status);
                         const isBinary = /\.(png|jpg|jpeg|gif|webp|ttf|woff|woff2|ico)$/i.test(filename);
@@ -698,10 +730,17 @@
                         if (!content) { resolve({ success: false, filename: filename }); return; }
                         try {
                             localStorage.setItem(STORAGE_PREFIX + filename, content);
+                            console.log('[Boot] ✅ Скачано:', filename);
                             resolve({ success: true, filename: filename });
-                        } catch(e) { resolve({ success: false, filename: filename }); }
+                        } catch(e) { 
+                            console.warn('[Boot] ❌ Ошибка записи ' + filename + ':', e.message);
+                            resolve({ success: false, filename: filename }); 
+                        }
                     })
-                    .catch(function(err) { resolve({ success: false, filename: filename }); });
+                    .catch(function(err) { 
+                        console.warn('[Boot] ❌ Ошибка ' + filename + ':', err.message);
+                        resolve({ success: false, filename: filename }); 
+                    });
             });
         }
 
@@ -721,6 +760,7 @@
                         localStorage.setItem(COMPLETE_KEY, 'true');
                     } catch(e) {}
                     updateStatus('Готово. Перезапуск...');
+                    console.log('[Boot] ✅ Загрузка завершена. Успешно:', downloaded.length, 'Ошибок:', errors);
                     setTimeout(() => location.reload(), 800);
                     return;
                 }
@@ -744,8 +784,17 @@
         function needDownload() {
             const lock = getUpdatesLock();
             const complete = localStorage.getItem(COMPLETE_KEY) === 'true';
-            if (lock === 1 || lock === '1') return true;
-            if (!complete) return true;
+            console.log('[Boot] UPDATES_LOCK =', lock, '| COMPLETE =', complete);
+            
+            if (lock === 1 || lock === '1') {
+                console.log('[Boot] 🔄 UPDATES_LOCK = 1 → принудительное обновление');
+                return true;
+            }
+            if (!complete) {
+                console.log('[Boot] 🚀 Первый запуск → загрузка');
+                return true;
+            }
+            console.log('[Boot] ✅ Используем кеш');
             return false;
         }
 
@@ -774,17 +823,27 @@
                 }
                 const src = scripts[index];
                 const script = document.createElement('script');
-                script.src = src;
+                // Добавляем timestamp для обхода кеша
+                script.src = src + '?t=' + Date.now();
                 script.async = false;
-                script.onload = function() { loaded++; loadScript(index + 1); };
-                script.onerror = function() { loadScript(index + 1); };
+                script.onload = function() { 
+                    loaded++; 
+                    console.log('[Boot] ✅ Загружен:', src);
+                    loadScript(index + 1); 
+                };
+                script.onerror = function() { 
+                    console.warn('[Boot] ❌ Ошибка загрузки:', src);
+                    loadScript(index + 1); 
+                };
                 document.head.appendChild(script);
             }
             loadScript(0);
         }
 
         function boot() {
+            console.log('[Boot] Запуск...');
             updateStatus('Проверка обновлений...');
+            
             loadUpdatesLock().then(function(lock) {
                 if (needDownload()) {
                     updateStatus('Подготовка к загрузке...');
@@ -844,9 +903,6 @@
         const INSTALLED_KEY = 'shnuk_installed_apps';
         const DEFAULT_DESKTOP = ['game', 'file', 'settings', 'time'];
 
-        // ============================================
-        // УТИЛИТЫ
-        // ============================================
         function getAppData(appId) {
             return allApps.find(a => a.id === appId);
         }
@@ -859,41 +915,25 @@
             return a ? a.name : appId;
         }
 
-        // ============================================
-        // АНИМАЦИИ
-        // ============================================
-        function getIconPosition(appId) {
-            const btn = document.querySelector(`.btn[data-id="${appId}"]`);
-            if (btn) {
-                const rect = btn.getBoundingClientRect();
-                return { x: rect.left + rect.width/2, y: rect.top + rect.height/2, width: rect.width, height: rect.height };
-            }
-            const icon = document.querySelector(`.icon-item[data-app-id="${appId}"]`);
-            if (icon) {
-                const rect = icon.getBoundingClientRect();
-                return { x: rect.left + rect.width/2, y: rect.top + rect.height/2, width: rect.width, height: rect.height };
-            }
-            return { x: window.innerWidth/2, y: window.innerHeight/2, width: 80, height: 80 };
-        }
-
+        // Открытие приложений
         function openAppWithAnimation(appId) {
             if (isAppAnimating) return;
             const appData = getAppData(appId);
             if (!appData) return;
             isAppAnimating = true;
 
-            const iconPos = getIconPosition(appId);
-            const iconSrc = getAppIcon(appId);
-            const appName = getAppName(appId);
+            const btn = document.querySelector(`.btn[data-id="${appId}"]`);
+            const icon = document.querySelector(`.icon-item[data-app-id="${appId}"]`);
+            const el = btn || icon;
+            
+            let iconPos = { x: window.innerWidth/2, y: window.innerHeight/2 };
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                iconPos = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+            }
 
             const backdrop = document.createElement('div');
-            backdrop.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                z-index: 99998; background: rgba(0,0,0,0);
-                backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px);
-                transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-                pointer-events: none;
-            `;
+            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;background:rgba(0,0,0,0);backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);pointer-events:none;';
             document.body.appendChild(backdrop);
             appBackground.classList.add('blurred');
 
@@ -904,28 +944,24 @@
             });
 
             const launchContainer = document.createElement('div');
-            launchContainer.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                z-index: 99999; pointer-events: none;
-            `;
+            launchContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;pointer-events:none;';
 
             const flyIcon = document.createElement('div');
             flyIcon.style.cssText = `
-                position: absolute; width: 80px; height: 80px;
-                background: transparent;
-                display: flex; align-items: center; justify-content: center;
-                left: ${iconPos.x - 40}px; top: ${iconPos.y - 40}px;
-                filter: blur(0px); opacity: 1;
-                font-family: 'ST-SimpleSquare', monospace;
+                position:absolute;width:80px;height:80px;
+                display:flex;align-items:center;justify-content:center;
+                left:${iconPos.x - 40}px;top:${iconPos.y - 40}px;
+                filter:blur(0px);opacity:1;
             `;
             
+            const iconSrc = getAppIcon(appId);
             if (iconSrc) {
                 const img = document.createElement('img');
                 img.src = iconSrc;
                 img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
                 flyIcon.appendChild(img);
             } else {
-                flyIcon.textContent = appName.charAt(0);
+                flyIcon.textContent = getAppName(appId).charAt(0);
                 flyIcon.style.cssText += 'font-size:32px;font-weight:bold;color:#ffffff;';
             }
             launchContainer.appendChild(flyIcon);
@@ -967,7 +1003,8 @@
                             openHtmlApp(appData);
                         } else {
                             const script = document.createElement('script');
-                            script.src = appData.file;
+                            // Всегда добавляем timestamp чтобы получить свежую версию
+                            script.src = appData.file + '?t=' + Date.now();
                             script.onload = function() {
                                 if (typeof window[appData.id + 'Init'] === 'function') {
                                     window[appData.id + 'Init']();
@@ -1016,9 +1053,7 @@
             document.addEventListener('keydown', onEsc);
         }
 
-        // ============================================
-        // ВИДЖЕТЫ
-        // ============================================
+        // Виджеты
         let widgetInstance = null;
         let currentWidget = 'none';
 
@@ -1054,12 +1089,8 @@
                     }
                     widgetContainer.appendChild(result.element);
                     widgetInstance = result;
-                    if (window.L) L.blurIn(result.element, 600);
-                    console.log('[Widget] ✅ Создан:', widget.id);
                 }
-            } catch(e) { 
-                console.error('[Widget] Ошибка:', e); 
-            }
+            } catch(e) { console.error('[Widget] Ошибка:', e); }
         }
 
         function loadWidget() {
@@ -1087,43 +1118,31 @@
         }
 
         function showWidgetMenu() {
-            if (isWidgetMenuOpen) {
-                closeWidgetMenu();
-                return;
-            }
-            
+            if (isWidgetMenuOpen) { closeWidgetMenu(); return; }
             const existing = document.querySelector('.widget-menu');
-            if (existing) {
-                existing.remove();
-                isWidgetMenuOpen = false;
-                return;
-            }
-            
+            if (existing) { existing.remove(); isWidgetMenuOpen = false; return; }
             isWidgetMenuOpen = true;
 
             const backdrop = document.createElement('div');
             backdrop.className = 'widget-menu-backdrop';
-            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9997;background:rgba(0,0,0,0);backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);';
+            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9997;background:rgba(0,0,0,0);backdrop-filter:blur(0px);transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);';
             document.body.appendChild(backdrop);
             
             requestAnimationFrame(() => {
                 backdrop.style.background = 'rgba(0,0,0,0.4)';
                 backdrop.style.backdropFilter = 'blur(15px)';
-                backdrop.style.webkitBackdropFilter = 'blur(15px)';
             });
 
             const menu = document.createElement('div');
             menu.className = 'widget-menu';
-            menu.innerHTML = `<div class="title">Выберите виджет</div>`;
+            menu.innerHTML = '<div class="title">Выберите виджет</div>';
 
             WIDGETS.forEach(w => {
                 const btn = document.createElement('button');
                 const isSelected = currentWidget === w.id;
                 btn.className = 'widget-btn' + (isSelected ? ' selected' : '');
                 btn.innerHTML = `${w.name}<span class="check">✓</span>`;
-                btn.addEventListener('click', function() {
-                    selectWidget(w.id);
-                });
+                btn.addEventListener('click', function() { selectWidget(w.id); });
                 menu.appendChild(btn);
             });
 
@@ -1134,26 +1153,14 @@
             menu.appendChild(cancelBtn);
             
             document.body.appendChild(menu);
-
-            requestAnimationFrame(() => {
-                menu.classList.add('open');
-            });
+            requestAnimationFrame(() => menu.classList.add('open'));
 
             backdrop.addEventListener('click', closeWidgetMenu);
-
-            const onEsc = function(e) {
-                if (e.key === 'Escape') {
-                    closeWidgetMenu();
-                    document.removeEventListener('keydown', onEsc);
-                }
-            };
-            document.addEventListener('keydown', onEsc);
         }
 
         function closeWidgetMenu() {
             const menu = document.querySelector('.widget-menu');
             const backdrop = document.querySelector('.widget-menu-backdrop');
-            
             if (menu) {
                 menu.classList.remove('open');
                 setTimeout(() => menu.remove(), 400);
@@ -1161,25 +1168,18 @@
             if (backdrop) {
                 backdrop.style.background = 'rgba(0,0,0,0)';
                 backdrop.style.backdropFilter = 'blur(0px)';
-                backdrop.style.webkitBackdropFilter = 'blur(0px)';
                 setTimeout(() => backdrop.remove(), 400);
             }
-            
             isWidgetMenuOpen = false;
         }
 
-        // ============================================
-        // ЗАГРУЗКА ПРИЛОЖЕНИЙ
-        // ============================================
+        // Загрузка приложений
         function loadApps() {
             AppScanner.scan().then(function(apps) {
                 allApps = apps;
                 console.log('[OS] ✅ Загружено:', allApps.length, 'приложений');
-                
                 loadDesktop();
-                
                 if (desktopLoader) desktopLoader.style.display = 'none';
-                
                 renderDesktop();
                 renderAllApps();
             }).catch(function(err) {
@@ -1211,7 +1211,6 @@
                     desktopApps = parsed.filter(id => allApps.some(a => a.id === id));
                 } catch(e) { desktopApps = []; }
             }
-            
             if (desktopApps.length === 0 && allApps.length > 0) {
                 desktopApps = DEFAULT_DESKTOP.filter(id => allApps.some(a => a.id === id));
                 if (desktopApps.length < 4) {
@@ -1229,9 +1228,6 @@
             localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps));
         }
 
-        // ============================================
-        // ОТРИСОВКА
-        // ============================================
         function renderDesktop() {
             buttonGroup.innerHTML = '';
             if (desktopApps.length === 0) {
@@ -1260,18 +1256,13 @@
                     btn.appendChild(fallback);
                 }
 
-                // Крестик удаления (только в режиме редактирования)
                 const removeBtn = document.createElement('span');
                 removeBtn.className = 'btn-remove';
                 removeBtn.textContent = '✕';
                 removeBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
                     if (window.Win) {
-                        Win.confirm('Удалить "' + getAppName(appId) + '" с рабочего стола?', {
-                            title: 'Удаление',
-                            okText: 'Удалить',
-                            danger: true
-                        }).then(function(ok) {
+                        Win.confirm('Удалить "' + getAppName(appId) + '"?', { title: 'Удаление', okText: 'Удалить', danger: true }).then(function(ok) {
                             if (ok) {
                                 desktopApps = desktopApps.filter(id => id !== appId);
                                 saveDesktop();
@@ -1280,7 +1271,7 @@
                             }
                         });
                     } else {
-                        if (confirm('Удалить "' + getAppName(appId) + '" с рабочего стола?')) {
+                        if (confirm('Удалить "' + getAppName(appId) + '"?')) {
                             desktopApps = desktopApps.filter(id => id !== appId);
                             saveDesktop();
                             renderDesktop();
@@ -1293,7 +1284,6 @@
                 btn.addEventListener('click', function() {
                     if (!isEditMode) openAppWithAnimation(appId);
                 });
-
                 btn.addEventListener('mousedown', function(e) {
                     if (isEditMode) startDrag(e, btn, appId);
                 });
@@ -1357,47 +1347,10 @@
                 removeBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
                     if (desktopApps.includes(a.id)) {
-                        if (window.Win) {
-                            Win.confirm('Удалить "' + a.name + '" с рабочего стола?', {
-                                title: 'Удаление',
-                                okText: 'Удалить',
-                                danger: true
-                            }).then(function(ok) {
-                                if (ok) {
-                                    desktopApps = desktopApps.filter(id => id !== a.id);
-                                    saveDesktop();
-                                    renderDesktop();
-                                    renderAllApps();
-                                }
-                            });
-                        } else {
-                            if (confirm('Удалить "' + a.name + '" с рабочего стола?')) {
-                                desktopApps = desktopApps.filter(id => id !== a.id);
-                                saveDesktop();
-                                renderDesktop();
-                                renderAllApps();
-                            }
-                        }
-                    } else if (a.type === 'html') {
-                        if (window.Win) {
-                            Win.confirm('Удалить приложение "' + a.name + '" полностью?', {
-                                title: 'Удаление',
-                                okText: 'Удалить',
-                                danger: true
-                            }).then(function(ok) {
-                                if (ok && typeof AppScanner !== 'undefined' && AppScanner.uninstallApp) {
-                                    AppScanner.uninstallApp(a.id);
-                                    refreshApps();
-                                }
-                            });
-                        } else {
-                            if (confirm('Удалить приложение "' + a.name + '" полностью?')) {
-                                if (typeof AppScanner !== 'undefined' && AppScanner.uninstallApp) {
-                                    AppScanner.uninstallApp(a.id);
-                                    refreshApps();
-                                }
-                            }
-                        }
+                        desktopApps = desktopApps.filter(id => id !== a.id);
+                        saveDesktop();
+                        renderDesktop();
+                        renderAllApps();
                     }
                 });
 
@@ -1415,9 +1368,6 @@
             bottomPanel.classList.toggle('editing', isEditMode);
         }
 
-        // ============================================
-        // ПЕРЕТАСКИВАНИЕ
-        // ============================================
         function startDrag(e, btn, appId) {
             if (!isEditMode) return;
             e.preventDefault();
@@ -1456,28 +1406,32 @@
             btn.style.left = (touch.clientX - dragData.offsetX) + 'px';
             btn.style.top = (touch.clientY - dragData.offsetY) + 'px';
 
-            const target = findButtonUnderPoint(touch.clientX, touch.clientY);
-            if (target && target !== btn && target.dataset.id) {
-                const targetIndex = desktopApps.indexOf(target.dataset.id);
-                const currentIndex = desktopApps.indexOf(dragData.appId);
-                if (targetIndex !== -1 && currentIndex !== -1) {
-                    desktopApps.splice(currentIndex, 1);
-                    desktopApps.splice(targetIndex, 0, dragData.appId);
-                    saveDesktop();
-                    renderDesktop();
-                    renderAllApps();
-                    const newBtn = document.querySelector(`.btn[data-id="${dragData.appId}"]`);
-                    if (newBtn) {
-                        newBtn.classList.add('dragging');
-                        newBtn.style.position = 'fixed';
-                        newBtn.style.left = (touch.clientX - dragData.offsetX) + 'px';
-                        newBtn.style.top = (touch.clientY - dragData.offsetY) + 'px';
-                        newBtn.style.width = '80px';
-                        newBtn.style.height = '80px';
-                        newBtn.style.zIndex = 1000;
-                        newBtn.style.pointerEvents = 'none';
-                        dragData.element = newBtn;
+            const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+            for (let i = 0; i < elements.length; i++) {
+                const el = elements[i];
+                if (el.classList && el.classList.contains('btn') && el.dataset.id && el !== dragData.element) {
+                    const targetIndex = desktopApps.indexOf(el.dataset.id);
+                    const currentIndex = desktopApps.indexOf(dragData.appId);
+                    if (targetIndex !== -1 && currentIndex !== -1) {
+                        desktopApps.splice(currentIndex, 1);
+                        desktopApps.splice(targetIndex, 0, dragData.appId);
+                        saveDesktop();
+                        renderDesktop();
+                        renderAllApps();
+                        const newBtn = document.querySelector(`.btn[data-id="${dragData.appId}"]`);
+                        if (newBtn) {
+                            newBtn.classList.add('dragging');
+                            newBtn.style.position = 'fixed';
+                            newBtn.style.left = (touch.clientX - dragData.offsetX) + 'px';
+                            newBtn.style.top = (touch.clientY - dragData.offsetY) + 'px';
+                            newBtn.style.width = '80px';
+                            newBtn.style.height = '80px';
+                            newBtn.style.zIndex = 1000;
+                            newBtn.style.pointerEvents = 'none';
+                            dragData.element = newBtn;
+                        }
                     }
+                    break;
                 }
             }
         }
@@ -1510,20 +1464,6 @@
             renderAllApps();
         }
 
-        function findButtonUnderPoint(x, y) {
-            const elements = document.elementsFromPoint(x, y);
-            for (let i = 0; i < elements.length; i++) {
-                const el = elements[i];
-                if (el.classList && el.classList.contains('btn') && el.dataset.id && el !== dragData?.element) {
-                    return el;
-                }
-            }
-            return null;
-        }
-
-        // ============================================
-        // ОБОИ
-        // ============================================
         function loadWallpaper() {
             const saved = localStorage.getItem('app_wallpaper');
             if (saved) {
@@ -1531,12 +1471,8 @@
             } else {
                 appBackground.style.backgroundImage = 'url(\'wall.png\')';
             }
-            if (window.L) L.blurIn(appBackground, 800);
         }
 
-        // ============================================
-        // РЕЖИМ РЕДАКТИРОВАНИЯ
-        // ============================================
         function toggleEditMode() {
             isEditMode = !isEditMode;
             pencilIcon.classList.toggle('active', isEditMode);
@@ -1555,9 +1491,6 @@
             renderAllApps();
         }
 
-        // ============================================
-        // МЕНЮ ПРИЛОЖЕНИЙ
-        // ============================================
         function showBottomPanel() {
             if (isBottomVisible) return;
             isBottomVisible = true;
@@ -1575,22 +1508,16 @@
         }
 
         closeAppsBtn.addEventListener('click', hideBottomPanel);
-
         pencilIcon.addEventListener('click', function(e) {
             e.stopPropagation();
             toggleEditMode();
         });
-
         widgetBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (isEditMode) {
-                showWidgetMenu();
-            }
+            if (isEditMode) showWidgetMenu();
         });
 
-        // ============================================
-        // СВАЙП
-        // ============================================
+        // Свайп
         let startY = 0, isSwiping = false;
         app.addEventListener('touchstart', function(e) {
             startY = e.touches[0].clientY;
@@ -1621,9 +1548,7 @@
             }
         }, { passive: false });
 
-        // ============================================
-        // НАБЛЮДАТЕЛЬ
-        // ============================================
+        // Наблюдатель
         let lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || '';
         setInterval(function() {
             const installedRaw = localStorage.getItem(INSTALLED_KEY) || '';
@@ -1633,57 +1558,12 @@
             }
         }, 1500);
 
-        // ============================================
-        // СТАРТ
-        // ============================================
         loadWallpaper();
         setTimeout(() => loadWidget(), 300);
         loadApps();
 
         console.log('[OS] ✅ Shnuk OS — запущена');
     };
-    </script>
-
-    <!-- Полноэкранный режим по умолчанию -->
-    <script>
-    (function() {
-        'use strict';
-
-        if (localStorage.getItem('shnuk_fullscreen') === null) {
-            localStorage.setItem('shnuk_fullscreen', 'true');
-        }
-
-        let tried = false;
-
-        function tryFullscreen() {
-            if (tried) return;
-            tried = true;
-
-            const wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
-            const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-            
-            if (wantFullscreen && !isFs) {
-                const el = document.documentElement;
-                try {
-                    if (el.requestFullscreen) {
-                        el.requestFullscreen().catch(() => {});
-                    } else if (el.webkitRequestFullscreen) {
-                        el.webkitRequestFullscreen();
-                    }
-                } catch(e) {}
-            }
-
-            document.removeEventListener('click', tryFullscreen);
-            document.removeEventListener('touchstart', tryFullscreen);
-            document.removeEventListener('keydown', tryFullscreen);
-        }
-
-        document.addEventListener('click', tryFullscreen, { once: true });
-        document.addEventListener('touchstart', tryFullscreen, { once: true });
-        document.addEventListener('keydown', tryFullscreen, { once: true });
-
-        tryFullscreen();
-    })();
     </script>
 
 </body>
