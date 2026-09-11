@@ -22,6 +22,20 @@
     ];
 
     // ============================================
+    // УТИЛИТА: WINDOWS (с fallback)
+    // ============================================
+    function getWin() {
+        if (window.Win) return window.Win;
+        // Fallback на системные окна
+        return {
+            alert: (msg) => Promise.resolve(window.alert(msg)),
+            confirm: (msg) => Promise.resolve(window.confirm(msg)),
+            prompt: (msg, def) => Promise.resolve(window.prompt(msg, def)),
+            notify: (msg) => console.log('[Notify]', msg)
+        };
+    }
+
+    // ============================================
     // ХРАНИЛИЩЕ
     // ============================================
     function getSvaer() {
@@ -55,15 +69,10 @@
     function enterFullscreen() {
         const el = document.documentElement;
         try {
-            if (el.requestFullscreen) {
-                return el.requestFullscreen();
-            } else if (el.webkitRequestFullscreen) {
-                return el.webkitRequestFullscreen();
-            } else if (el.mozRequestFullScreen) {
-                return el.mozRequestFullScreen();
-            } else if (el.msRequestFullscreen) {
-                return el.msRequestFullscreen();
-            }
+            if (el.requestFullscreen) return el.requestFullscreen();
+            if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+            if (el.mozRequestFullScreen) return el.mozRequestFullScreen();
+            if (el.msRequestFullscreen) return el.msRequestFullscreen();
         } catch(e) {
             console.warn('[Settings] Fullscreen error:', e);
         }
@@ -72,15 +81,10 @@
 
     function exitFullscreen() {
         try {
-            if (document.exitFullscreen) {
-                return document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) {
-                return document.webkitExitFullscreen();
-            } else if (document.mozCancelFullScreen) {
-                return document.mozCancelFullScreen();
-            } else if (document.msExitFullscreen) {
-                return document.msExitFullscreen();
-            }
+            if (document.exitFullscreen) return document.exitFullscreen();
+            if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+            if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+            if (document.msExitFullscreen) return document.msExitFullscreen();
         } catch(e) {
             console.warn('[Settings] Exit fullscreen error:', e);
         }
@@ -91,31 +95,29 @@
         if (isFullscreen()) {
             return exitFullscreen().then(function() {
                 svaer.set(FULLSCREEN_KEY, false);
-                console.log('[Settings] Вышли из полноэкранного режима');
             });
         } else {
             return enterFullscreen().then(function() {
                 svaer.set(FULLSCREEN_KEY, true);
-                console.log('[Settings] Вошли в полноэкранный режим');
             });
         }
     }
 
-    // Проверка при загрузке — если пользователь включил, пробуем восстановить
+    // Полноэкранный режим включён по умолчанию
     function tryRestoreFullscreen() {
-        const saved = svaer.get(FULLSCREEN_KEY, false);
+        const saved = svaer.get(FULLSCREEN_KEY, true); // true по умолчанию
         if (saved && !isFullscreen()) {
-            // Браузеры не позволяют автоматически входить в полноэкранный режим
-            // без действия пользователя. Пробуем при первом клике.
             const tryOnce = function() {
-                if (svaer.get(FULLSCREEN_KEY, false) && !isFullscreen()) {
+                if (svaer.get(FULLSCREEN_KEY, true) && !isFullscreen()) {
                     enterFullscreen().catch(() => {});
                 }
                 document.removeEventListener('click', tryOnce);
                 document.removeEventListener('touchstart', tryOnce);
+                document.removeEventListener('keydown', tryOnce);
             };
             document.addEventListener('click', tryOnce, { once: true });
             document.addEventListener('touchstart', tryOnce, { once: true });
+            document.addEventListener('keydown', tryOnce, { once: true });
         }
     }
 
@@ -198,8 +200,16 @@
         });
     }
 
-    function removeCustomWallpaper(id) {
-        if (!confirm('Удалить эти обои?')) return;
+    async function removeCustomWallpaper(id) {
+        const Win = getWin();
+        const ok = await Win.confirm('Удалить эти обои?', {
+            title: 'Удаление',
+            okText: 'Удалить',
+            cancelText: 'Отмена',
+            danger: true
+        });
+        if (!ok) return;
+        
         customWallpapers = customWallpapers.filter(w => w.id !== id);
         svaer.set(CUSTOM_WALLPAPERS_KEY, customWallpapers);
         if (currentWallpaper === id) {
@@ -210,7 +220,7 @@
     }
 
     // ============================================
-    // РЕНДЕРИНГ ОБОЕВ
+    // РЕНДЕРИНГ
     // ============================================
     function renderWallpapers() {
         const grid = document.getElementById('wallpaperGrid');
@@ -275,7 +285,6 @@
         const container = document.getElementById('systemInfo');
         if (!container) return;
 
-        // Загружено файлов
         let filesCount = 0;
         try {
             const files = localStorage.getItem('shnuk_downloaded_files');
@@ -285,7 +294,6 @@
             }
         } catch(e) {}
 
-        // Установленные приложения
         let installedCount = 0;
         try {
             const installed = localStorage.getItem('shnuk_installed_apps');
@@ -295,7 +303,6 @@
             }
         } catch(e) {}
 
-        // Приложений на рабочем столе
         let desktopCount = 0;
         try {
             const desktop = localStorage.getItem('shnuk_desktop_apps');
@@ -305,7 +312,6 @@
             }
         } catch(e) {}
 
-        // Размер данных
         let storageSize = 0;
         try {
             for (let i = 0; i < localStorage.length; i++) {
@@ -347,36 +353,39 @@
     }
 
     // ============================================
-    // ДЕЙСТВИЯ СИСТЕМЫ
+    // ДЕЙСТВИЯ
     // ============================================
-    function reinstallSystem() {
+    async function reinstallSystem() {
+        const Win = getWin();
+        
         if (typeof Downloader === 'undefined') {
-            alert('Загрузчик недоступен. Обновите страницу.');
+            await Win.alert('Загрузчик недоступен. Обновите страницу.', { title: 'Ошибка' });
             return;
         }
 
-        const confirmed = confirm(
-            '🔄 Переустановить систему?\n\n' +
-            'Что произойдёт:\n' +
-            '• Все системные файлы будут перезаписаны\n' +
-            '• Ваши данные сохранятся:\n' +
-            '  - Установленные приложения\n' +
-            '  - Обои\n' +
-            '  - Файлы\n' +
-            '  - Виджеты\n\n' +
-            'Продолжить?'
+        const confirmed = await Win.confirm(
+            'Все системные файлы будут перезаписаны.\n\n' +
+            'Ваши данные сохранятся:\n' +
+            '• Установленные приложения\n' +
+            '• Обои\n' +
+            '• Файлы\n' +
+            '• Виджеты',
+            {
+                title: 'Переустановить систему?',
+                okText: 'Переустановить',
+                cancelText: 'Отмена'
+            }
         );
 
         if (!confirmed) return;
 
-        console.log('[Settings] Переустановка системы...');
+        console.log('[Settings] Переустановка...');
         closeSettings();
 
         setTimeout(function() {
             if (typeof Downloader.forceReload === 'function') {
                 Downloader.forceReload();
             } else {
-                // Ручная очистка
                 const STORAGE_PREFIX = 'shnuk_cache_';
                 const keysToRemove = [];
                 
@@ -395,22 +404,37 @@
         }, 500);
     }
 
-    function clearAllData() {
-        const confirmed = confirm(
-            '⚠️ ВНИМАНИЕ!\n\n' +
-            'Это удалит ВСЕ данные:\n' +
+    async function clearAllData() {
+        const Win = getWin();
+
+        const confirmed = await Win.confirm(
+            'Будут удалены ВСЕ данные:\n' +
             '• Установленные приложения\n' +
             '• Обои\n' +
             '• Файлы\n' +
             '• Виджеты\n' +
             '• Пароль\n\n' +
-            'Система будет переустановлена с нуля.\n\n' +
-            'Продолжить?'
+            'Система будет переустановлена с нуля.',
+            {
+                title: '⚠️ Полный сброс',
+                okText: 'Продолжить',
+                cancelText: 'Отмена',
+                danger: true
+            }
         );
 
         if (!confirmed) return;
 
-        const confirmed2 = confirm('⚠️ ВЫ УВЕРЕНЫ?\n\nЭто действие НЕЛЬЗЯ отменить!');
+        const confirmed2 = await Win.confirm(
+            'Это действие НЕЛЬЗЯ отменить!\n\nВы уверены?',
+            {
+                title: '⚠️ Последнее предупреждение',
+                okText: 'Да, сбросить всё',
+                cancelText: 'Нет, отмена',
+                danger: true
+            }
+        );
+
         if (!confirmed2) return;
 
         console.log('[Settings] Полная очистка...');
@@ -456,7 +480,6 @@
             box-sizing: border-box;
         `;
 
-        // Стили
         if (!document.getElementById('settingsStyles')) {
             const style = document.createElement('style');
             style.id = 'settingsStyles';
@@ -464,355 +487,199 @@
                 @keyframes settingsFadeIn { from { opacity: 0; } to { opacity: 1; } }
                 
                 .settings-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    max-width: 640px;
-                    margin: 0 auto 24px;
-                    padding-bottom: 16px;
-                    border-bottom: 2px solid #f0f0f0;
+                    display: flex; justify-content: space-between; align-items: center;
+                    max-width: 640px; margin: 0 auto 24px;
+                    padding-bottom: 16px; border-bottom: 2px solid #f0f0f0;
                 }
                 .settings-header h1 {
-                    font-size: 24px;
-                    font-weight: 600;
-                    color: #1a1a1a;
+                    font-size: 24px; font-weight: 600; color: #1a1a1a;
                     letter-spacing: -0.3px;
                 }
                 .settings-close {
-                    background: none;
-                    border: none;
-                    cursor: pointer;
-                    padding: 8px;
-                    color: #999;
-                    transition: color 0.2s;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
+                    background: none; border: none; cursor: pointer;
+                    padding: 8px; color: #999; transition: color 0.2s;
+                    display: flex; align-items: center; justify-content: center;
                 }
                 .settings-close:hover { color: #cc0000; }
                 .settings-close svg { display: block; width: 28px; height: 28px; }
 
                 .settings-tabs {
-                    display: flex;
-                    gap: 4px;
-                    max-width: 640px;
-                    margin: 0 auto 32px;
+                    display: flex; gap: 4px;
+                    max-width: 640px; margin: 0 auto 32px;
                     border-bottom: 2px solid #f0f0f0;
                 }
                 .settings-tabs button {
-                    padding: 12px 24px;
-                    background: none;
-                    border: none;
-                    border-bottom: 3px solid transparent;
-                    cursor: pointer;
+                    padding: 12px 24px; background: none; border: none;
+                    border-bottom: 3px solid transparent; cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
-                    font-size: 14px;
-                    color: #888;
-                    transition: all 0.2s;
-                    margin-bottom: -2px;
+                    font-size: 14px; color: #888;
+                    transition: all 0.2s; margin-bottom: -2px;
                 }
                 .settings-tabs button:hover { color: #1a1a1a; }
                 .settings-tabs button.active {
-                    color: #cc0000;
-                    border-bottom-color: #cc0000;
+                    color: #cc0000; border-bottom-color: #cc0000;
                 }
 
                 .settings-section {
-                    max-width: 640px;
-                    margin: 0 auto 36px;
-                    display: none;
+                    max-width: 640px; margin: 0 auto 36px; display: none;
                 }
                 .settings-section.active { display: block; }
 
                 .settings-section-title {
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: #888;
-                    text-transform: uppercase;
-                    letter-spacing: 0.8px;
+                    font-size: 13px; font-weight: 600; color: #888;
+                    text-transform: uppercase; letter-spacing: 0.8px;
                     margin-bottom: 16px;
                 }
 
-                /* Обои */
                 .wallpaper-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 16px;
+                    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
                 }
                 .wallpaper-item, .custom-wallpaper-item {
-                    aspect-ratio: 1/1;
-                    overflow: hidden;
-                    cursor: pointer;
-                    border: 3px solid transparent;
-                    transition: all 0.2s ease;
-                    position: relative;
-                    background: #f5f5f5;
+                    aspect-ratio: 1/1; overflow: hidden; cursor: pointer;
+                    border: 3px solid transparent; transition: all 0.2s ease;
+                    position: relative; background: #f5f5f5;
                 }
-                .wallpaper-item:hover, .custom-wallpaper-item:hover { 
-                    transform: scale(1.02); 
-                }
+                .wallpaper-item:hover, .custom-wallpaper-item:hover { transform: scale(1.02); }
                 .wallpaper-item.selected, .custom-wallpaper-item.selected {
                     border-color: #cc0000;
                     box-shadow: 0 0 0 3px rgba(204,0,0,0.15);
                 }
                 .wallpaper-item img, .custom-wallpaper-item img {
-                    width: 100%;
-                    height: 100%;
-                    object-fit: cover;
-                    display: block;
+                    width: 100%; height: 100%; object-fit: cover; display: block;
                 }
                 .wallpaper-check {
-                    position: absolute;
-                    top: 8px;
-                    right: 8px;
-                    width: 28px;
-                    height: 28px;
-                    background: #cc0000;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                    pointer-events: none;
+                    position: absolute; top: 8px; right: 8px;
+                    width: 28px; height: 28px; background: #cc0000;
+                    display: flex; align-items: center; justify-content: center;
+                    opacity: 0; transition: opacity 0.2s; pointer-events: none;
                 }
                 .wallpaper-item.selected .wallpaper-check,
-                .custom-wallpaper-item.selected .wallpaper-check { 
-                    opacity: 1; 
-                }
+                .custom-wallpaper-item.selected .wallpaper-check { opacity: 1; }
                 .wallpaper-check svg { width: 16px; height: 16px; }
-
                 .wallpaper-name {
-                    position: absolute;
-                    bottom: 0;
-                    left: 0;
-                    right: 0;
-                    padding: 8px 12px;
-                    background: rgba(0,0,0,0.55);
-                    color: #fff;
-                    font-size: 12px;
-                    text-align: center;
-                    font-weight: 500;
-                    letter-spacing: 0.3px;
+                    position: absolute; bottom: 0; left: 0; right: 0;
+                    padding: 8px 12px; background: rgba(0,0,0,0.55);
+                    color: #fff; font-size: 12px; text-align: center;
+                    font-weight: 500; letter-spacing: 0.3px;
                 }
-
                 .custom-remove {
-                    position: absolute;
-                    top: 6px;
-                    right: 6px;
-                    width: 28px;
-                    height: 28px;
-                    background: #cc0000;
-                    border: none;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                    padding: 0;
-                    z-index: 2;
+                    position: absolute; top: 6px; right: 6px;
+                    width: 28px; height: 28px; background: #cc0000;
+                    border: none; cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    opacity: 0; transition: opacity 0.2s; padding: 0; z-index: 2;
                 }
                 .custom-wallpaper-item:hover .custom-remove { opacity: 0.9; }
-                .custom-wallpaper-item .custom-remove:hover { opacity: 1; }
                 .custom-remove svg { width: 14px; height: 14px; }
 
                 .custom-wallpapers {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 16px;
+                    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
                     margin-bottom: 16px;
                 }
                 .empty-message {
-                    grid-column: 1/-1;
-                    text-align: center;
-                    padding: 30px 20px;
-                    color: #bbb;
-                    font-size: 14px;
+                    grid-column: 1/-1; text-align: center;
+                    padding: 30px 20px; color: #bbb; font-size: 14px;
                 }
 
                 .custom-upload {
-                    padding: 24px;
-                    border: 2px dashed #ddd;
-                    text-align: center;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    background: #fafafa;
-                    margin-top: 8px;
+                    padding: 24px; border: 2px dashed #ddd;
+                    text-align: center; cursor: pointer;
+                    transition: all 0.3s ease; background: #fafafa; margin-top: 8px;
                 }
                 .custom-upload:hover {
-                    border-color: #cc0000;
-                    background: #fff5f5;
+                    border-color: #cc0000; background: #fff5f5;
                 }
                 .custom-upload svg {
-                    display: block;
-                    margin: 0 auto 8px;
-                    width: 40px;
-                    height: 40px;
-                    stroke: #888;
+                    display: block; margin: 0 auto 8px;
+                    width: 40px; height: 40px; stroke: #888;
                 }
                 .custom-upload .upload-text {
-                    font-size: 14px;
-                    color: #888;
-                    font-weight: 500;
+                    font-size: 14px; color: #888; font-weight: 500;
                 }
                 .custom-upload input[type="file"] { display: none; }
 
-                /* Система */
                 .system-info {
-                    background: #f8f8f8;
-                    padding: 16px 20px;
-                    margin-bottom: 24px;
+                    background: #f8f8f8; padding: 16px 20px; margin-bottom: 24px;
                 }
                 .system-info .info-row {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 10px 0;
-                    border-bottom: 1px solid #e8e8e8;
-                    font-size: 14px;
+                    display: flex; justify-content: space-between;
+                    align-items: center; padding: 10px 0;
+                    border-bottom: 1px solid #e8e8e8; font-size: 14px;
                 }
                 .system-info .info-row:last-child { border-bottom: none; }
-                .system-info .info-label { 
-                    color: #666;
-                    font-size: 13px;
-                }
+                .system-info .info-label { color: #666; font-size: 13px; }
                 .system-info .info-value { 
-                    color: #1a1a1a; 
-                    font-weight: 600;
-                    text-align: right;
+                    color: #1a1a1a; font-weight: 600; text-align: right;
                 }
 
-                /* Действия */
                 .action-card {
-                    background: #f8f8f8;
-                    padding: 20px;
-                    margin-bottom: 16px;
-                    border: 2px solid #e0e0e0;
+                    background: #f8f8f8; padding: 20px;
+                    margin-bottom: 16px; border: 2px solid #e0e0e0;
                 }
                 .action-card .action-title {
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: #1a1a1a;
-                    margin-bottom: 8px;
+                    font-size: 16px; font-weight: 600;
+                    color: #1a1a1a; margin-bottom: 8px;
                 }
                 .action-card .action-desc {
-                    font-size: 13px;
-                    color: #666;
-                    margin-bottom: 16px;
-                    line-height: 1.5;
+                    font-size: 13px; color: #666;
+                    margin-bottom: 16px; line-height: 1.5;
                 }
                 .action-card button {
-                    padding: 10px 24px;
-                    border: 2px solid #cc0000;
-                    background: #cc0000;
-                    color: #ffffff;
-                    cursor: pointer;
-                    font-family: 'ST-SimpleSquare', monospace;
-                    font-size: 14px;
-                    font-weight: 600;
+                    padding: 10px 24px; border: 2px solid #cc0000;
+                    background: #cc0000; color: #ffffff;
+                    cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
+                    font-size: 14px; font-weight: 600;
                     transition: all 0.2s;
                 }
                 .action-card button:hover {
-                    background: #990000;
-                    transform: scale(1.02);
-                }
-                .action-card button.secondary {
-                    background: none;
-                    color: #cc0000;
-                }
-                .action-card button.secondary:hover {
-                    background: #cc0000;
-                    color: #ffffff;
+                    background: #990000; transform: scale(1.02);
                 }
                 .action-card button.danger {
-                    background: #cc0000;
-                    border-color: #cc0000;
-                    color: #ffffff;
+                    background: #cc0000; border-color: #cc0000; color: #ffffff;
                 }
                 .action-card button.danger:hover {
-                    background: #8b0000;
-                    border-color: #8b0000;
+                    background: #8b0000; border-color: #8b0000;
                 }
                 .action-card.danger-card {
-                    border-color: #ffcccc;
-                    background: #fff5f5;
-                }
-                .action-card .status-badge {
-                    display: inline-block;
-                    padding: 2px 10px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    letter-spacing: 0.5px;
-                    margin-left: 8px;
-                    text-transform: uppercase;
-                }
-                .status-badge.on {
-                    background: #4CAF50;
-                    color: #fff;
-                }
-                .status-badge.off {
-                    background: #ddd;
-                    color: #666;
+                    border-color: #ffcccc; background: #fff5f5;
                 }
 
-                /* Полноэкранный режим */
                 .fullscreen-toggle {
-                    display: flex;
-                    align-items: center;
+                    display: flex; align-items: center;
                     justify-content: space-between;
-                    padding: 16px 20px;
-                    background: #f8f8f8;
-                    border: 2px solid #e0e0e0;
-                    margin-bottom: 16px;
-                    cursor: pointer;
-                    transition: all 0.2s;
+                    padding: 16px 20px; background: #f8f8f8;
+                    border: 2px solid #e0e0e0; margin-bottom: 16px;
+                    cursor: pointer; transition: all 0.2s;
                 }
                 .fullscreen-toggle:hover {
-                    border-color: #cc0000;
-                    background: #fff5f5;
+                    border-color: #cc0000; background: #fff5f5;
                 }
                 .fullscreen-toggle .fs-left {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
+                    display: flex; align-items: center; gap: 12px;
                 }
                 .fullscreen-toggle .fs-icon {
                     font-size: 24px;
                 }
                 .fullscreen-toggle .fs-text {
-                    font-size: 15px;
-                    font-weight: 600;
-                    color: #1a1a1a;
+                    font-size: 15px; font-weight: 600; color: #1a1a1a;
                 }
                 .fullscreen-toggle .fs-sub {
-                    font-size: 12px;
-                    color: #888;
-                    margin-top: 2px;
+                    font-size: 12px; color: #888; margin-top: 2px;
                 }
                 .fullscreen-toggle .fs-switch {
-                    width: 48px;
-                    height: 28px;
-                    background: #ddd;
-                    border-radius: 14px;
-                    position: relative;
-                    transition: background 0.3s;
-                    flex-shrink: 0;
+                    width: 48px; height: 28px; background: #ddd;
+                    border-radius: 14px; position: relative;
+                    transition: background 0.3s; flex-shrink: 0;
                 }
                 .fullscreen-toggle .fs-switch::after {
-                    content: '';
-                    position: absolute;
-                    top: 2px;
-                    left: 2px;
-                    width: 24px;
-                    height: 24px;
-                    background: #fff;
-                    border-radius: 50%;
+                    content: ''; position: absolute;
+                    top: 2px; left: 2px;
+                    width: 24px; height: 24px;
+                    background: #fff; border-radius: 50%;
                     transition: transform 0.3s;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
-                .fullscreen-toggle.active .fs-switch {
-                    background: #cc0000;
-                }
+                .fullscreen-toggle.active .fs-switch { background: #cc0000; }
                 .fullscreen-toggle.active .fs-switch::after {
                     transform: translateX(20px);
                 }
@@ -910,13 +777,9 @@
         document.body.appendChild(container);
         isOpen = true;
 
-        // ============================================
-        // ОБРАБОТЧИКИ
-        // ============================================
-        
+        // Обработчики
         document.getElementById('settingsCloseBtn').addEventListener('click', closeSettings);
 
-        // Табы
         container.querySelectorAll('.settings-tabs button').forEach(btn => {
             btn.addEventListener('click', function() {
                 container.querySelectorAll('.settings-tabs button').forEach(b => b.classList.remove('active'));
@@ -934,7 +797,6 @@
             });
         });
 
-        // Загрузка обоев
         const upload = document.getElementById('customUpload');
         const fileInput = document.getElementById('fileInput');
         
@@ -948,7 +810,6 @@
             });
         }
 
-        // Полноэкранный режим
         const fsToggle = document.getElementById('fullscreenToggle');
         if (fsToggle) {
             fsToggle.addEventListener('click', function() {
@@ -964,7 +825,6 @@
             });
         }
 
-        // Кнопки системы
         const reinstallBtn = document.getElementById('reinstallBtn');
         if (reinstallBtn) {
             reinstallBtn.addEventListener('click', reinstallSystem);
@@ -975,20 +835,15 @@
             clearAllBtn.addEventListener('click', clearAllData);
         }
 
-        // Первичный рендеринг
         renderAll();
         if (currentWallpaper) applyWallpaper(currentWallpaper);
         renderSystemInfo();
 
-        // Следим за изменением полноэкранного режима
         const fsChangeHandler = function() {
             const toggle = document.getElementById('fullscreenToggle');
             if (toggle) {
-                if (isFullscreen()) {
-                    toggle.classList.add('active');
-                } else {
-                    toggle.classList.remove('active');
-                }
+                if (isFullscreen()) toggle.classList.add('active');
+                else toggle.classList.remove('active');
             }
         };
         
@@ -997,11 +852,8 @@
         document.addEventListener('mozfullscreenchange', fsChangeHandler);
         document.addEventListener('MSFullscreenChange', fsChangeHandler);
 
-        // ESC для закрытия настроек (но НЕ выхода из полноэкрана)
         const onEsc = function(e) {
             if (e.key === 'Escape') {
-                // Если мы в полноэкране — браузер сам выйдет из него
-                // Настройки при этом закрываем
                 closeSettings();
                 document.removeEventListener('keydown', onEsc);
             }
@@ -1011,9 +863,6 @@
         console.log('[Settings] ✅ UI создан');
     }
 
-    // ============================================
-    // ЗАКРЫТИЕ
-    // ============================================
     function closeSettings() {
         const el = document.getElementById('settingsApp');
         if (el) {
@@ -1046,6 +895,9 @@
     window.enterFullscreen = enterFullscreen;
     window.exitFullscreen = exitFullscreen;
     window.isFullscreen = isFullscreen;
+
+    // Автовосстановление полного экрана при запуске (включён по умолчанию)
+    tryRestoreFullscreen();
 
     console.log('[Settings] ✅ Загружено');
 

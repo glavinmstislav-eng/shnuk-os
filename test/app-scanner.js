@@ -11,10 +11,8 @@
     const APP_LIST = [
         { id: 'settings', name: 'Настройки', icon: 'settings.png' },
         { id: 'game', name: 'Игра', icon: 'game1.png' },
-        { id: 'calc', name: 'Калькулятор', icon: 'calc.png' },
         { id: 'time', name: 'Часы', icon: 'time.png' },
-        { id: 'studio', name: 'Shnuk Studio', icon: 'studio.png' },
-        { id: 'file', name: 'Файлы', icon: 'shnukmarket.png' },
+        { id: 'file', name: 'Файлы', icon: 'file.png' },
         { id: 'store', name: 'Store', icon: 'store.png' }
     ];
 
