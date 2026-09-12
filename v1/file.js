@@ -50,6 +50,15 @@
         document.removeEventListener('keydown', onKeyDown);
     }
 
+    function destroy() {
+        isOpen = false;
+        closePreview();
+        closeThreeViewer();
+        document.removeEventListener('keydown', onKeyDown);
+        const el = document.getElementById('fileApp');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+
     function closeThreeViewer() {
         if (threeAnimationId) {
             cancelAnimationFrame(threeAnimationId);
@@ -1368,7 +1377,8 @@
     }
 
     function closePreview() {
-        document.getElementById('filePreview').classList.remove('active');
+        const el = document.getElementById('filePreview');
+        if (el) el.classList.remove('active');
         previewData = null;
         closeThreeViewer();
     }
@@ -1543,7 +1553,8 @@
         if (!isOpen) return;
         
         if (e.key === 'Escape') {
-            if (document.getElementById('filePreview').classList.contains('active')) {
+            const prev = document.getElementById('filePreview');
+            if (prev && prev.classList.contains('active')) {
                 closePreview();
             } else {
                 closeFiles();
@@ -1551,6 +1562,7 @@
         }
     }
 
+    window.FileApp = { destroy: destroy };
     window.fileInit = function() {
         console.log('[Files] Открытие...');
         openFiles();

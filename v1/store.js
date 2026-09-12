@@ -182,6 +182,12 @@
         refreshAppMenu();
     }
 
+    function destroy() {
+        isOpen = false;
+        const el = document.getElementById('storeApp');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+
     function createUI() {
         if (document.getElementById('storeApp')) {
             document.getElementById('storeApp').style.display = 'flex';
@@ -645,7 +651,8 @@
         getInstalled: getInstalledApps,
         isInstalled: isInstalled,
         catalog: CATALOG_ITEMS,
-        refresh: refreshAppMenu
+        refresh: refreshAppMenu,
+        destroy: destroy
     };
 
     setTimeout(() => loadCatalog(), 500);

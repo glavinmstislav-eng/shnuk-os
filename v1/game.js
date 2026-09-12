@@ -35,6 +35,7 @@
     let swipeTimeThreshold = 500;
 
     let deviceOrientationHandler = null;
+    let isPaused = false;
 
     const CAR_START_Z = 8;
     const CAR_LOOK_AHEAD = -40;
@@ -270,8 +271,6 @@
             deviceOrientationHandler = null;
         }
     }
-
-    let isPaused = false;
 
     function togglePause() {
         if (!gameRunning) return;
@@ -872,6 +871,7 @@
     }
 
     function onKeyDown(e) {
+        if (!gameRunning) return;
         if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
             keys.left = true;
             carTargetX = -2.3;
@@ -1011,9 +1011,21 @@
             setTimeout(() => { el.remove(); }, 300);
         }
 
+        houses = [];
+        snowdrifts = [];
+        roadLines = [];
+        snowParticles = [];
+        obstacles = [];
+        speedLines = [];
+
         console.log('[Game] Игра закрыта');
     }
 
+    function destroy() {
+        closeGame();
+    }
+
+    window.Game = { destroy: destroy };
     window.gameInit = function() {
         if (document.getElementById('gameApp')) return;
         if (typeof THREE === 'undefined') {

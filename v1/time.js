@@ -1,4 +1,4 @@
-// time.js
+// time.js — Приложение часы
 
 (function() {
     'use strict';
@@ -57,6 +57,23 @@
             setTimeout(() => { el.style.display = 'none'; el.style.opacity = '1'; }, 300);
         }
         document.removeEventListener('keydown', onKeyDown);
+    }
+
+    function destroy() {
+        isOpen = false;
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
+        if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+        if (alarmTimeout) { clearTimeout(alarmTimeout); alarmTimeout = null; }
+        if (alarmCheckInterval) { clearInterval(alarmCheckInterval); alarmCheckInterval = null; }
+        timerRunning = false;
+        stopwatchRunning = false;
+        alarmActive = false;
+        alarmTime = null;
+        document.removeEventListener('keydown', onKeyDown);
+        const el = document.getElementById('timeApp');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        if (window.LiveBar) window.LiveBar.clear();
     }
 
     function createUI() {
@@ -540,6 +557,7 @@
         if (e.key === 'Escape') closeTime();
     }
 
+    window.Time = { destroy: destroy };
     window.timeInit = function() { openTime(); };
 
 })();

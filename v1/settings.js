@@ -1193,9 +1193,19 @@
                 el.remove();
                 isOpen = false;
             }, 300);
+        } else {
+            isOpen = false;
         }
     }
 
+    function destroy() {
+        isOpen = false;
+        const el = document.getElementById('settingsApp');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        document.querySelectorAll('.settings-dropdown').forEach(m => m.remove());
+    }
+
+    window.Settings = { destroy: destroy };
     window.settingsInit = function() {
         if (isOpen) {
             const el = document.getElementById('settingsApp');

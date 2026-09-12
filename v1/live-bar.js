@@ -24,16 +24,12 @@
     const _origClear = Storage.prototype.clear;
 
     Storage.prototype.setItem = function(key, value) {
-        if (anonMode && key !== ANON_KEY && key !== BRIGHTNESS_KEY) {
-            return;
-        }
+        if (anonMode && key !== ANON_KEY && key !== BRIGHTNESS_KEY) return;
         return _origSetItem.call(this, key, value);
     };
 
     Storage.prototype.removeItem = function(key) {
-        if (anonMode && key !== ANON_KEY && key !== BRIGHTNESS_KEY) {
-            return;
-        }
+        if (anonMode && key !== ANON_KEY && key !== BRIGHTNESS_KEY) return;
         return _origRemoveItem.call(this, key);
     };
 
@@ -84,8 +80,7 @@
     function applyBrightness() {
         if (!overlayEl) return;
         const v = getBrightness();
-        const opacity = 0.75 - (v / 100) * 0.75;
-        overlayEl.style.opacity = String(opacity);
+        overlayEl.style.opacity = String(0.75 - (v / 100) * 0.75);
     }
 
     function ensureAnonMode() {
@@ -220,9 +215,7 @@
         e.stopPropagation();
         if (currentActivity && currentActivity.appId) {
             const id = currentActivity.appId;
-            if (typeof window[id + 'Init'] === 'function') {
-                window[id + 'Init']();
-            }
+            if (typeof window[id + 'Init'] === 'function') window[id + 'Init']();
         }
     }
 
@@ -499,6 +492,12 @@
     }
 
     function optimizeSystem() {
+        if (window.Time && typeof window.Time.destroy === 'function') window.Time.destroy();
+        if (window.FileApp && typeof window.FileApp.destroy === 'function') window.FileApp.destroy();
+        if (window.Game && typeof window.Game.destroy === 'function') window.Game.destroy();
+        if (window.Settings && typeof window.Settings.destroy === 'function') window.Settings.destroy();
+        if (window.Store && typeof window.Store.destroy === 'function') window.Store.destroy();
+
         if (window._timeInterval) {
             clearInterval(window._timeInterval);
             window._timeInterval = null;
