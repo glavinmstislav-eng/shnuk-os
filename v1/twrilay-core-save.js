@@ -1,527 +1,284 @@
-// twirlay-core-save.js — Система оффлайн-сохранения для Twirlay OS
+// twirlay-core-save.js — Система оффлайн-сохранения для Shnuk OS
 
 (function() {
     'use strict';
 
-    console.log('[Twirlay Save] Загрузка системы оффлайн-сохранения...');
+    const STORAGE_PREFIX = 'shnuk_cache_';
+    const FILES_LIST_KEY = 'shnuk_downloaded_files';
+    const COMPLETE_KEY = 'shnuk_download_complete';
+    const VERSION_KEY = 'shnuk_cache_version';
 
-    // ============================================
-    // 1. SERVICE WORKER ДЛЯ ОФФЛАЙН
-    // ============================================
-    function registerServiceWorker() {
-        if (!('serviceWorker' in navigator)) {
-            console.warn('[Twirlay Save] Service Worker не поддерживается');
+    const CACHE_VERSION = '1.0.0';
+
+    const SYSTEM_FILES = [
+        'app-scanner.js',
+        'store.js',
+        'l.js',
+        'svaer.js',
+        'settings.js',
+        'game.js',
+        'time.js',
+        'file.js',
+        'windows.js',
+        'widget-time.js',
+        'security.js',
+        'twirlay-core1.js',
+        'twirlay-core-save.js',
+        'updateslock.js',
+        'site-store.html',
+        'projects-store.html',
+        'ST-SimpleSquare.ttf',
+        'wall.png',
+        'wall1.png',
+        'wall2.png',
+        'wall3.png',
+        'settings.png',
+        'game1.png',
+        'calc.png',
+        'time.png',
+        'studio.png',
+        'shnukmarket.png',
+        'store.png',
+        'logoos.png',
+        'wake-up.mp3'
+    ];
+
+    // Проверка нужно ли перекешировать
+    function needsRecache() {
+        try {
+            const savedVersion = localStorage.getItem(VERSION_KEY);
+            const complete = localStorage.getItem(COMPLETE_KEY) === 'true';
+            if (savedVersion !== CACHE_VERSION) return true;
+            if (!complete) return true;
             return false;
+        } catch(e) {
+            return true;
         }
+    }
 
-        // Список файлов для кеширования
-        const CACHE_FILES = [
-            '/',
-            '/index.html',
-            '/app-scanner.js',
-            '/svaer.js',
-            '/settings.js',
-            '/game.js',
-            '/time.js',
-            '/file.js',
-            '/widget-time.js',
-            '/widget-digital-time.js',
-            '/twirlay-core1.js',
-            '/twirlay-core-save.js',
-            '/assets/wall.png',
-            '/assets/wall2.png',
-            '/assets/wall3.png',
-            '/assets/game1.png',
-            '/assets/settings.png',
-            '/assets/calc.png',
-            '/assets/time.png',
-            '/assets/shnukmarket.png',
-            '/assets/studio.png',
-            '/assets/app1.png',
-            '/assets/app2.png',
-            '/assets/app3.png',
-            '/assets/app4.png',
-            '/ST-SimpleSquare.ttf'
-        ];
+    // Определить бинарный ли файл
+    function isBinaryFile(filename) {
+        return /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|ttf|woff|woff2|otf|eot|mp3|wav|ogg|mp4|webm|pdf|zip)$/i.test(filename);
+    }
 
-        // Создаём inline Service Worker
-        const swCode = `
-            const CACHE_NAME = 'twirlay-v1';
-            const CACHE_FILES = ${JSON.stringify(CACHE_FILES)};
-
-            self.addEventListener('install', function(e) {
-                console.log('[SW] Установка...');
-                e.waitUntil(
-                    caches.open(CACHE_NAME).then(function(cache) {
-                        console.log('[SW] Кеширование файлов...');
-                        return cache.addAll(CACHE_FILES).catch(function(err) {
-                            console.warn('[SW] Ошибка кеширования:', err);
-                            // Продолжаем даже если некоторые файлы не закешировались
+    // Скачать один файл
+    function downloadFile(filename) {
+        return new Promise(function(resolve) {
+            const url = filename + '?cache=' + Date.now();
+            
+            fetch(url, { cache: 'no-store' })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    
+                    if (isBinaryFile(filename)) {
+                        return response.blob().then(function(blob) {
+                            return new Promise(function(r) {
+                                const reader = new FileReader();
+                                reader.onload = function() { r(reader.result); };
+                                reader.onerror = function() { r(null); };
+                                reader.readAsDataURL(blob);
+                            });
                         });
-                    }).then(function() {
-                        return self.skipWaiting();
-                    })
-                );
-            });
+                    }
+                    return response.text();
+                })
+                .then(function(content) {
+                    if (!content) {
+                        resolve({ success: false, filename: filename });
+                        return;
+                    }
+                    try {
+                        localStorage.setItem(STORAGE_PREFIX + filename, content);
+                        resolve({ success: true, filename: filename });
+                    } catch(e) {
+                        resolve({ success: false, filename: filename, error: e.message });
+                    }
+                })
+                .catch(function(err) {
+                    resolve({ success: false, filename: filename, error: err.message });
+                });
+        });
+    }
 
-            self.addEventListener('activate', function(e) {
-                console.log('[SW] Активация...');
-                e.waitUntil(
-                    caches.keys().then(function(keys) {
-                        return Promise.all(
-                            keys.map(function(key) {
-                                if (key !== CACHE_NAME) {
-                                    console.log('[SW] Удаление старого кеша:', key);
-                                    return caches.delete(key);
-                                }
-                            })
-                        );
-                    }).then(function() {
-                        return self.clients.claim();
-                    })
-                );
-            });
+    // Скачать все файлы
+    function downloadAll(onProgress) {
+        return new Promise(function(resolve) {
+            const total = SYSTEM_FILES.length;
+            const downloaded = [];
+            const errors = [];
+            let current = 0;
 
-            self.addEventListener('fetch', function(e) {
-                // Пропускаем запросы к аналитике и внешним ресурсам
-                if (e.request.url.includes('google-analytics') || 
-                    e.request.url.includes('facebook.com') ||
-                    e.request.url.includes('doubleclick.net')) {
+            function next(index) {
+                if (index >= SYSTEM_FILES.length) {
+                    try {
+                        localStorage.setItem(FILES_LIST_KEY, JSON.stringify(downloaded));
+                        localStorage.setItem(COMPLETE_KEY, 'true');
+                        localStorage.setItem(VERSION_KEY, CACHE_VERSION);
+                    } catch(e) {}
+                    
+                    resolve({
+                        total: total,
+                        downloaded: downloaded.length,
+                        errors: errors.length,
+                        errorList: errors
+                    });
                     return;
                 }
 
-                e.respondWith(
-                    caches.match(e.request).then(function(response) {
-                        if (response) {
-                            return response;
-                        }
-                        return fetch(e.request).catch(function() {
-                            // Если файл не найден в кеше и оффлайн
-                            return new Response('Offline', { 
-                                status: 503, 
-                                statusText: 'Service Unavailable' 
-                            });
-                        });
-                    })
-                );
-            });
-        `;
-
-        try {
-            // Создаём Blob с кодом Service Worker
-            const blob = new Blob([swCode], { type: 'application/javascript' });
-            const swUrl = URL.createObjectURL(blob);
-
-            // Регистрируем Service Worker
-            navigator.serviceWorker.register(swUrl, { scope: '/' })
-                .then(function(reg) {
-                    console.log('[Twirlay Save] ✅ Service Worker зарегистрирован');
-                    
-                    // Проверяем статус
-                    if (reg.installing) {
-                        console.log('[Twirlay Save] Установка SW...');
-                    } else if (reg.waiting) {
-                        console.log('[Twirlay Save] SW ожидает активации');
-                    } else if (reg.active) {
-                        console.log('[Twirlay Save] SW активен');
+                const filename = SYSTEM_FILES[index];
+                
+                downloadFile(filename).then(function(result) {
+                    current++;
+                    if (result.success) {
+                        downloaded.push(filename);
+                    } else {
+                        errors.push(filename);
                     }
                     
-                    return reg;
-                })
-                .catch(function(err) {
-                    console.warn('[Twirlay Save] ❌ Ошибка регистрации SW:', err);
-                    return false;
+                    if (onProgress) {
+                        onProgress(current, total, filename, result.success);
+                    }
+                    
+                    setTimeout(function() { next(index + 1); }, 5);
                 });
+            }
 
-            // Периодическая проверка обновлений
-            setInterval(function() {
-                if (navigator.serviceWorker.controller) {
-                    navigator.serviceWorker.controller.postMessage({
-                        type: 'CHECK_UPDATE'
-                    });
+            next(0);
+        });
+    }
+
+    // Очистить весь кеш
+    function clearCache() {
+        let removed = 0;
+        const keysToRemove = [];
+        
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (!key) continue;
+                if (key.startsWith(STORAGE_PREFIX) || 
+                    key === FILES_LIST_KEY || 
+                    key === COMPLETE_KEY ||
+                    key === VERSION_KEY) {
+                    keysToRemove.push(key);
                 }
-            }, 60000); // Каждую минуту
+            }
+            
+            keysToRemove.forEach(function(k) {
+                try {
+                    localStorage.removeItem(k);
+                    removed++;
+                } catch(e) {}
+            });
+        } catch(e) {}
+        
+        // Очищаем Cache API
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                names.forEach(function(name) {
+                    caches.delete(name);
+                });
+            });
+        }
+        
+        return removed;
+    }
 
-            return true;
-
+    // Получить закешированный файл
+    function getCachedFile(filename) {
+        try {
+            return localStorage.getItem(STORAGE_PREFIX + filename);
         } catch(e) {
-            console.warn('[Twirlay Save] ❌ Ошибка создания SW:', e);
+            return null;
+        }
+    }
+
+    // Проверить закеширован ли файл
+    function isCached(filename) {
+        try {
+            return localStorage.getItem(STORAGE_PREFIX + filename) !== null;
+        } catch(e) {
             return false;
         }
     }
 
-    // ============================================
-    // 2. КЕШИРОВАНИЕ ДАННЫХ ПОЛЬЗОВАТЕЛЯ
-    // ============================================
-    function initUserDataCache() {
-        // Сохраняем ключевые данные в отдельный кеш
-        const USER_DATA_KEYS = [
-            'shnuk_wallpaper',
-            'shnuk_wallpaper_name',
-            'shnuk_desktop',
-            'shnuk_widget',
-            'shnuk_password',
-            'shnuk_files',
-            'shnuk_installed_apps',
-            'shnuk_installed_apps_data',
-            'shnuk_custom_wallpapers'
-        ];
+    // Список закешированных файлов
+    function getCachedFilesList() {
+        const list = [];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(STORAGE_PREFIX)) {
+                    list.push(key.replace(STORAGE_PREFIX, ''));
+                }
+            }
+        } catch(e) {}
+        return list;
+    }
 
-        // Создаём резервную копию данных
-        function backupUserData() {
-            try {
-                const data = {};
-                for (const key of USER_DATA_KEYS) {
+    // Размер кеша в байтах
+    function getCacheSize() {
+        let size = 0;
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(STORAGE_PREFIX)) {
                     const value = localStorage.getItem(key);
-                    if (value !== null) {
-                        data[key] = value;
-                    }
+                    if (value) size += value.length + key.length;
                 }
-                
-                // Сохраняем в сессию для восстановления
-                sessionStorage.setItem('twirlay_backup', JSON.stringify(data));
-                console.log('[Twirlay Save] ✅ Данные пользователя сохранены в кеш');
-                return true;
-            } catch(e) {
-                console.warn('[Twirlay Save] ❌ Ошибка бэкапа данных:', e);
-                return false;
             }
-        }
-
-        // Восстановление данных из бэкапа
-        function restoreUserData() {
-            try {
-                const backup = sessionStorage.getItem('twirlay_backup');
-                if (!backup) return false;
-
-                const data = JSON.parse(backup);
-                let restored = 0;
-
-                for (const [key, value] of Object.entries(data)) {
-                    if (!localStorage.getItem(key)) {
-                        localStorage.setItem(key, value);
-                        restored++;
-                    }
-                }
-
-                if (restored > 0) {
-                    console.log('[Twirlay Save] ✅ Восстановлено данных:', restored);
-                }
-                return true;
-            } catch(e) {
-                console.warn('[Twirlay Save] ❌ Ошибка восстановления:', e);
-                return false;
-            }
-        }
-
-        // Создаём бэкап при загрузке
-        backupUserData();
-
-        // Создаём бэкап при изменении данных
-        const originalSetItem = localStorage.setItem;
-        localStorage.setItem = function(key, value) {
-            originalSetItem.call(this, key, value);
-            if (USER_DATA_KEYS.includes(key)) {
-                backupUserData();
-            }
-        };
-
-        // Экспортируем функции
-        window.twirlayBackup = {
-            backup: backupUserData,
-            restore: restoreUserData,
-            keys: USER_DATA_KEYS
-        };
-
-        return true;
+        } catch(e) {}
+        return size;
     }
 
-    // ============================================
-    // 3. ПРОВЕРКА ОНЛАЙН/ОФФЛАЙН СТАТУСА
-    // ============================================
-    function initOnlineStatus() {
-        let isOnline = navigator.onLine;
+    // Форматирование размера
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Автоматическая загрузка при первом запуске
+    function autoInit() {
+        if (needsRecache()) {
+            console.log('[Cache] Первый запуск, загрузка ' + SYSTEM_FILES.length + ' файлов');
+            clearCache();
+            
+            downloadAll(function(current, total, filename, success) {
+                console.log('[Cache] ' + current + '/' + total + ' ' + filename + (success ? '' : ' (ошибка)'));
+            }).then(function(result) {
+                console.log('[Cache] Завершено. Успешно: ' + result.downloaded + ', ошибок: ' + result.errors);
+            });
+        } else {
+            console.log('[Cache] Кеш актуален');
+        }
+    }
+
+    // Экспорт
+    window.TwirlayCache = {
+        version: CACHE_VERSION,
+        files: SYSTEM_FILES,
         
-        function updateStatus() {
-            const newStatus = navigator.onLine;
-            if (newStatus !== isOnline) {
-                isOnline = newStatus;
-                console.log('[Twirlay Save] Статус:', isOnline ? '🟢 Онлайн' : '🔴 Оффлайн');
-                
-                // Показываем уведомление
-                showStatusNotification(isOnline);
-                
-                // Если стали онлайн - проверяем обновления
-                if (isOnline) {
-                    checkForUpdates();
-                }
-            }
-        }
+        init: autoInit,
+        needsRecache: needsRecache,
+        downloadAll: downloadAll,
+        downloadFile: downloadFile,
+        clearCache: clearCache,
+        
+        getFile: getCachedFile,
+        isCached: isCached,
+        getList: getCachedFilesList,
+        getSize: getCacheSize,
+        formatSize: formatBytes
+    };
 
-        function showStatusNotification(online) {
-            const existing = document.querySelector('.twirlay-status-notification');
-            if (existing) existing.remove();
-
-            const notification = document.createElement('div');
-            notification.className = 'twirlay-status-notification';
-            notification.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                padding: 8px 20px;
-                font-family: 'ST-SimpleSquare', monospace;
-                font-size: 13px;
-                color: #ffffff;
-                background: ${online ? '#4CAF50' : '#cc0000'};
-                z-index: 999999;
-                border: 2px solid rgba(255,255,255,0.2);
-                opacity: 0;
-                transition: opacity 0.3s ease;
-                pointer-events: none;
-            `;
-            notification.textContent = online ? '🟢 Онлайн' : '🔴 Оффлайн режим';
-            document.body.appendChild(notification);
-
-            // Показываем
-            setTimeout(() => { notification.style.opacity = '1'; }, 50);
-            
-            // Скрываем через 3 секунды
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-
-        function checkForUpdates() {
-            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-                navigator.serviceWorker.controller.postMessage({
-                    type: 'CHECK_UPDATE'
-                });
-            }
-        }
-
-        // Слушаем события
-        window.addEventListener('online', updateStatus);
-        window.addEventListener('offline', updateStatus);
-
-        // Периодическая проверка
-        setInterval(updateStatus, 30000);
-
-        // Начальный статус
-        setTimeout(updateStatus, 500);
-
-        return true;
-    }
-
-    // ============================================
-    // 4. ПРЕДЗАГРУЗКА ВАЖНЫХ РЕСУРСОВ
-    // ============================================
-    function preloadImportantResources() {
-        const importantUrls = [
-            '/ST-SimpleSquare.ttf',
-            '/assets/wall.png',
-            '/assets/settings.png',
-            '/assets/game1.png'
-        ];
-
-        // Предзагружаем в кеш через fetch
-        for (const url of importantUrls) {
-            try {
-                fetch(url, { cache: 'force-cache' })
-                    .catch(() => {});
-            } catch(e) {}
-        }
-
-        // Предзагружаем шрифт через CSS
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.as = 'font';
-        link.type = 'font/ttf';
-        link.href = '/ST-SimpleSquare.ttf';
-        link.crossOrigin = 'anonymous';
-        document.head.appendChild(link);
-
-        console.log('[Twirlay Save] ✅ Ресурсы предзагружены');
-    }
-
-    // ============================================
-    // 5. ОФФЛАЙН-МЕНЕДЖЕР
-    // ============================================
-    function initOfflineManager() {
-        const manager = {
-            isOnline: navigator.onLine,
-            
-            // Проверить, доступен ли ресурс оффлайн
-            isCached: function(url) {
-                return caches.match(url).then(function(response) {
-                    return !!response;
-                });
-            },
-
-            // Принудительно закешировать URL
-            cacheUrl: function(url) {
-                return caches.open('twirlay-v1').then(function(cache) {
-                    return cache.add(url).then(function() {
-                        console.log('[Twirlay Save] Закешировано:', url);
-                        return true;
-                    }).catch(function() {
-                        console.warn('[Twirlay Save] Не удалось закешировать:', url);
-                        return false;
-                    });
-                });
-            },
-
-            // Кешировать несколько URL
-            cacheUrls: function(urls) {
-                return caches.open('twirlay-v1').then(function(cache) {
-                    return cache.addAll(urls).then(function() {
-                        console.log('[Twirlay Save] Закешировано URL:', urls.length);
-                        return true;
-                    }).catch(function(err) {
-                        console.warn('[Twirlay Save] Ошибка кеширования:', err);
-                        return false;
-                    });
-                });
-            },
-
-            // Очистить кеш
-            clearCache: function() {
-                return caches.delete('twirlay-v1').then(function() {
-                    console.log('[Twirlay Save] Кеш очищен');
-                    return true;
-                });
-            },
-
-            // Показать размер кеша
-            getCacheSize: function() {
-                return caches.open('twirlay-v1').then(function(cache) {
-                    return cache.keys().then(function(keys) {
-                        return keys.length;
-                    });
-                });
-            }
-        };
-
-        window.twirlayOffline = manager;
-
-        console.log('[Twirlay Save] ✅ Оффлайн-менеджер инициализирован');
-        return manager;
-    }
-
-    // ============================================
-    // 6. ИНИЦИАЛИЗАЦИЯ
-    // ============================================
-    function initTwirlaySave() {
-        console.log('[Twirlay Save] Инициализация...');
-
-        let results = {
-            serviceWorker: false,
-            dataCache: false,
-            onlineStatus: false,
-            preload: false,
-            offlineManager: false
-        };
-
-        // 1. Регистрация Service Worker
-        results.serviceWorker = registerServiceWorker();
-
-        // 2. Кеширование данных пользователя
-        results.dataCache = initUserDataCache();
-
-        // 3. Статус онлайн/оффлайн
-        results.onlineStatus = initOnlineStatus();
-
-        // 4. Предзагрузка ресурсов
-        preloadImportantResources();
-        results.preload = true;
-
-        // 5. Оффлайн-менеджер
-        results.offlineManager = !!initOfflineManager();
-
-        // Вывод результатов
-        console.log('[Twirlay Save] Инициализация завершена:', results);
-
-        // Показываем статус
-        const status = results.serviceWorker ? '✅' : '⚠️';
-        console.log(`[Twirlay Save] ${status} Оффлайн-режим ${results.serviceWorker ? 'активен' : 'недоступен'}`);
-
-        // Добавляем глобальный объект
-        window.TwirlaySave = {
-            version: '1.0.0',
-            status: results,
-            backup: window.twirlayBackup,
-            offline: window.twirlayOffline,
-            registerSW: registerServiceWorker,
-            cacheUrl: function(url) {
-                return caches.open('twirlay-v1').then(function(cache) {
-                    return cache.add(url);
-                });
-            },
-            cacheAll: function() {
-                return caches.open('twirlay-v1').then(function(cache) {
-                    const urls = [
-                        '/',
-                        '/index.html',
-                        '/app-scanner.js',
-                        '/svaer.js',
-                        '/settings.js',
-                        '/game.js',
-                        '/time.js',
-                        '/file.js',
-                        '/widget-time.js',
-                        '/widget-digital-time.js',
-                        '/twirlay-core1.js',
-                        '/twirlay-core-save.js',
-                        '/assets/wall.png',
-                        '/assets/wall2.png',
-                        '/assets/wall3.png',
-                        '/assets/game1.png',
-                        '/assets/settings.png',
-                        '/assets/calc.png',
-                        '/assets/time.png',
-                        '/assets/shnukmarket.png',
-                        '/assets/studio.png',
-                        '/assets/app1.png',
-                        '/assets/app2.png',
-                        '/assets/app3.png',
-                        '/assets/app4.png',
-                        '/ST-SimpleSquare.ttf'
-                    ];
-                    return cache.addAll(urls);
-                });
-            },
-            isOnline: function() {
-                return navigator.onLine;
-            }
-        };
-
-        console.log('[Twirlay Save] ✅ Система оффлайн-сохранения загружена');
-        console.log('[Twirlay Save] Используйте TwirlaySave для управления оффлайн-режимом');
-
-        return results;
-    }
-
-    // ============================================
-    // 7. АВТОМАТИЧЕСКИЙ ЗАПУСК
-    // ============================================
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(initTwirlaySave, 100);
-    } else {
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(initTwirlaySave, 100);
-        });
-    }
-
-    // Если DOM уже загружен, но скрипт ещё выполняется
+    // Автозапуск
     if (document.readyState === 'loading') {
-        document.addEventListener('readystatechange', function() {
-            if (document.readyState === 'complete') {
-                setTimeout(initTwirlaySave, 100);
-            }
-        });
+        document.addEventListener('DOMContentLoaded', autoInit);
+    } else {
+        autoInit();
     }
-
-    console.log('[Twirlay Save] Скрипт загружен');
 
 })();
