@@ -42,21 +42,20 @@
             width: 100%; height: 100%;
             background: #000000;
             z-index: 9999999;
-            display: flex;
+            display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             font-family: 'ST-SimpleSquare', monospace;
             color: #ffffff;
         }
-        #bootScreen.hidden { display: none; }
+        #bootScreen.visible { display: flex; }
 
         .boot-logo {
             width: 180px;
             height: 180px;
             margin-bottom: 40px;
             object-fit: contain;
-            filter: grayscale(100%) brightness(2);
         }
 
         .boot-progress {
@@ -114,7 +113,7 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-            transition: background-image 0.5s ease, filter 0.5s ease;
+            transition: background-image 0.5s ease, filter 0.5s ease, transform 0.5s ease;
             z-index: 0;
         }
         .app-background.white-bg {
@@ -122,8 +121,8 @@
             transform: none !important;
         }
         .app-background.blurred {
-            filter: blur(20px);
-            transform: scale(1.1);
+            filter: blur(30px);
+            transform: scale(1.15);
         }
 
         .top-panel {
@@ -137,11 +136,15 @@
             padding: 0 20px 80px 20px;
             background: rgba(255, 255, 255, 0.15);
             z-index: 5;
-            transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
-            will-change: transform;
+            transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
+            will-change: transform, opacity;
             touch-action: none;
         }
-        .top-panel.swiped-up { transform: translateY(-100%); }
+        .top-panel.swiped-down { 
+            transform: translateY(100%);
+            opacity: 0;
+            pointer-events: none;
+        }
         .top-panel.editing { background: rgba(255, 255, 255, 0.95); }
 
         .top-panel .edit-controls {
@@ -164,20 +167,6 @@
         .top-panel .edit-controls button.active { background: #cc0000; color: #ffffff; }
         .top-panel .edit-controls button.pencil-btn svg { width: 56%; height: 56%; display: block; }
         .top-panel .edit-controls button.pencil-btn.active svg path { stroke: #ffffff !important; }
-
-        .hint {
-            color: #000000;
-            font-size: 15px;
-            text-align: center;
-            opacity: 0;
-            transition: opacity 0.4s ease, filter 0.4s ease;
-            pointer-events: none;
-            margin-bottom: 16px;
-            min-height: 24px;
-            font-weight: 400;
-            letter-spacing: 0.3px;
-        }
-        .hint.show { opacity: 0.9; }
 
         .button-group {
             display: flex;
@@ -246,26 +235,6 @@
         }
         .btn:active { transform: scale(0.94); filter: blur(0.5px); }
 
-        .btn .btn-remove {
-            position: absolute;
-            top: -6px;
-            right: -6px;
-            width: 22px;
-            height: 22px;
-            background: #cc0000;
-            color: #ffffff;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            font-size: 14px;
-            line-height: 18px;
-            text-align: center;
-            cursor: pointer;
-            display: none;
-            z-index: 10;
-            font-family: 'ST-SimpleSquare', monospace;
-        }
-        .button-group.edit-mode .btn .btn-remove { display: block; }
-
         .bottom-panel {
             position: absolute;
             top: 0; left: 0;
@@ -280,12 +249,21 @@
             -webkit-overflow-scrolling: touch;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.4s ease;
+            filter: blur(30px);
+            transform: scale(1.05);
+            transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                        filter 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                        transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
             background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
         }
-        .bottom-panel.visible { opacity: 1; pointer-events: all; }
+        .bottom-panel.visible { 
+            opacity: 1; 
+            pointer-events: all;
+            filter: blur(0);
+            transform: scale(1);
+        }
         .bottom-panel .close-apps {
             position: absolute;
             top: 12px; right: 20px;
@@ -417,6 +395,11 @@
             width: 100%; height: 100%;
             pointer-events: none;
             z-index: 1;
+            transition: opacity 0.5s ease, filter 0.5s ease;
+        }
+        #widgetContainer.hidden {
+            opacity: 0;
+            filter: blur(20px);
         }
 
         .widget-menu {
@@ -429,7 +412,6 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             min-width: 280px;
             font-family: 'ST-SimpleSquare', monospace;
-            border: 2px solid #1a1a1a;
             opacity: 0;
             filter: blur(20px);
             transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
@@ -528,7 +510,6 @@
             .button-group { gap: 16px; }
             .top-panel .edit-controls { top: 16px; right: 16px; }
             .top-panel .edit-controls button { width: 36px; height: 36px; font-size: 16px; }
-            .hint { font-size: 13px; margin-bottom: 12px; min-height: 20px; }
             .bottom-panel { padding: 24px 16px 80px; }
             .bottom-panel h2 { font-size: 17px; margin-bottom: 18px; }
             .icon-grid { gap: 14px; max-width: 320px; }
@@ -543,11 +524,11 @@
 <body>
 
     <div id="bootScreen">
-        <img src="logoos.png" alt="Shnuk OS" class="boot-logo" onerror="this.style.display='none'" />
+        <img src="logoos.png" alt="Logo" class="boot-logo" onerror="this.style.display='none'" />
         <div class="boot-progress">
             <div class="boot-progress-bar" id="bootProgressBar"></div>
         </div>
-        <div class="boot-status" id="bootStatus">Подготовка...</div>
+        <div class="boot-status" id="bootStatus"></div>
         <div class="boot-counter" id="bootCounter"></div>
     </div>
 
@@ -565,11 +546,10 @@
                 </button>
                 <button class="widget-btn" id="widgetBtn" style="display:none;">◈</button>
             </div>
-            <div class="hint" id="hint">Перетащите иконки, чтобы изменить порядок</div>
             <div class="button-group" id="buttonGroup">
                 <div class="loader" id="desktopLoader">
                     <span class="spinner"></span>
-                    <span>Загрузка приложений...</span>
+                    <span>Загрузка</span>
                 </div>
             </div>
         </div>
@@ -580,7 +560,7 @@
             <div class="icon-grid" id="iconGrid">
                 <div class="loader">
                     <span class="spinner"></span>
-                    <span>Поиск приложений...</span>
+                    <span>Поиск</span>
                 </div>
             </div>
         </div>
@@ -589,6 +569,24 @@
     <script>
     (function() {
         'use strict';
+
+        // Читаем токен из URL
+        var params = new URLSearchParams(window.location.search);
+        var token = params.get('t');
+
+        if (!token || !token.startsWith('shnuk_')) {
+            document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+            return;
+        }
+
+        // Обнуляем URL через 1 секунду
+        setTimeout(function() {
+            try {
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
+            } catch(e) {}
+        }, 1000);
 
         const SYSTEM_FILES = [
             'app-scanner.js',
@@ -601,6 +599,7 @@
             'file.js',
             'windows.js',
             'widget-time.js',
+            'security.js',
             'twirlay-core1.js',
             'twirlay-core-save.js',
             'site-store.html',
@@ -617,7 +616,8 @@
             'studio.png',
             'shnukmarket.png',
             'store.png',
-            'logoos.png'
+            'logoos.png',
+            'wake-up.mp3'
         ];
 
         const STORAGE_PREFIX = 'shnuk_cache_';
@@ -651,14 +651,16 @@
         function clearSystemFiles() {
             let removed = 0;
             const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (!key) continue;
-                if (key.startsWith(STORAGE_PREFIX) || key === FILES_LIST_KEY || key === COMPLETE_KEY) {
-                    keysToRemove.push(key);
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key) continue;
+                    if (key.startsWith(STORAGE_PREFIX) || key === FILES_LIST_KEY || key === COMPLETE_KEY) {
+                        keysToRemove.push(key);
+                    }
                 }
-            }
-            keysToRemove.forEach(k => { try { localStorage.removeItem(k); removed++; } catch(e) {} });
+                keysToRemove.forEach(k => { try { localStorage.removeItem(k); removed++; } catch(e) {} });
+            } catch(e) {}
             if ('caches' in window) {
                 caches.keys().then(function(names) {
                     names.forEach(function(name) { caches.delete(name); });
@@ -673,7 +675,7 @@
                 fetch(url, { cache: 'no-store' })
                     .then(function(response) {
                         if (!response.ok) throw new Error('HTTP ' + response.status);
-                        const isBinary = /\.(png|jpg|jpeg|gif|webp|ttf|woff|woff2|ico)$/i.test(filename);
+                        const isBinary = /\.(png|jpg|jpeg|gif|webp|ttf|woff|woff2|ico|mp3)$/i.test(filename);
                         if (isBinary) {
                             return response.blob().then(function(blob) {
                                 return new Promise(function(r) {
@@ -701,9 +703,8 @@
             const total = SYSTEM_FILES.length;
             const downloaded = [];
             let current = 0;
-            let errors = 0;
 
-            updateStatus('Загрузка системы...');
+            updateStatus('Загрузка системы');
             updateProgress(0, total);
 
             function next(index) {
@@ -712,7 +713,7 @@
                         localStorage.setItem(FILES_LIST_KEY, JSON.stringify(downloaded));
                         localStorage.setItem(COMPLETE_KEY, 'true');
                     } catch(e) {}
-                    updateStatus('Готово. Перезапуск...');
+                    updateStatus('Перезапуск');
                     setTimeout(() => location.reload(), 800);
                     return;
                 }
@@ -721,7 +722,7 @@
                 updateProgress(current, total);
                 downloadFile(filename).then(function(result) {
                     current++;
-                    if (result.success) downloaded.push(filename); else errors++;
+                    if (result.success) downloaded.push(filename);
                     updateProgress(current, total);
                     setTimeout(() => next(index + 1), 10);
                 });
@@ -731,20 +732,30 @@
 
         function needDownload() {
             const lock = typeof window.UPDATES_LOCK !== 'undefined' ? window.UPDATES_LOCK : 0;
-            const complete = localStorage.getItem(COMPLETE_KEY) === 'true';
+            let complete = false;
+            try {
+                complete = localStorage.getItem(COMPLETE_KEY) === 'true';
+            } catch(e) {}
             if (lock === 1 || lock === '1') return true;
             if (!complete) return true;
             return false;
         }
 
         function launchOS() {
-            if (bootScreen) bootScreen.classList.add('hidden');
-            if (osApp) osApp.classList.add('visible');
+            if (bootScreen) {
+                bootScreen.classList.remove('visible');
+                bootScreen.style.display = 'none';
+            }
+            if (osApp) {
+                osApp.classList.add('visible');
+                osApp.style.display = 'block';
+            }
 
             const scripts = [
                 'windows.js',
                 'twirlay-core-save.js',
                 'l.js',
+                'security.js',
                 'app-scanner.js',
                 'store.js',
                 'settings.js',
@@ -756,7 +767,7 @@
             function loadScript(index) {
                 if (index >= scripts.length) {
                     setTimeout(function() {
-                        if (typeof window.initOS === 'function') window.initOS();
+                        checkSecurityAndStart();
                     }, 200);
                     return;
                 }
@@ -771,18 +782,47 @@
             loadScript(0);
         }
 
-        function boot() {
-            updateStatus('Проверка обновлений...');
-            loadUpdatesLock().then(function(lock) {
-                if (needDownload()) {
-                    updateStatus('Подготовка к загрузке...');
-                    clearSystemFiles();
-                    setTimeout(() => downloadAll(), 300);
-                } else {
-                    updateStatus('Система загружена');
-                    launchOS();
+        function checkSecurityAndStart() {
+            if (typeof window.Security !== 'undefined' && window.Security.hasSecurity()) {
+                if (!window.Security.isSessionUnlocked()) {
+                    if (osApp) osApp.style.display = 'none';
+                    if (bootScreen) bootScreen.style.display = 'none';
+
+                    window.Security.showLockScreen(function(unlocked) {
+                        if (unlocked) {
+                            if (osApp) {
+                                osApp.style.display = 'block';
+                                osApp.classList.add('visible');
+                            }
+                            if (typeof window.initOS === 'function') {
+                                window.initOS();
+                            }
+                        } else {
+                            document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+                        }
+                    });
+                    return;
                 }
-            });
+            }
+
+            if (typeof window.initOS === 'function') {
+                window.initOS();
+            }
+        }
+
+        function boot() {
+            if (needDownload()) {
+                if (bootScreen) {
+                    bootScreen.style.display = 'flex';
+                    bootScreen.classList.add('visible');
+                }
+                updateStatus('Подготовка');
+                clearSystemFiles();
+                setTimeout(() => downloadAll(), 300);
+            } else {
+                if (bootScreen) bootScreen.style.display = 'none';
+                launchOS();
+            }
         }
 
         if (document.readyState === 'loading') {
@@ -796,11 +836,8 @@
     <script>
     window.initOS = function() {
         'use strict';
-        
-        console.log('[OS] Инициализация...');
 
         if (typeof AppScanner === 'undefined') {
-            console.error('[OS] AppScanner не загружен!');
             return;
         }
 
@@ -810,7 +847,6 @@
         const pencilIcon = document.getElementById('pencilIcon');
         const widgetBtn = document.getElementById('widgetBtn');
         const buttonGroup = document.getElementById('buttonGroup');
-        const hint = document.getElementById('hint');
         const bottomPanel = document.getElementById('bottomPanel');
         const iconGrid = document.getElementById('iconGrid');
         const closeAppsBtn = document.getElementById('closeAppsBtn');
@@ -823,17 +859,68 @@
         let desktopApps = [];
         let isWidgetMenuOpen = false;
         let isAppAnimating = false;
-
-        // ============================================
-        // ФИКСИРОВАННЫЙ ПОРЯДОК — СНИМОК ПРИ ЗАГРУЗКЕ
-        // ============================================
-        let appsOrderSnapshot = null;  // Фиксированный порядок приложений
-        let lastInstalledHash = '';
+        let appsOrderSnapshot = null;
 
         const DESKTOP_KEY = 'shnuk_desktop_apps';
         const WIDGET_KEY = 'shnuk_widget';
         const INSTALLED_KEY = 'shnuk_installed_apps';
         const DEFAULT_DESKTOP = ['game', 'file', 'settings', 'time'];
+
+        function isFullscreen() {
+            return !!(document.fullscreenElement || 
+                      document.webkitFullscreenElement || 
+                      document.mozFullScreenElement || 
+                      document.msFullscreenElement);
+        }
+
+        function enterFullscreen() {
+            const el = document.documentElement;
+            try {
+                if (el.requestFullscreen) return el.requestFullscreen();
+                if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+                if (el.mozRequestFullScreen) return el.mozRequestFullScreen();
+                if (el.msRequestFullscreen) return el.msRequestFullscreen();
+            } catch(e) {}
+            return Promise.reject('not supported');
+        }
+
+        function ensureFullscreen() {
+            if (isFullscreen()) return;
+            let wantFullscreen = true;
+            try {
+                wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
+            } catch(e) {}
+            if (wantFullscreen) {
+                enterFullscreen().catch(function() {});
+            }
+        }
+
+        document.addEventListener('fullscreenchange', function() {
+            if (!isFullscreen()) {
+                let wantFullscreen = true;
+                try {
+                    wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
+                } catch(e) {}
+                if (wantFullscreen) {
+                    setTimeout(ensureFullscreen, 100);
+                }
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', function() {
+            if (!isFullscreen()) {
+                let wantFullscreen = true;
+                try {
+                    wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
+                } catch(e) {}
+                if (wantFullscreen) {
+                    setTimeout(ensureFullscreen, 100);
+                }
+            }
+        });
+
+        document.addEventListener('click', ensureFullscreen, { once: true });
+        document.addEventListener('touchstart', ensureFullscreen, { once: true });
+        document.addEventListener('keydown', ensureFullscreen, { once: true });
 
         function getAppData(appId) {
             return allApps.find(a => a.id === appId);
@@ -847,15 +934,10 @@
             return a ? a.name : appId;
         }
 
-        // ============================================
-        // СНИМОК ПОРЯДКА — фиксирует порядок приложений
-        // ============================================
         function makeOrderSnapshot() {
             appsOrderSnapshot = allApps.map(a => a.id);
-            console.log('[OS] 📸 Снимок порядка сохранён:', appsOrderSnapshot.length, 'приложений');
         }
 
-        // Применяет снимок порядка к массиву allApps
         function applyOrderSnapshot(apps) {
             if (!appsOrderSnapshot || appsOrderSnapshot.length === 0) {
                 return apps;
@@ -865,14 +947,12 @@
             apps.forEach(a => appMap.set(a.id, a));
             
             const ordered = [];
-            // Сначала идут приложения в порядке снимка
             for (const id of appsOrderSnapshot) {
                 if (appMap.has(id)) {
                     ordered.push(appMap.get(id));
                     appMap.delete(id);
                 }
             }
-            // Потом новые (не в снимке) — в конце
             for (const [, a] of appMap) {
                 ordered.push(a);
             }
@@ -880,7 +960,6 @@
             return ordered;
         }
 
-        // Открытие приложений
         function openAppWithAnimation(appId) {
             if (isAppAnimating) return;
             const appData = getAppData(appId);
@@ -974,11 +1053,6 @@
                                     window[appData.id + 'Init']();
                                 }
                             };
-                            script.onerror = function() {
-                                if (window.Win) {
-                                    Win.alert('Ошибка загрузки: ' + appData.name, { title: 'Ошибка' });
-                                }
-                            };
                             document.head.appendChild(script);
                         }
                     }, 150);
@@ -1001,7 +1075,7 @@
 
             const iframe = document.createElement('iframe');
             iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
-            iframe.srcdoc = appData.html || '<html><body><h1>Пустое приложение</h1></body></html>';
+            iframe.srcdoc = appData.html || '<html><body></body></html>';
 
             container.appendChild(iframe);
             document.body.appendChild(container);
@@ -1017,7 +1091,6 @@
             document.addEventListener('keydown', onEsc);
         }
 
-        // Виджеты
         let widgetInstance = null;
         let currentWidget = 'none';
 
@@ -1054,16 +1127,18 @@
                     widgetContainer.appendChild(result.element);
                     widgetInstance = result;
                 }
-            } catch(e) { console.error('[Widget] Ошибка:', e); }
+            } catch(e) {}
         }
 
         function loadWidget() {
             removeWidget();
-            const saved = localStorage.getItem(WIDGET_KEY);
-            const widgetId = saved || 'none';
-            const widget = WIDGETS.find(w => w.id === widgetId);
+            let saved = 'none';
+            try {
+                saved = localStorage.getItem(WIDGET_KEY) || 'none';
+            } catch(e) {}
+            const widget = WIDGETS.find(w => w.id === saved);
             if (widget && widget.id !== 'none' && widget.create) {
-                currentWidget = widgetId;
+                currentWidget = saved;
                 createWidget(widget);
             } else {
                 currentWidget = 'none';
@@ -1071,7 +1146,7 @@
         }
 
         function selectWidget(widgetId) {
-            localStorage.setItem(WIDGET_KEY, widgetId);
+            try { localStorage.setItem(WIDGET_KEY, widgetId); } catch(e) {}
             const widget = WIDGETS.find(w => w.id === widgetId);
             if (widget) {
                 currentWidget = widgetId;
@@ -1137,44 +1212,29 @@
             isWidgetMenuOpen = false;
         }
 
-        // ============================================
-        // ЗАГРУЗКА ПРИЛОЖЕНИЙ
-        // ============================================
         function loadApps() {
             AppScanner.scan().then(function(apps) {
                 allApps = apps;
-                console.log('[OS] ✅ Загружено:', allApps.length, 'приложений');
-                
-                // ВАЖНО: создаём снимок порядка ОДИН РАЗ
                 makeOrderSnapshot();
-                
                 loadDesktop();
                 if (desktopLoader) desktopLoader.style.display = 'none';
                 renderDesktop();
                 renderAllApps();
             }).catch(function(err) {
-                console.error('[OS] Ошибка:', err);
                 if (desktopLoader) desktopLoader.innerHTML = '<span style="color:#cc0000;">Ошибка</span>';
             });
         }
 
-        // ============================================
-        // ОБНОВЛЕНИЕ ПРИЛОЖЕНИЙ — сохраняем порядок!
-        // ============================================
         function refreshApps() {
             if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
                 AppScanner.rescan().then(function(apps) {
-                    // Применяем снимок порядка к новым приложениям
                     allApps = applyOrderSnapshot(apps);
                     
-                    // Обновляем снимок если появились новые приложения
                     const newIds = apps.filter(a => !appsOrderSnapshot.includes(a.id)).map(a => a.id);
                     if (newIds.length > 0) {
-                        console.log('[OS] 🆕 Новые приложения:', newIds);
                         appsOrderSnapshot = allApps.map(a => a.id);
                     }
                     
-                    // Фильтруем рабочий стол
                     desktopApps = desktopApps.filter(id => allApps.some(a => a.id === id));
                     saveDesktop();
                     
@@ -1188,7 +1248,8 @@
         window.rescanApps = refreshApps;
 
         function loadDesktop() {
-            const saved = localStorage.getItem(DESKTOP_KEY);
+            let saved = null;
+            try { saved = localStorage.getItem(DESKTOP_KEY); } catch(e) {}
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
@@ -1209,7 +1270,7 @@
         }
 
         function saveDesktop() {
-            localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps));
+            try { localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps)); } catch(e) {}
         }
 
         function renderDesktop() {
@@ -1240,31 +1301,6 @@
                     btn.appendChild(fallback);
                 }
 
-                const removeBtn = document.createElement('span');
-                removeBtn.className = 'btn-remove';
-                removeBtn.textContent = '✕';
-                removeBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    if (window.Win) {
-                        Win.confirm('Удалить "' + getAppName(appId) + '"?', { title: 'Удаление', okText: 'Удалить', danger: true }).then(function(ok) {
-                            if (ok) {
-                                desktopApps = desktopApps.filter(id => id !== appId);
-                                saveDesktop();
-                                renderDesktop();
-                                renderAllApps();
-                            }
-                        });
-                    } else {
-                        if (confirm('Удалить "' + getAppName(appId) + '"?')) {
-                            desktopApps = desktopApps.filter(id => id !== appId);
-                            saveDesktop();
-                            renderDesktop();
-                            renderAllApps();
-                        }
-                    }
-                });
-                btn.appendChild(removeBtn);
-
                 btn.addEventListener('click', function() {
                     if (!isEditMode) openAppWithAnimation(appId);
                 });
@@ -1281,9 +1317,6 @@
             buttonGroup.classList.toggle('edit-mode', isEditMode);
         }
 
-        // ============================================
-        // ОТРИСОВКА МЕНЮ — использует ФИКСИРОВАННЫЙ ПОРЯДОК
-        // ============================================
         function renderAllApps() {
             iconGrid.innerHTML = '';
             if (allApps.length === 0) {
@@ -1291,7 +1324,6 @@
                 return;
             }
 
-            // ВАЖНО: используем фиксированный порядок из снимка
             const sortedApps = appsOrderSnapshot 
                 ? applyOrderSnapshot(allApps)
                 : allApps;
@@ -1457,7 +1489,8 @@
         }
 
         function loadWallpaper() {
-            const saved = localStorage.getItem('app_wallpaper');
+            let saved = null;
+            try { saved = localStorage.getItem('app_wallpaper'); } catch(e) {}
             if (saved) {
                 appBackground.style.backgroundImage = 'url(\'' + saved + '\')';
             } else {
@@ -1471,12 +1504,9 @@
             
             if (isEditMode) {
                 widgetBtn.style.display = 'flex';
-                hint.textContent = 'Перетащите иконки. Нажмите ◈ для выбора виджета';
-                hint.classList.add('show');
             } else {
                 widgetBtn.style.display = 'none';
                 closeWidgetMenu();
-                hint.classList.remove('show');
             }
             
             renderDesktop();
@@ -1486,23 +1516,34 @@
         function showBottomPanel() {
             if (isBottomVisible) return;
             isBottomVisible = true;
-            topPanel.classList.add('swiped-up');
-            setTimeout(() => bottomPanel.classList.add('visible'), 50);
+
+            const widgetContainer = document.getElementById('widgetContainer');
+            if (widgetContainer) widgetContainer.classList.add('hidden');
+
+            appBackground.classList.add('blurred');
+            topPanel.classList.add('swiped-down');
+
             renderAllApps();
+
+            setTimeout(function() {
+                bottomPanel.classList.add('visible');
+            }, 50);
         }
 
-        // ============================================
-        // ЗАКРЫТИЕ МЕНЮ — БЕЗ refreshApps()
-        // ============================================
         function hideBottomPanel() {
             if (!isBottomVisible) return;
             isBottomVisible = false;
-            topPanel.classList.remove('swiped-up');
+
             bottomPanel.classList.remove('visible');
-            
-            // ВАЖНО: НЕ вызываем refreshApps() здесь
-            // Порядок уже фиксирован в appsOrderSnapshot
-            // Просто перерисовываем рабочий стол
+
+            setTimeout(function() {
+                const widgetContainer = document.getElementById('widgetContainer');
+                if (widgetContainer) widgetContainer.classList.remove('hidden');
+
+                appBackground.classList.remove('blurred');
+                topPanel.classList.remove('swiped-down');
+            }, 400);
+
             renderDesktop();
         }
 
@@ -1516,7 +1557,6 @@
             if (isEditMode) showWidgetMenu();
         });
 
-        // Свайп
         let startY = 0, isSwiping = false;
         app.addEventListener('touchstart', function(e) {
             startY = e.touches[0].clientY;
@@ -1525,12 +1565,12 @@
         app.addEventListener('touchmove', function(e) {
             if (!isSwiping) return;
             const deltaY = e.touches[0].clientY - startY;
-            if (deltaY > 60 && !isBottomVisible) {
+            if (deltaY < -60 && !isBottomVisible) {
                 e.preventDefault();
                 showBottomPanel();
                 isSwiping = false;
             }
-            if (deltaY < -60 && isBottomVisible) {
+            if (deltaY > 60 && isBottomVisible) {
                 e.preventDefault();
                 hideBottomPanel();
                 isSwiping = false;
@@ -1538,24 +1578,22 @@
         }, { passive: false });
         app.addEventListener('touchend', function() { isSwiping = false; }, { passive: true });
         app.addEventListener('wheel', function(e) {
-            if (e.deltaY > 30 && !isBottomVisible) {
+            if (e.deltaY < -30 && !isBottomVisible) {
                 e.preventDefault();
                 showBottomPanel();
-            } else if (e.deltaY < -30 && isBottomVisible) {
+            } else if (e.deltaY > 30 && isBottomVisible) {
                 e.preventDefault();
                 hideBottomPanel();
             }
         }, { passive: false });
 
-        // ============================================
-        // НАБЛЮДАТЕЛЬ — сохраняем порядок
-        // ============================================
-        lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || '';
+        let lastInstalledHash = '';
+        try { lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || ''; } catch(e) {}
         setInterval(function() {
-            const installedRaw = localStorage.getItem(INSTALLED_KEY) || '';
+            let installedRaw = '';
+            try { installedRaw = localStorage.getItem(INSTALLED_KEY) || ''; } catch(e) {}
             if (installedRaw !== lastInstalledHash) {
                 lastInstalledHash = installedRaw;
-                console.log('[OS] 🔄 Изменение установленных приложений');
                 refreshApps();
             }
         }, 2000);
@@ -1564,7 +1602,7 @@
         setTimeout(() => loadWidget(), 300);
         loadApps();
 
-        console.log('[OS] ✅ Shnuk OS — запущена');
+        setTimeout(ensureFullscreen, 500);
     };
     </script>
 
