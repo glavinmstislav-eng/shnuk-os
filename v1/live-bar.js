@@ -161,8 +161,10 @@
             cursor: pointer;
             transition: height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
                         background 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-                        color 0.45s cubic-bezier(0.22, 1, 0.36, 1);
-            will-change: height, background;
+                        color 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                        align-items 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                        padding 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+            will-change: height, background, align-items;
         `;
 
         leftSlot = document.createElement('div');
@@ -236,12 +238,16 @@
             barEl.style.height = BAR_HEIGHT + 'px';
             barEl.style.background = '#ffffff';
             barEl.style.color = '#1a1a1a';
+            barEl.style.alignItems = 'center';
+            barEl.style.padding = '0 20px';
             leftSlot.style.opacity = '0';
             leftSlot.style.transform = 'translateY(-4px)';
             leftSlot.textContent = '';
             leftSlot.style.pointerEvents = 'none';
+            leftSlot.style.paddingBottom = '0';
             rightSlot.style.fontSize = '15px';
             rightSlot.textContent = formatClock();
+            rightSlot.style.paddingBottom = '0';
             setCssVar(BAR_HEIGHT);
             return;
         }
@@ -250,12 +256,16 @@
         barEl.style.height = BAR_HEIGHT_ACTIVE + 'px';
         barEl.style.background = 'rgba(20, 20, 28, 0.72)';
         barEl.style.color = '#ffffff';
+        barEl.style.alignItems = 'flex-end';
+        barEl.style.padding = '0 20px 14px';
         leftSlot.textContent = buildLeftContent(activity);
         leftSlot.style.opacity = '1';
         leftSlot.style.transform = 'translateY(0)';
         leftSlot.style.pointerEvents = 'auto';
+        leftSlot.style.paddingBottom = '0';
         rightSlot.style.fontSize = '20px';
         rightSlot.textContent = formatClock();
+        rightSlot.style.paddingBottom = '0';
         setCssVar(BAR_HEIGHT_ACTIVE);
     }
 
