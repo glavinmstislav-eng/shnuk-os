@@ -1,16 +1,18 @@
-// twirlay-core-save.js — Система оффлайн-сохранения для Shnuk OS
+// twirlay-core-save.js — Система оффлайн-сохранения Shnuk OS
 
 (function() {
     'use strict';
 
+    const CACHE_NAME = 'shnuk-os-v1';
     const STORAGE_PREFIX = 'shnuk_cache_';
-    const FILES_LIST_KEY = 'shnuk_downloaded_files';
-    const COMPLETE_KEY = 'shnuk_download_complete';
-    const VERSION_KEY = 'shnuk_cache_version';
+    const MANIFEST_KEY = 'shnuk_cache_manifest';
+    const COMPLETE_KEY = 'shnuk_cache_complete';
 
-    const CACHE_VERSION = '1.0.0';
-
-    const SYSTEM_FILES = [
+    const CACHE_FILES = [
+        '/',
+        'index.html',
+        'e3.html',
+        'updateslock.js',
         'app-scanner.js',
         'store.js',
         'l.js',
@@ -24,7 +26,6 @@
         'security.js',
         'twirlay-core1.js',
         'twirlay-core-save.js',
-        'updateslock.js',
         'site-store.html',
         'projects-store.html',
         'ST-SimpleSquare.ttf',
@@ -43,34 +44,39 @@
         'wake-up.mp3'
     ];
 
-    // Проверка нужно ли перекешировать
-    function needsRecache() {
+    let isSaving = false;
+
+    // ============================================
+    // ОПРЕДЕЛЕНИЕ ТИПА ФАЙЛА
+    // ============================================
+    function isBinary(filename) {
+        return /\.(png|jpg|jpeg|gif|webp|ttf|woff|woff2|ico|mp3|mp4|wav|ogg|pdf)$/i.test(filename);
+    }
+
+    // ============================================
+    // ПОЛУЧЕНИЕ АБСОЛЮТНОГО URL
+    // ============================================
+    function getAbsoluteUrl(filename) {
         try {
-            const savedVersion = localStorage.getItem(VERSION_KEY);
-            const complete = localStorage.getItem(COMPLETE_KEY) === 'true';
-            if (savedVersion !== CACHE_VERSION) return true;
-            if (!complete) return true;
-            return false;
+            return new URL(filename, window.location.href).href;
         } catch(e) {
-            return true;
+            return filename;
         }
     }
 
-    // Определить бинарный ли файл
-    function isBinaryFile(filename) {
-        return /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|ttf|woff|woff2|otf|eot|mp3|wav|ogg|mp4|webm|pdf|zip)$/i.test(filename);
-    }
-
-    // Скачать один файл
-    function downloadFile(filename) {
+    // ============================================
+    // СОХРАНЕНИЕ ОДНОГО ФАЙЛА
+    // ============================================
+    function saveFile(filename) {
         return new Promise(function(resolve) {
-            const url = filename + '?cache=' + Date.now();
-            
+            const url = filename + '?nocache=' + Date.now();
+            const absoluteUrl = getAbsoluteUrl(filename);
+
             fetch(url, { cache: 'no-store' })
                 .then(function(response) {
                     if (!response.ok) throw new Error('HTTP ' + response.status);
-                    
-                    if (isBinaryFile(filename)) {
+
+                    if (isBinary(filename)) {
                         return response.blob().then(function(blob) {
                             return new Promise(function(r) {
                                 const reader = new FileReader();
@@ -80,6 +86,7 @@
                             });
                         });
                     }
+
                     return response.text();
                 })
                 .then(function(content) {
@@ -87,9 +94,17 @@
                         resolve({ success: false, filename: filename });
                         return;
                     }
+
                     try {
                         localStorage.setItem(STORAGE_PREFIX + filename, content);
-                        resolve({ success: true, filename: filename });
+
+                        if (absoluteUrl !== filename) {
+                            try {
+                                localStorage.setItem(STORAGE_PREFIX + absoluteUrl, content);
+                            } catch(e) {}
+                        }
+
+                        resolve({ success: true, filename: filename, size: content.length });
                     } catch(e) {
                         resolve({ success: false, filename: filename, error: e.message });
                     }
@@ -100,45 +115,94 @@
         });
     }
 
-    // Скачать все файлы
-    function downloadAll(onProgress) {
-        return new Promise(function(resolve) {
-            const total = SYSTEM_FILES.length;
-            const downloaded = [];
-            const errors = [];
-            let current = 0;
+    // ============================================
+    // СОХРАНЕНИЕ SELF (САМОГО СЕБЯ)
+    // ============================================
+    function saveSelf() {
+        try {
+            const selfUrl = 'twirlay-core-save.js';
+            const absoluteUrl = getAbsoluteUrl(selfUrl);
 
-            function next(index) {
-                if (index >= SYSTEM_FILES.length) {
+            fetch(selfUrl + '?nocache=' + Date.now(), { cache: 'no-store' })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.text();
+                })
+                .then(function(content) {
                     try {
-                        localStorage.setItem(FILES_LIST_KEY, JSON.stringify(downloaded));
-                        localStorage.setItem(COMPLETE_KEY, 'true');
-                        localStorage.setItem(VERSION_KEY, CACHE_VERSION);
+                        localStorage.setItem(STORAGE_PREFIX + selfUrl, content);
+                        localStorage.setItem(STORAGE_PREFIX + absoluteUrl, content);
+                        console.log('[Save] Self saved');
                     } catch(e) {}
-                    
-                    resolve({
-                        total: total,
-                        downloaded: downloaded.length,
-                        errors: errors.length,
-                        errorList: errors
-                    });
+                })
+                .catch(function(err) {
+                    console.log('[Save] Self save failed:', err.message);
+                });
+        } catch(e) {}
+    }
+
+    // ============================================
+    // СОХРАНЕНИЕ ВСЕХ ФАЙЛОВ
+    // ============================================
+    function saveAll(options) {
+        options = options || {};
+        const onProgress = options.onProgress || function() {};
+        const onComplete = options.onComplete || function() {};
+
+        if (isSaving) {
+            console.log('[Save] Already saving');
+            return Promise.resolve();
+        }
+
+        isSaving = true;
+
+        console.log('[Save] Starting. Files:', CACHE_FILES.length);
+
+        const total = CACHE_FILES.length;
+        const manifest = [];
+        let current = 0;
+        let errors = 0;
+
+        saveSelf();
+
+        return new Promise(function(resolve) {
+            function next(index) {
+                if (index >= CACHE_FILES.length) {
+                    try {
+                        localStorage.setItem(MANIFEST_KEY, JSON.stringify(manifest));
+                        localStorage.setItem(COMPLETE_KEY, 'true');
+                    } catch(e) {}
+
+                    console.log('[Save] Complete. Saved:', manifest.length, 'Errors:', errors);
+
+                    if ('caches' in window) {
+                        caches.open(CACHE_NAME).then(function(cache) {
+                            CACHE_FILES.forEach(function(f) {
+                                cache.add(getAbsoluteUrl(f)).catch(function() {});
+                            });
+                        }).catch(function() {});
+                    }
+
+                    isSaving = false;
+                    onComplete({ total: total, saved: manifest.length, errors: errors });
+                    resolve(manifest);
                     return;
                 }
 
-                const filename = SYSTEM_FILES[index];
-                
-                downloadFile(filename).then(function(result) {
+                const filename = CACHE_FILES[index];
+                onProgress(current, total, filename);
+
+                saveFile(filename).then(function(result) {
                     current++;
                     if (result.success) {
-                        downloaded.push(filename);
+                        manifest.push({
+                            filename: filename,
+                            size: result.size,
+                            savedAt: Date.now()
+                        });
                     } else {
-                        errors.push(filename);
+                        errors++;
                     }
-                    
-                    if (onProgress) {
-                        onProgress(current, total, filename, result.success);
-                    }
-                    
                     setTimeout(function() { next(index + 1); }, 5);
                 });
             }
@@ -147,91 +211,69 @@
         });
     }
 
-    // Очистить весь кеш
-    function clearCache() {
-        let removed = 0;
-        const keysToRemove = [];
-        
+    // ============================================
+    // ЗАГРУЗКА ФАЙЛА ИЗ КЕША
+    // ============================================
+    function loadFile(filename) {
         try {
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (!key) continue;
-                if (key.startsWith(STORAGE_PREFIX) || 
-                    key === FILES_LIST_KEY || 
-                    key === COMPLETE_KEY ||
-                    key === VERSION_KEY) {
-                    keysToRemove.push(key);
-                }
-            }
-            
-            keysToRemove.forEach(function(k) {
-                try {
-                    localStorage.removeItem(k);
-                    removed++;
-                } catch(e) {}
-            });
-        } catch(e) {}
-        
-        // Очищаем Cache API
-        if ('caches' in window) {
-            caches.keys().then(function(names) {
-                names.forEach(function(name) {
-                    caches.delete(name);
-                });
-            });
-        }
-        
-        return removed;
-    }
+            let content = localStorage.getItem(STORAGE_PREFIX + filename);
+            if (content) return content;
 
-    // Получить закешированный файл
-    function getCachedFile(filename) {
-        try {
-            return localStorage.getItem(STORAGE_PREFIX + filename);
+            const absoluteUrl = getAbsoluteUrl(filename);
+            content = localStorage.getItem(STORAGE_PREFIX + absoluteUrl);
+            return content;
         } catch(e) {
             return null;
         }
     }
 
-    // Проверить закеширован ли файл
-    function isCached(filename) {
-        try {
-            return localStorage.getItem(STORAGE_PREFIX + filename) !== null;
-        } catch(e) {
-            return false;
+    // ============================================
+    // ПРОВЕРКА НАЛИЧИЯ ВСЕХ ФАЙЛОВ
+    // ============================================
+    function checkAllFiles() {
+        const missing = [];
+        for (let i = 0; i < CACHE_FILES.length; i++) {
+            if (!loadFile(CACHE_FILES[i])) {
+                missing.push(CACHE_FILES[i]);
+            }
         }
+        return missing;
     }
 
-    // Список закешированных файлов
-    function getCachedFilesList() {
-        const list = [];
+    // ============================================
+    // СТАТУС
+    // ============================================
+    function getStatus() {
+        let complete = false;
+        let manifest = [];
+        let totalSize = 0;
+
+        try {
+            complete = localStorage.getItem(COMPLETE_KEY) === 'true';
+            const saved = localStorage.getItem(MANIFEST_KEY);
+            if (saved) manifest = JSON.parse(saved);
+        } catch(e) {}
+
         try {
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith(STORAGE_PREFIX)) {
-                    list.push(key.replace(STORAGE_PREFIX, ''));
+                    totalSize += (localStorage.getItem(key) || '').length;
                 }
             }
         } catch(e) {}
-        return list;
+
+        return {
+            complete: complete,
+            filesTotal: CACHE_FILES.length,
+            filesSaved: manifest.length,
+            totalSize: totalSize,
+            totalSizeFormatted: formatBytes(totalSize),
+            missing: checkAllFiles(),
+            manifest: manifest
+        };
     }
 
-    // Размер кеша в байтах
-    function getCacheSize() {
-        let size = 0;
-        try {
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith(STORAGE_PREFIX)) {
-                    const value = localStorage.getItem(key);
-                    if (value) size += value.length + key.length;
-                }
-            }
-        } catch(e) {}
-        return size;
-    }
-
-    // Форматирование размера
     function formatBytes(bytes) {
         if (bytes === 0) return '0 B';
         const k = 1024;
@@ -240,45 +282,137 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    // Автоматическая загрузка при первом запуске
-    function autoInit() {
-        if (needsRecache()) {
-            console.log('[Cache] Первый запуск, загрузка ' + SYSTEM_FILES.length + ' файлов');
-            clearCache();
-            
-            downloadAll(function(current, total, filename, success) {
-                console.log('[Cache] ' + current + '/' + total + ' ' + filename + (success ? '' : ' (ошибка)'));
-            }).then(function(result) {
-                console.log('[Cache] Завершено. Успешно: ' + result.downloaded + ', ошибок: ' + result.errors);
+    // ============================================
+    // ОЧИСТКА КЕША
+    // ============================================
+    function clearAll() {
+        const keys = [];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(STORAGE_PREFIX)) {
+                    keys.push(key);
+                }
+            }
+            keys.forEach(function(k) {
+                try { localStorage.removeItem(k); } catch(e) {}
             });
-        } else {
-            console.log('[Cache] Кеш актуален');
+        } catch(e) {}
+
+        try {
+            localStorage.removeItem(MANIFEST_KEY);
+            localStorage.removeItem(COMPLETE_KEY);
+        } catch(e) {}
+
+        if ('caches' in window) {
+            caches.delete(CACHE_NAME).catch(function() {});
+        }
+
+        console.log('[Save] Cleared. Removed:', keys.length);
+        return keys.length;
+    }
+
+    // ============================================
+    // SERVICE WORKER (INLINE)
+    // ============================================
+    function registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) return;
+        if (location.protocol === 'file:') return;
+
+        const swCode = `
+            const CACHE_NAME = '${CACHE_NAME}';
+            const FILES = ${JSON.stringify(CACHE_FILES)};
+
+            self.addEventListener('install', function(e) {
+                self.skipWaiting();
+                e.waitUntil(
+                    caches.open(CACHE_NAME).then(function(cache) {
+                        return Promise.all(
+                            FILES.map(function(f) {
+                                return cache.add(f).catch(function() {});
+                            })
+                        );
+                    })
+                );
+            });
+
+            self.addEventListener('activate', function(e) {
+                e.waitUntil(self.clients.claim());
+            });
+
+            self.addEventListener('fetch', function(e) {
+                if (e.request.method !== 'GET') return;
+                e.respondWith(
+                    caches.match(e.request).then(function(response) {
+                        if (response) return response;
+                        return fetch(e.request).then(function(res) {
+                            if (res && res.status === 200) {
+                                const clone = res.clone();
+                                caches.open(CACHE_NAME).then(function(cache) {
+                                    cache.put(e.request, clone).catch(function() {});
+                                });
+                            }
+                            return res;
+                        }).catch(function() {
+                            return new Response('Offline', { status: 503 });
+                        });
+                    })
+                );
+            });
+        `;
+
+        try {
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl, { scope: './' })
+                .then(function() { console.log('[Save] SW registered'); })
+                .catch(function(err) { console.log('[Save] SW failed:', err.message); });
+        } catch(e) {
+            console.log('[Save] SW error:', e.message);
         }
     }
 
-    // Экспорт
-    window.TwirlayCache = {
-        version: CACHE_VERSION,
-        files: SYSTEM_FILES,
-        
-        init: autoInit,
-        needsRecache: needsRecache,
-        downloadAll: downloadAll,
-        downloadFile: downloadFile,
-        clearCache: clearCache,
-        
-        getFile: getCachedFile,
-        isCached: isCached,
-        getList: getCachedFilesList,
-        getSize: getCacheSize,
-        formatSize: formatBytes
+    // ============================================
+    // ИНИЦИАЛИЗАЦИЯ
+    // ============================================
+    function init() {
+        registerServiceWorker();
+
+        const missing = checkAllFiles();
+        if (missing.length > 0) {
+            console.log('[Save] Missing files:', missing.length, '- starting save');
+            saveAll();
+        } else {
+            console.log('[Save] All files cached');
+        }
+    }
+
+    // ============================================
+    // ЭКСПОРТ
+    // ============================================
+    window.TwirlaySave = {
+        version: '1.0.0',
+        init: init,
+        saveAll: saveAll,
+        saveFile: saveFile,
+        saveSelf: saveSelf,
+        loadFile: loadFile,
+        checkAllFiles: checkAllFiles,
+        getStatus: getStatus,
+        clearAll: clearAll,
+        files: CACHE_FILES,
+        storagePrefix: STORAGE_PREFIX,
+        formatBytes: formatBytes
     };
 
-    // Автозапуск
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', autoInit);
+    console.log('[Save] Loaded. Files:', CACHE_FILES.length);
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(init, 500);
     } else {
-        autoInit();
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(init, 500);
+        });
     }
 
 })();
