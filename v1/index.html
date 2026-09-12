@@ -6,6 +6,8 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Shnuk OS</title>
     <style>
+        :root { --livebar-h: 44px; }
+
         @font-face {
             font-family: 'ST-SimpleSquare';
             src: url('ST-SimpleSquare.ttf') format('truetype');
@@ -19,116 +21,34 @@
             font-display: swap;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            user-select: none;
-            -webkit-user-select: none;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
 
         html, body {
-            width: 100%;
-            height: 100%;
-            font-family: 'ST-SimpleSquare', monospace, sans-serif;
-            touch-action: none;
-            overflow: hidden;
-            background: #1a1a1a;
-        }
-
-        #bootScreen {
-            position: fixed;
-            top: 0; left: 0;
             width: 100%; height: 100%;
-            background: #000000;
-            z-index: 9999999;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-family: 'ST-SimpleSquare', monospace;
-            color: #ffffff;
-        }
-        #bootScreen.visible { display: flex; }
-
-        .boot-logo {
-            width: 180px;
-            height: 180px;
-            margin-bottom: 40px;
-            object-fit: contain;
+            font-family: 'ST-SimpleSquare', monospace, sans-serif;
+            touch-action: none; overflow: hidden; background: #1a1a1a;
         }
 
-        .boot-progress {
-            width: 300px;
-            max-width: 80%;
-            height: 4px;
-            background: #222222;
-            margin-bottom: 16px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .boot-progress-bar {
-            position: absolute;
-            top: 0; left: 0;
-            height: 100%;
-            width: 0%;
-            background: #ffffff;
-            transition: width 0.2s linear;
-        }
-
-        .boot-status {
-            font-size: 12px;
-            color: #888888;
-            letter-spacing: 1px;
-            min-height: 16px;
-            text-align: center;
-            padding: 0 20px;
-            max-width: 90%;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-        }
-
-        .boot-counter {
-            font-size: 11px;
-            color: #555555;
-            margin-top: 8px;
-            letter-spacing: 1px;
-        }
-
-        #osApp {
-            display: none;
-            position: relative;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
+        #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
         #osApp.visible { display: block; }
 
         .app-background {
             position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
             transition: background-image 0.5s ease, filter 0.5s ease, transform 0.5s ease;
             z-index: 0;
         }
-        .app-background.white-bg {
-            background: #ffffff !important;
-            transform: none !important;
-        }
-        .app-background.blurred {
-            filter: blur(30px);
-            transform: scale(1.15);
-        }
+        .app-background.white-bg { background: #ffffff !important; transform: none !important; }
+        .app-background.blurred { filter: blur(30px); transform: scale(1.15); }
 
         .top-panel {
             position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
@@ -140,11 +60,7 @@
             will-change: transform, opacity;
             touch-action: none;
         }
-        .top-panel.swiped-down { 
-            transform: translateY(100%);
-            opacity: 0;
-            pointer-events: none;
-        }
+        .top-panel.swiped-down { transform: translateY(100%); opacity: 0; pointer-events: none; }
         .top-panel.editing { background: rgba(255, 255, 255, 0.95); }
 
         .top-panel .edit-controls {
@@ -169,61 +85,26 @@
         .top-panel .edit-controls button.pencil-btn.active svg path { stroke: #ffffff !important; }
 
         .button-group {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            gap: 30px;
-            max-width: 600px;
-            width: 100%;
-            position: relative;
-            min-height: 120px;
-            padding: 10px 0;
-            touch-action: none;
-            z-index: 3;
+            display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+            gap: 30px; max-width: 600px; width: 100%;
+            position: relative; min-height: 120px; padding: 10px 0;
+            touch-action: none; z-index: 3;
         }
 
         .btn {
-            width: 80px;
-            height: 80px;
-            background: transparent !important;
-            border: none;
-            cursor: grab;
-            box-shadow: none !important;
-            outline: none !important;
+            width: 80px; height: 80px;
+            background: transparent !important; border: none; cursor: grab;
+            box-shadow: none !important; outline: none !important;
             transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
-            -webkit-tap-highlight-color: transparent;
-            touch-action: none;
-            position: relative;
-            z-index: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            overflow: visible;
-            border-radius: 0;
+            -webkit-tap-highlight-color: transparent; touch-action: none;
+            position: relative; z-index: 1;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0; overflow: visible; border-radius: 0;
         }
-        .btn img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-            z-index: 1;
-            position: relative;
-            pointer-events: none;
-        }
-        .btn.dragging {
-            cursor: grabbing;
-            transform: scale(1.12);
-            z-index: 1000;
-            opacity: 0.92;
-            filter: blur(0.5px);
-        }
+        .btn img { width: 100%; height: 100%; object-fit: contain; display: block; z-index: 1; position: relative; pointer-events: none; }
+        .btn.dragging { cursor: grabbing; transform: scale(1.12); z-index: 1000; opacity: 0.92; filter: blur(0.5px); }
         .btn.editable { cursor: grab; }
-
-        .button-group.edit-mode .btn:not(.dragging) {
-            animation: wiggle 1.2s ease-in-out infinite;
-        }
+        .button-group.edit-mode .btn:not(.dragging) { animation: wiggle 1.2s ease-in-out infinite; }
         @keyframes wiggle {
             0%, 100% { transform: rotate(0deg); }
             15% { transform: rotate(2deg); }
@@ -237,20 +118,15 @@
 
         .bottom-panel {
             position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
             z-index: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow-y: auto; overflow-x: hidden;
             padding: 30px 20px 80px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            display: flex; flex-direction: column; align-items: center;
             -webkit-overflow-scrolling: touch;
-            opacity: 0;
-            pointer-events: none;
-            filter: blur(30px);
-            transform: scale(1.05);
+            opacity: 0; pointer-events: none;
+            filter: blur(30px); transform: scale(1.05);
             transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
                         filter 0.6s cubic-bezier(0.22, 1, 0.36, 1),
                         transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
@@ -258,98 +134,54 @@
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
         }
-        .bottom-panel.visible { 
-            opacity: 1; 
-            pointer-events: all;
-            filter: blur(0);
-            transform: scale(1);
-        }
+        .bottom-panel.visible { opacity: 1; pointer-events: all; filter: blur(0); transform: scale(1); }
         .bottom-panel .close-apps {
-            position: absolute;
-            top: 12px; right: 20px;
-            background: transparent;
-            border: none;
-            font-size: 28px;
-            color: #333333;
-            cursor: pointer;
-            font-family: 'ST-SimpleSquare', monospace;
-            z-index: 10;
+            position: absolute; top: 12px; right: 20px;
+            background: transparent; border: none;
+            font-size: 28px; color: #333333; cursor: pointer;
+            font-family: 'ST-SimpleSquare', monospace; z-index: 10;
         }
-        .bottom-panel h2 {
-            font-size: 20px;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 24px;
-            letter-spacing: -0.3px;
-        }
+        .bottom-panel h2 { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 24px; letter-spacing: -0.3px; }
 
         .icon-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            max-width: 440px;
-            width: 100%;
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 20px; max-width: 440px; width: 100%;
         }
 
         .icon-item {
             aspect-ratio: 1 / 1;
             background: rgba(240, 240, 240, 0.85);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.2s ease;
-            cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: transform 0.2s ease; cursor: pointer;
             padding: 18px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
-            border: none;
-            outline: none;
-            max-width: 80px;
-            max-height: 80px;
-            justify-self: center;
-            width: 100%;
-            position: relative;
-            border-radius: 50%;
+            border: none; outline: none;
+            max-width: 80px; max-height: 80px;
+            justify-self: center; width: 100%;
+            position: relative; border-radius: 50%;
         }
         .icon-item:active { transform: scale(0.92); filter: blur(0.5px); }
         .icon-item img { width: 55%; height: 55%; object-fit: contain; }
         .icon-item .icon-label {
-            font-size: 9px;
-            color: #333;
-            margin-top: 4px;
-            text-align: center;
-            line-height: 1.2;
+            font-size: 9px; color: #333; margin-top: 4px;
+            text-align: center; line-height: 1.2;
             font-family: 'ST-SimpleSquare', monospace;
         }
         .icon-item .icon-add-btn {
-            position: absolute;
-            bottom: -8px; right: -8px;
-            width: 28px; height: 28px;
-            background: #4CAF50;
-            color: #ffffff;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            font-size: 18px;
-            line-height: 24px;
-            text-align: center;
-            cursor: pointer;
-            display: none;
+            position: absolute; bottom: -8px; right: -8px;
+            width: 28px; height: 28px; background: #4CAF50;
+            color: #ffffff; border: 2px solid #ffffff;
+            border-radius: 50%; font-size: 18px; line-height: 24px;
+            text-align: center; cursor: pointer; display: none;
             font-family: 'ST-SimpleSquare', monospace;
         }
         .bottom-panel.editing .icon-item .icon-add-btn { display: block; }
         .icon-item .icon-remove-btn {
-            position: absolute;
-            top: -6px; right: -6px;
-            width: 22px; height: 22px;
-            background: #cc0000;
-            color: #ffffff;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            font-size: 14px;
-            line-height: 18px;
-            text-align: center;
-            cursor: pointer;
-            display: none;
+            position: absolute; top: -6px; right: -6px;
+            width: 22px; height: 22px; background: #cc0000;
+            color: #ffffff; border: 2px solid #ffffff;
+            border-radius: 50%; font-size: 14px; line-height: 18px;
+            text-align: center; cursor: pointer; display: none;
             font-family: 'ST-SimpleSquare', monospace;
         }
         .bottom-panel.editing .icon-item .icon-remove-btn { display: block; }
@@ -357,150 +189,77 @@
         .icon-item.in-desktop .icon-remove-btn { display: block !important; }
         .icon-item .icon-default { font-size: 28px; line-height: 1; }
         .icon-item.html-app::after {
-            content: 'HTML';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            font-size: 7px;
-            background: #4488ff;
-            color: #fff;
-            padding: 1px 4px;
-            border-radius: 2px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
+            content: 'HTML'; position: absolute; top: 2px; left: 2px;
+            font-size: 7px; background: #4488ff; color: #fff;
+            padding: 1px 4px; border-radius: 2px;
+            font-weight: 600; letter-spacing: 0.5px;
         }
 
         .loader {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 20px;
-            color: #888;
-            font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 20px; color: #888; font-size: 14px;
             grid-column: 1 / -1;
         }
         .loader .spinner {
             width: 20px; height: 20px;
-            border: 3px solid #e0e0e0;
-            border-top: 3px solid #cc0000;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            border: 3px solid #e0e0e0; border-top: 3px solid #cc0000;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         #widgetContainer {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            pointer-events: none;
-            z-index: 1;
+            position: absolute; top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
+            pointer-events: none; z-index: 1;
             transition: opacity 0.5s ease, filter 0.5s ease;
         }
-        #widgetContainer.hidden {
-            opacity: 0;
-            filter: blur(20px);
-        }
+        #widgetContainer.hidden { opacity: 0; filter: blur(20px); }
 
         .widget-menu {
-            position: fixed;
-            top: 50%; left: 50%;
+            position: fixed; top: 50%; left: 50%;
             transform: translate(-50%, -50%) scale(0.9);
-            background: #ffffff;
-            padding: 30px 24px 24px;
-            z-index: 9998;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            min-width: 280px;
-            font-family: 'ST-SimpleSquare', monospace;
-            opacity: 0;
-            filter: blur(20px);
+            background: #ffffff; padding: 30px 24px 24px;
+            z-index: 9998; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            min-width: 280px; font-family: 'ST-SimpleSquare', monospace;
+            opacity: 0; filter: blur(20px);
             transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .widget-menu.open {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 1;
-            filter: blur(0);
-        }
-        .widget-menu .title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 16px;
-            text-align: center;
-            letter-spacing: -0.3px;
-        }
+        .widget-menu.open { transform: translate(-50%, -50%) scale(1); opacity: 1; filter: blur(0); }
+        .widget-menu .title { font-size: 18px; font-weight: 600; color: #1a1a1a; margin-bottom: 16px; text-align: center; letter-spacing: -0.3px; }
         .widget-menu .widget-btn {
-            display: block;
-            width: 100%;
-            padding: 12px 16px;
-            margin-bottom: 8px;
-            background: #f5f5f5;
-            color: #1a1a1a;
-            border: 2px solid #e0e0e0;
-            cursor: pointer;
-            font-family: 'ST-SimpleSquare', monospace;
-            font-size: 14px;
-            transition: all 0.2s;
-            text-align: left;
+            display: block; width: 100%; padding: 12px 16px; margin-bottom: 8px;
+            background: #f5f5f5; color: #1a1a1a; border: 2px solid #e0e0e0;
+            cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
+            font-size: 14px; transition: all 0.2s; text-align: left;
         }
-        .widget-menu .widget-btn:hover {
-            background: #e0e0e0;
-            border-color: #cc0000;
-        }
-        .widget-menu .widget-btn.selected {
-            background: #cc0000;
-            color: #ffffff;
-            border-color: #cc0000;
-        }
-        .widget-menu .widget-btn .check {
-            float: right;
-            opacity: 0;
-        }
+        .widget-menu .widget-btn:hover { background: #e0e0e0; border-color: #cc0000; }
+        .widget-menu .widget-btn.selected { background: #cc0000; color: #ffffff; border-color: #cc0000; }
+        .widget-menu .widget-btn .check { float: right; opacity: 0; }
         .widget-menu .widget-btn.selected .check { opacity: 1; }
         .widget-menu .cancel-btn {
-            display: block;
-            width: 100%;
-            padding: 10px;
-            margin-top: 8px;
-            background: none;
-            border: 2px solid #e0e0e0;
-            cursor: pointer;
-            font-family: 'ST-SimpleSquare', monospace;
-            font-size: 13px;
-            color: #888;
-            transition: all 0.2s;
+            display: block; width: 100%; padding: 10px; margin-top: 8px;
+            background: none; border: 2px solid #e0e0e0;
+            cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
+            font-size: 13px; color: #888; transition: all 0.2s;
         }
         .widget-menu .cancel-btn:hover { background: #f0f0f0; }
 
         .html-app-window {
-            position: fixed;
-            top: 0; left: 0;
+            position: fixed; top: 0; left: 0;
             width: 100%; height: 100%;
-            z-index: 100001;
-            background: #ffffff;
-            display: flex;
-            flex-direction: column;
+            z-index: 100001; background: #ffffff;
+            display: flex; flex-direction: column;
+            padding-top: var(--livebar-h, 44px);
+            box-sizing: border-box;
         }
-        .html-app-window iframe {
-            flex: 1;
-            width: 100%;
-            border: none;
-            background: #ffffff;
-        }
+        .html-app-window iframe { flex: 1; width: 100%; border: none; background: #ffffff; }
         .html-app-close-btn {
-            position: fixed;
-            top: 16px; right: 16px;
+            position: fixed; top: calc(var(--livebar-h, 44px) + 16px); right: 16px;
             width: 44px; height: 44px;
-            background: #cc0000;
-            color: #ffffff;
-            border: none;
-            font-size: 22px;
-            cursor: pointer;
-            z-index: 100002;
+            background: #cc0000; color: #ffffff; border: none;
+            font-size: 22px; cursor: pointer; z-index: 100002;
             font-family: 'ST-SimpleSquare', monospace;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             box-shadow: 0 4px 20px rgba(204,0,0,0.4);
         }
         .html-app-close-btn:hover { background: #990000; transform: scale(1.1); }
@@ -515,22 +274,12 @@
             .icon-grid { gap: 14px; max-width: 320px; }
             .icon-item { padding: 14px; max-width: 64px; max-height: 64px; }
             .top-panel { padding: 0 16px 70px 16px; }
-            .html-app-close-btn { top: 12px; right: 12px; width: 40px; height: 40px; font-size: 20px; }
-            .boot-logo { width: 120px; height: 120px; margin-bottom: 30px; }
+            .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 40px; height: 40px; font-size: 20px; }
             .widget-menu { min-width: 220px; padding: 20px 16px; }
         }
     </style>
 </head>
 <body>
-
-    <div id="bootScreen">
-        <img src="logoos.png" alt="Logo" class="boot-logo" onerror="this.style.display='none'" />
-        <div class="boot-progress">
-            <div class="boot-progress-bar" id="bootProgressBar"></div>
-        </div>
-        <div class="boot-status" id="bootStatus"></div>
-        <div class="boot-counter" id="bootCounter"></div>
-    </div>
 
     <div id="osApp">
         <div class="app-background" id="appBackground"></div>
@@ -569,17 +318,12 @@
     <script>
     (function() {
         'use strict';
-
-        // Читаем токен из URL
         var params = new URLSearchParams(window.location.search);
         var token = params.get('t');
-
         if (!token || !token.startsWith('shnuk_')) {
             document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
             return;
         }
-
-        // Обнуляем URL через 1 секунду
         setTimeout(function() {
             try {
                 if (window.history && window.history.replaceState) {
@@ -587,188 +331,24 @@
                 }
             } catch(e) {}
         }, 1000);
-
-        const SYSTEM_FILES = [
-            'app-scanner.js',
-            'store.js',
-            'l.js',
-            'svaer.js',
-            'settings.js',
-            'game.js',
-            'time.js',
-            'file.js',
-            'windows.js',
-            'widget-time.js',
-            'security.js',
-            'twirlay-core1.js',
-            'twirlay-core-save.js',
-            'site-store.html',
-            'projects-store.html',
-            'ST-SimpleSquare.ttf',
-            'wall.png',
-            'wall1.png',
-            'wall2.png',
-            'wall3.png',
-            'settings.png',
-            'game1.png',
-            'calc.png',
-            'time.png',
-            'studio.png',
-            'shnukmarket.png',
-            'store.png',
-            'logoos.png',
-            'wake-up.mp3'
-        ];
-
-        const STORAGE_PREFIX = 'shnuk_cache_';
-        const FILES_LIST_KEY = 'shnuk_downloaded_files';
-        const COMPLETE_KEY = 'shnuk_download_complete';
-
-        const bootScreen = document.getElementById('bootScreen');
-        const bootStatus = document.getElementById('bootStatus');
-        const bootCounter = document.getElementById('bootCounter');
-        const bootProgressBar = document.getElementById('bootProgressBar');
         const osApp = document.getElementById('osApp');
-
-        function updateStatus(text) { if (bootStatus) bootStatus.textContent = text; }
-        function updateProgress(current, total) {
-            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-            if (bootProgressBar) bootProgressBar.style.width = percent + '%';
-            if (bootCounter) bootCounter.textContent = current + ' / ' + total;
-        }
-
-        function loadUpdatesLock() {
-            return new Promise(function(resolve) {
-                if (typeof window.UPDATES_LOCK !== 'undefined') { resolve(window.UPDATES_LOCK); return; }
-                const script = document.createElement('script');
-                script.src = 'updateslock.js?t=' + Date.now();
-                script.onload = function() { resolve(typeof window.UPDATES_LOCK !== 'undefined' ? window.UPDATES_LOCK : 0); };
-                script.onerror = function() { window.UPDATES_LOCK = 0; resolve(0); };
-                document.head.appendChild(script);
-            });
-        }
-
-        function clearSystemFiles() {
-            let removed = 0;
-            const keysToRemove = [];
-            try {
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (!key) continue;
-                    if (key.startsWith(STORAGE_PREFIX) || key === FILES_LIST_KEY || key === COMPLETE_KEY) {
-                        keysToRemove.push(key);
-                    }
-                }
-                keysToRemove.forEach(k => { try { localStorage.removeItem(k); removed++; } catch(e) {} });
-            } catch(e) {}
-            if ('caches' in window) {
-                caches.keys().then(function(names) {
-                    names.forEach(function(name) { caches.delete(name); });
-                });
-            }
-            return removed;
-        }
-
-        function downloadFile(filename) {
-            return new Promise(function(resolve) {
-                const url = filename + '?nocache=' + Date.now();
-                fetch(url, { cache: 'no-store' })
-                    .then(function(response) {
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
-                        const isBinary = /\.(png|jpg|jpeg|gif|webp|ttf|woff|woff2|ico|mp3)$/i.test(filename);
-                        if (isBinary) {
-                            return response.blob().then(function(blob) {
-                                return new Promise(function(r) {
-                                    const reader = new FileReader();
-                                    reader.onload = function() { r(reader.result); };
-                                    reader.onerror = function() { r(null); };
-                                    reader.readAsDataURL(blob);
-                                });
-                            });
-                        }
-                        return response.text();
-                    })
-                    .then(function(content) {
-                        if (!content) { resolve({ success: false, filename: filename }); return; }
-                        try {
-                            localStorage.setItem(STORAGE_PREFIX + filename, content);
-                            resolve({ success: true, filename: filename });
-                        } catch(e) { resolve({ success: false, filename: filename }); }
-                    })
-                    .catch(function(err) { resolve({ success: false, filename: filename }); });
-            });
-        }
-
-        function downloadAll() {
-            const total = SYSTEM_FILES.length;
-            const downloaded = [];
-            let current = 0;
-
-            updateStatus('Загрузка системы');
-            updateProgress(0, total);
-
-            function next(index) {
-                if (index >= SYSTEM_FILES.length) {
-                    try {
-                        localStorage.setItem(FILES_LIST_KEY, JSON.stringify(downloaded));
-                        localStorage.setItem(COMPLETE_KEY, 'true');
-                    } catch(e) {}
-                    updateStatus('Перезапуск');
-                    setTimeout(() => location.reload(), 800);
-                    return;
-                }
-                const filename = SYSTEM_FILES[index];
-                updateStatus(filename);
-                updateProgress(current, total);
-                downloadFile(filename).then(function(result) {
-                    current++;
-                    if (result.success) downloaded.push(filename);
-                    updateProgress(current, total);
-                    setTimeout(() => next(index + 1), 10);
-                });
-            }
-            next(0);
-        }
-
-        function needDownload() {
-            const lock = typeof window.UPDATES_LOCK !== 'undefined' ? window.UPDATES_LOCK : 0;
-            let complete = false;
-            try {
-                complete = localStorage.getItem(COMPLETE_KEY) === 'true';
-            } catch(e) {}
-            if (lock === 1 || lock === '1') return true;
-            if (!complete) return true;
-            return false;
-        }
-
         function launchOS() {
-            if (bootScreen) {
-                bootScreen.classList.remove('visible');
-                bootScreen.style.display = 'none';
-            }
-            if (osApp) {
-                osApp.classList.add('visible');
-                osApp.style.display = 'block';
-            }
-
+            osApp.classList.add('visible');
+            osApp.style.display = 'block';
             const scripts = [
-                'windows.js',
-                'twirlay-core-save.js',
                 'l.js',
+                'live-bar.js',
+                'windows.js',
                 'security.js',
                 'app-scanner.js',
                 'store.js',
                 'settings.js',
-                'widget-time.js',
-                'twirlay-core1.js'
+                'widget-time.js'
             ];
-
             let loaded = 0;
             function loadScript(index) {
                 if (index >= scripts.length) {
-                    setTimeout(function() {
-                        checkSecurityAndStart();
-                    }, 200);
+                    setTimeout(function() { checkSecurityAndStart(); }, 200);
                     return;
                 }
                 const src = scripts[index];
@@ -781,22 +361,15 @@
             }
             loadScript(0);
         }
-
         function checkSecurityAndStart() {
             if (typeof window.Security !== 'undefined' && window.Security.hasSecurity()) {
                 if (!window.Security.isSessionUnlocked()) {
-                    if (osApp) osApp.style.display = 'none';
-                    if (bootScreen) bootScreen.style.display = 'none';
-
+                    osApp.style.display = 'none';
                     window.Security.showLockScreen(function(unlocked) {
                         if (unlocked) {
-                            if (osApp) {
-                                osApp.style.display = 'block';
-                                osApp.classList.add('visible');
-                            }
-                            if (typeof window.initOS === 'function') {
-                                window.initOS();
-                            }
+                            osApp.style.display = 'block';
+                            osApp.classList.add('visible');
+                            if (typeof window.initOS === 'function') window.initOS();
                         } else {
                             document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
                         }
@@ -804,31 +377,12 @@
                     return;
                 }
             }
-
-            if (typeof window.initOS === 'function') {
-                window.initOS();
-            }
+            if (typeof window.initOS === 'function') window.initOS();
         }
-
-        function boot() {
-            if (needDownload()) {
-                if (bootScreen) {
-                    bootScreen.style.display = 'flex';
-                    bootScreen.classList.add('visible');
-                }
-                updateStatus('Подготовка');
-                clearSystemFiles();
-                setTimeout(() => downloadAll(), 300);
-            } else {
-                if (bootScreen) bootScreen.style.display = 'none';
-                launchOS();
-            }
-        }
-
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', boot);
+            document.addEventListener('DOMContentLoaded', launchOS);
         } else {
-            boot();
+            launchOS();
         }
     })();
     </script>
@@ -836,11 +390,7 @@
     <script>
     window.initOS = function() {
         'use strict';
-
-        if (typeof AppScanner === 'undefined') {
-            return;
-        }
-
+        if (typeof AppScanner === 'undefined') return;
         const app = document.getElementById('osApp');
         const appBackground = document.getElementById('appBackground');
         const topPanel = document.getElementById('topPanel');
@@ -851,28 +401,21 @@
         const iconGrid = document.getElementById('iconGrid');
         const closeAppsBtn = document.getElementById('closeAppsBtn');
         const desktopLoader = document.getElementById('desktopLoader');
-
         let isEditMode = false;
-        let dragData = null;
+        let dragState = null;
         let isBottomVisible = false;
         let allApps = [];
         let desktopApps = [];
         let isWidgetMenuOpen = false;
         let isAppAnimating = false;
         let appsOrderSnapshot = null;
-
         const DESKTOP_KEY = 'shnuk_desktop_apps';
         const WIDGET_KEY = 'shnuk_widget';
         const INSTALLED_KEY = 'shnuk_installed_apps';
         const DEFAULT_DESKTOP = ['game', 'file', 'settings', 'time'];
-
         function isFullscreen() {
-            return !!(document.fullscreenElement || 
-                      document.webkitFullscreenElement || 
-                      document.mozFullScreenElement || 
-                      document.msFullscreenElement);
+            return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
         }
-
         function enterFullscreen() {
             const el = document.documentElement;
             try {
@@ -883,113 +426,68 @@
             } catch(e) {}
             return Promise.reject('not supported');
         }
-
         function ensureFullscreen() {
             if (isFullscreen()) return;
             let wantFullscreen = true;
-            try {
-                wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
-            } catch(e) {}
-            if (wantFullscreen) {
-                enterFullscreen().catch(function() {});
-            }
+            try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
+            if (wantFullscreen) enterFullscreen().catch(function() {});
         }
-
         document.addEventListener('fullscreenchange', function() {
             if (!isFullscreen()) {
                 let wantFullscreen = true;
-                try {
-                    wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
-                } catch(e) {}
-                if (wantFullscreen) {
-                    setTimeout(ensureFullscreen, 100);
-                }
+                try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
+                if (wantFullscreen) setTimeout(ensureFullscreen, 100);
             }
         });
         document.addEventListener('webkitfullscreenchange', function() {
             if (!isFullscreen()) {
                 let wantFullscreen = true;
-                try {
-                    wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false';
-                } catch(e) {}
-                if (wantFullscreen) {
-                    setTimeout(ensureFullscreen, 100);
-                }
+                try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
+                if (wantFullscreen) setTimeout(ensureFullscreen, 100);
             }
         });
-
         document.addEventListener('click', ensureFullscreen, { once: true });
         document.addEventListener('touchstart', ensureFullscreen, { once: true });
         document.addEventListener('keydown', ensureFullscreen, { once: true });
-
-        function getAppData(appId) {
-            return allApps.find(a => a.id === appId);
-        }
-        function getAppIcon(appId) {
-            const a = getAppData(appId);
-            return a && a.icon ? a.icon : null;
-        }
-        function getAppName(appId) {
-            const a = getAppData(appId);
-            return a ? a.name : appId;
-        }
-
-        function makeOrderSnapshot() {
-            appsOrderSnapshot = allApps.map(a => a.id);
-        }
-
+        function getAppData(appId) { return allApps.find(a => a.id === appId); }
+        function getAppIcon(appId) { const a = getAppData(appId); return a && a.icon ? a.icon : null; }
+        function getAppName(appId) { const a = getAppData(appId); return a ? a.name : appId; }
+        function makeOrderSnapshot() { appsOrderSnapshot = allApps.map(a => a.id); }
         function applyOrderSnapshot(apps) {
-            if (!appsOrderSnapshot || appsOrderSnapshot.length === 0) {
-                return apps;
-            }
-            
+            if (!appsOrderSnapshot || appsOrderSnapshot.length === 0) return apps;
             const appMap = new Map();
             apps.forEach(a => appMap.set(a.id, a));
-            
             const ordered = [];
             for (const id of appsOrderSnapshot) {
-                if (appMap.has(id)) {
-                    ordered.push(appMap.get(id));
-                    appMap.delete(id);
-                }
+                if (appMap.has(id)) { ordered.push(appMap.get(id)); appMap.delete(id); }
             }
-            for (const [, a] of appMap) {
-                ordered.push(a);
-            }
-            
+            for (const [, a] of appMap) ordered.push(a);
             return ordered;
         }
-
         function openAppWithAnimation(appId) {
             if (isAppAnimating) return;
             const appData = getAppData(appId);
             if (!appData) return;
             isAppAnimating = true;
-
             const btn = document.querySelector(`.btn[data-id="${appId}"]`);
             const icon = document.querySelector(`.icon-item[data-app-id="${appId}"]`);
             const el = btn || icon;
-            
             let iconPos = { x: window.innerWidth/2, y: window.innerHeight/2 };
             if (el) {
                 const rect = el.getBoundingClientRect();
                 iconPos = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
             }
-
             const backdrop = document.createElement('div');
             backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;background:rgba(0,0,0,0);backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);pointer-events:none;';
             document.body.appendChild(backdrop);
             appBackground.classList.add('blurred');
-
             requestAnimationFrame(() => {
                 backdrop.style.background = 'rgba(0,0,0,0.5)';
                 backdrop.style.backdropFilter = 'blur(20px)';
                 backdrop.style.webkitBackdropFilter = 'blur(20px)';
             });
-
             const launchContainer = document.createElement('div');
             launchContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;pointer-events:none;';
-
             const flyIcon = document.createElement('div');
             flyIcon.style.cssText = `
                 position:absolute;width:80px;height:80px;
@@ -997,7 +495,6 @@
                 left:${iconPos.x - 40}px;top:${iconPos.y - 40}px;
                 filter:blur(0px);opacity:1;
             `;
-            
             const iconSrc = getAppIcon(appId);
             if (iconSrc) {
                 const img = document.createElement('img');
@@ -1010,14 +507,12 @@
             }
             launchContainer.appendChild(flyIcon);
             document.body.appendChild(launchContainer);
-
             const startX = iconPos.x - 40;
             const startY = iconPos.y - 40;
             const endX = window.innerWidth/2 - 60;
             const endY = window.innerHeight/2 - 60;
             const duration = 500;
             const startTime = performance.now();
-
             function animateIcon(time) {
                 const elapsed = time - startTime;
                 const progress = Math.min(elapsed / duration, 1);
@@ -1026,13 +521,11 @@
                 const y = startY + (endY - startY) * ease;
                 const scale = 1 + progress * 0.5;
                 const blur = progress * 15;
-                
                 flyIcon.style.left = x + 'px';
                 flyIcon.style.top = y + 'px';
                 flyIcon.style.transform = `scale(${scale})`;
                 flyIcon.style.filter = `blur(${blur}px)`;
                 flyIcon.style.opacity = 1 - progress * 0.5;
-                
                 if (progress < 1) {
                     requestAnimationFrame(animateIcon);
                 } else {
@@ -1042,7 +535,6 @@
                         setTimeout(() => backdrop.remove(), 400);
                         appBackground.classList.remove('blurred');
                         isAppAnimating = false;
-                        
                         if (appData.type === 'html') {
                             openHtmlApp(appData);
                         } else {
@@ -1060,27 +552,19 @@
             }
             requestAnimationFrame(animateIcon);
         }
-
         function openHtmlApp(appData) {
             const container = document.createElement('div');
             container.className = 'html-app-window';
-
             const closeBtn = document.createElement('button');
             closeBtn.className = 'html-app-close-btn';
             closeBtn.textContent = '✕';
-            closeBtn.addEventListener('click', function() {
-                container.remove();
-                closeBtn.remove();
-            });
-
+            closeBtn.addEventListener('click', function() { container.remove(); closeBtn.remove(); });
             const iframe = document.createElement('iframe');
             iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
             iframe.srcdoc = appData.html || '<html><body></body></html>';
-
             container.appendChild(iframe);
             document.body.appendChild(container);
             document.body.appendChild(closeBtn);
-
             const onEsc = function(e) {
                 if (e.key === 'Escape') {
                     container.remove();
@@ -1090,15 +574,12 @@
             };
             document.addEventListener('keydown', onEsc);
         }
-
         let widgetInstance = null;
         let currentWidget = 'none';
-
         const WIDGETS = [
             { id: 'none', name: 'Без виджета', create: null },
             { id: 'analog', name: 'Часы', create: window.createTimeWidget }
         ];
-
         function removeWidget() {
             if (widgetInstance) {
                 if (widgetInstance.interval) clearInterval(widgetInstance.interval);
@@ -1110,7 +591,6 @@
             const c = document.getElementById('widgetContainer');
             if (c) c.innerHTML = '';
         }
-
         function createWidget(widget) {
             removeWidget();
             if (widget.id === 'none' || !widget.create) return;
@@ -1121,7 +601,7 @@
                     if (!widgetContainer) {
                         widgetContainer = document.createElement('div');
                         widgetContainer.id = 'widgetContainer';
-                        widgetContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;';
+                        widgetContainer.style.cssText = 'position:absolute;top:var(--livebar-h, 44px);left:0;width:100%;height:calc(100% - var(--livebar-h, 44px));pointer-events:none;z-index:1;';
                         topPanel.appendChild(widgetContainer);
                     }
                     widgetContainer.appendChild(result.element);
@@ -1129,13 +609,10 @@
                 }
             } catch(e) {}
         }
-
         function loadWidget() {
             removeWidget();
             let saved = 'none';
-            try {
-                saved = localStorage.getItem(WIDGET_KEY) || 'none';
-            } catch(e) {}
+            try { saved = localStorage.getItem(WIDGET_KEY) || 'none'; } catch(e) {}
             const widget = WIDGETS.find(w => w.id === saved);
             if (widget && widget.id !== 'none' && widget.create) {
                 currentWidget = saved;
@@ -1144,7 +621,6 @@
                 currentWidget = 'none';
             }
         }
-
         function selectWidget(widgetId) {
             try { localStorage.setItem(WIDGET_KEY, widgetId); } catch(e) {}
             const widget = WIDGETS.find(w => w.id === widgetId);
@@ -1155,27 +631,22 @@
             }
             closeWidgetMenu();
         }
-
         function showWidgetMenu() {
             if (isWidgetMenuOpen) { closeWidgetMenu(); return; }
             const existing = document.querySelector('.widget-menu');
             if (existing) { existing.remove(); isWidgetMenuOpen = false; return; }
             isWidgetMenuOpen = true;
-
             const backdrop = document.createElement('div');
             backdrop.className = 'widget-menu-backdrop';
             backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9997;background:rgba(0,0,0,0);backdrop-filter:blur(0px);transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);';
             document.body.appendChild(backdrop);
-            
             requestAnimationFrame(() => {
                 backdrop.style.background = 'rgba(0,0,0,0.4)';
                 backdrop.style.backdropFilter = 'blur(15px)';
             });
-
             const menu = document.createElement('div');
             menu.className = 'widget-menu';
             menu.innerHTML = '<div class="title">Выберите виджет</div>';
-
             WIDGETS.forEach(w => {
                 const btn = document.createElement('button');
                 const isSelected = currentWidget === w.id;
@@ -1184,26 +655,19 @@
                 btn.addEventListener('click', function() { selectWidget(w.id); });
                 menu.appendChild(btn);
             });
-
             const cancelBtn = document.createElement('button');
             cancelBtn.className = 'cancel-btn';
             cancelBtn.textContent = 'Отмена';
             cancelBtn.addEventListener('click', closeWidgetMenu);
             menu.appendChild(cancelBtn);
-            
             document.body.appendChild(menu);
             requestAnimationFrame(() => menu.classList.add('open'));
-
             backdrop.addEventListener('click', closeWidgetMenu);
         }
-
         function closeWidgetMenu() {
             const menu = document.querySelector('.widget-menu');
             const backdrop = document.querySelector('.widget-menu-backdrop');
-            if (menu) {
-                menu.classList.remove('open');
-                setTimeout(() => menu.remove(), 400);
-            }
+            if (menu) { menu.classList.remove('open'); setTimeout(() => menu.remove(), 400); }
             if (backdrop) {
                 backdrop.style.background = 'rgba(0,0,0,0)';
                 backdrop.style.backdropFilter = 'blur(0px)';
@@ -1211,7 +675,6 @@
             }
             isWidgetMenuOpen = false;
         }
-
         function loadApps() {
             AppScanner.scan().then(function(apps) {
                 allApps = apps;
@@ -1224,29 +687,21 @@
                 if (desktopLoader) desktopLoader.innerHTML = '<span style="color:#cc0000;">Ошибка</span>';
             });
         }
-
         function refreshApps() {
             if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
                 AppScanner.rescan().then(function(apps) {
                     allApps = applyOrderSnapshot(apps);
-                    
                     const newIds = apps.filter(a => !appsOrderSnapshot.includes(a.id)).map(a => a.id);
-                    if (newIds.length > 0) {
-                        appsOrderSnapshot = allApps.map(a => a.id);
-                    }
-                    
+                    if (newIds.length > 0) appsOrderSnapshot = allApps.map(a => a.id);
                     desktopApps = desktopApps.filter(id => allApps.some(a => a.id === id));
                     saveDesktop();
-                    
                     renderDesktop();
                     renderAllApps();
                 });
             }
         }
-
         window.refreshApps = refreshApps;
         window.rescanApps = refreshApps;
-
         function loadDesktop() {
             let saved = null;
             try { saved = localStorage.getItem(DESKTOP_KEY); } catch(e) {}
@@ -1260,34 +715,28 @@
                 desktopApps = DEFAULT_DESKTOP.filter(id => allApps.some(a => a.id === id));
                 if (desktopApps.length < 4) {
                     for (const a of allApps) {
-                        if (!desktopApps.includes(a.id) && desktopApps.length < 4) {
-                            desktopApps.push(a.id);
-                        }
+                        if (!desktopApps.includes(a.id) && desktopApps.length < 4) desktopApps.push(a.id);
                     }
                 }
                 saveDesktop();
             }
         }
-
         function saveDesktop() {
             try { localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps)); } catch(e) {}
         }
-
         function renderDesktop() {
             buttonGroup.innerHTML = '';
             if (desktopApps.length === 0) {
                 buttonGroup.innerHTML = '<div style="color:#888;font-size:14px;text-align:center;width:100%;padding:20px;">Нет приложений</div>';
                 return;
             }
-
-            desktopApps.forEach(function(appId) {
+            desktopApps.forEach(function(appId, index) {
                 const appData = getAppData(appId);
                 if (!appData) return;
-
                 const btn = document.createElement('button');
                 btn.className = 'btn';
                 btn.dataset.id = appId;
-
+                btn.dataset.index = index;
                 const iconPath = getAppIcon(appId);
                 if (iconPath) {
                     const img = document.createElement('img');
@@ -1300,41 +749,30 @@
                     fallback.textContent = getAppName(appId).charAt(0);
                     btn.appendChild(fallback);
                 }
-
-                btn.addEventListener('click', function() {
-                    if (!isEditMode) openAppWithAnimation(appId);
+                btn.addEventListener('click', function(e) {
+                    if (isEditMode) return;
+                    if (dragState && dragState.moved) return;
+                    openAppWithAnimation(appId);
                 });
-                btn.addEventListener('mousedown', function(e) {
-                    if (isEditMode) startDrag(e, btn, appId);
-                });
-                btn.addEventListener('touchstart', function(e) {
-                    if (isEditMode) startDrag(e, btn, appId);
-                }, { passive: false });
-
+                btn.addEventListener('mousedown', function(e) { if (isEditMode) startDrag(e, btn, appId); });
+                btn.addEventListener('touchstart', function(e) { if (isEditMode) startDrag(e, btn, appId); }, { passive: false });
                 buttonGroup.appendChild(btn);
             });
-
             buttonGroup.classList.toggle('edit-mode', isEditMode);
         }
-
         function renderAllApps() {
             iconGrid.innerHTML = '';
             if (allApps.length === 0) {
                 iconGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888;">Нет приложений</div>';
                 return;
             }
-
-            const sortedApps = appsOrderSnapshot 
-                ? applyOrderSnapshot(allApps)
-                : allApps;
-
+            const sortedApps = appsOrderSnapshot ? applyOrderSnapshot(allApps) : allApps;
             sortedApps.forEach(function(a) {
                 const div = document.createElement('div');
                 div.className = 'icon-item';
                 if (desktopApps.includes(a.id)) div.classList.add('in-desktop');
                 if (a.type === 'html') div.classList.add('html-app');
                 div.dataset.appId = a.id;
-
                 if (a.icon) {
                     const img = document.createElement('img');
                     img.src = a.icon;
@@ -1346,12 +784,10 @@
                     fallback.textContent = a.name.charAt(0);
                     div.appendChild(fallback);
                 }
-
                 const label = document.createElement('span');
                 label.className = 'icon-label';
                 label.textContent = a.name.length > 10 ? a.name.substring(0, 10) + '…' : a.name;
                 div.appendChild(label);
-
                 const addBtn = document.createElement('span');
                 addBtn.className = 'icon-add-btn';
                 addBtn.textContent = '+';
@@ -1364,7 +800,6 @@
                         renderAllApps();
                     }
                 });
-
                 const removeBtn = document.createElement('span');
                 removeBtn.className = 'icon-remove-btn';
                 removeBtn.textContent = '✕';
@@ -1377,216 +812,177 @@
                         renderAllApps();
                     }
                 });
-
                 div.appendChild(addBtn);
                 div.appendChild(removeBtn);
-
                 div.addEventListener('click', function() {
                     if (!isBottomVisible) return;
                     openAppWithAnimation(a.id);
                 });
-
                 iconGrid.appendChild(div);
             });
-
             bottomPanel.classList.toggle('editing', isEditMode);
         }
-
         function startDrag(e, btn, appId) {
             if (!isEditMode) return;
             e.preventDefault();
-            if (dragData) finishDrag();
-
+            if (dragState) return;
             const rect = btn.getBoundingClientRect();
             const touch = e.touches ? e.touches[0] : e;
-            
-            dragData = {
-                element: btn,
+            dragState = {
                 appId: appId,
+                element: btn,
+                startX: touch.clientX,
+                startY: touch.clientY,
                 offsetX: touch.clientX - rect.left,
-                offsetY: touch.clientY - rect.top
+                offsetY: touch.clientY - rect.top,
+                width: rect.width,
+                height: rect.height,
+                originIndex: desktopApps.indexOf(appId),
+                currentTargetId: null,
+                moved: false
             };
-
             btn.classList.add('dragging');
             btn.style.position = 'fixed';
-            btn.style.left = (touch.clientX - dragData.offsetX) + 'px';
-            btn.style.top = (touch.clientY - dragData.offsetY) + 'px';
+            btn.style.left = rect.left + 'px';
+            btn.style.top = rect.top + 'px';
             btn.style.width = rect.width + 'px';
             btn.style.height = rect.height + 'px';
             btn.style.zIndex = 1000;
             btn.style.pointerEvents = 'none';
-
-            document.addEventListener('mousemove', onDragMove);
+            btn.style.transition = 'none';
+            document.addEventListener('mousemove', onDragMove, { passive: false });
             document.addEventListener('mouseup', onDragEnd);
             document.addEventListener('touchmove', onDragMove, { passive: false });
-            document.addEventListener('touchend', onDragEnd, { passive: false });
+            document.addEventListener('touchend', onDragEnd);
+            document.addEventListener('touchcancel', onDragEnd);
         }
-
         function onDragMove(e) {
-            if (!dragData) return;
+            if (!dragState) return;
             e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
-            const btn = dragData.element;
-            btn.style.left = (touch.clientX - dragData.offsetX) + 'px';
-            btn.style.top = (touch.clientY - dragData.offsetY) + 'px';
-
-            const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
-            for (let i = 0; i < elements.length; i++) {
-                const el = elements[i];
-                if (el.classList && el.classList.contains('btn') && el.dataset.id && el !== dragData.element) {
-                    const targetIndex = desktopApps.indexOf(el.dataset.id);
-                    const currentIndex = desktopApps.indexOf(dragData.appId);
-                    if (targetIndex !== -1 && currentIndex !== -1) {
-                        desktopApps.splice(currentIndex, 1);
-                        desktopApps.splice(targetIndex, 0, dragData.appId);
-                        saveDesktop();
-                        renderDesktop();
-                        renderAllApps();
-                        const newBtn = document.querySelector(`.btn[data-id="${dragData.appId}"]`);
-                        if (newBtn) {
-                            newBtn.classList.add('dragging');
-                            newBtn.style.position = 'fixed';
-                            newBtn.style.left = (touch.clientX - dragData.offsetX) + 'px';
-                            newBtn.style.top = (touch.clientY - dragData.offsetY) + 'px';
-                            newBtn.style.width = '80px';
-                            newBtn.style.height = '80px';
-                            newBtn.style.zIndex = 1000;
-                            newBtn.style.pointerEvents = 'none';
-                            dragData.element = newBtn;
-                        }
-                    }
-                    break;
-                }
+            const dx = touch.clientX - dragState.startX;
+            const dy = touch.clientY - dragState.startY;
+            if (!dragState.moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) dragState.moved = true;
+            if (!dragState.moved) return;
+            const btn = dragState.element;
+            const newLeft = touch.clientX - dragState.offsetX;
+            const newTop = touch.clientY - dragState.offsetY;
+            btn.style.left = newLeft + 'px';
+            btn.style.top = newTop + 'px';
+            const centerX = touch.clientX;
+            const centerY = touch.clientY;
+            const buttons = buttonGroup.querySelectorAll('.btn');
+            let targetBtn = null;
+            let minDist = Infinity;
+            buttons.forEach(function(other) {
+                if (other === btn) return;
+                const r = other.getBoundingClientRect();
+                const cx = r.left + r.width / 2;
+                const cy = r.top + r.height / 2;
+                const dist = Math.sqrt((cx - centerX) ** 2 + (cy - centerY) ** 2);
+                if (dist < minDist) { minDist = dist; targetBtn = other; }
+            });
+            if (targetBtn && minDist < Math.max(dragState.width, dragState.height) * 1.2) {
+                const targetId = targetBtn.dataset.id;
+                if (targetId && targetId !== dragState.appId) dragState.currentTargetId = targetId;
+            } else {
+                dragState.currentTargetId = null;
             }
         }
-
         function onDragEnd(e) {
-            if (!dragData) return;
-            e.preventDefault();
+            if (!dragState) return;
             document.removeEventListener('mousemove', onDragMove);
             document.removeEventListener('mouseup', onDragEnd);
             document.removeEventListener('touchmove', onDragMove);
             document.removeEventListener('touchend', onDragEnd);
-            finishDrag();
-        }
-
-        function finishDrag() {
-            if (!dragData) return;
-            const btn = dragData.element;
-            if (btn) {
-                btn.classList.remove('dragging');
-                btn.style.position = '';
-                btn.style.left = '';
-                btn.style.top = '';
-                btn.style.width = '';
-                btn.style.height = '';
-                btn.style.zIndex = '';
-                btn.style.pointerEvents = '';
+            document.removeEventListener('touchcancel', onDragEnd);
+            const btn = dragState.element;
+            const targetId = dragState.currentTargetId;
+            if (targetId && dragState.moved) {
+                const fromIndex = desktopApps.indexOf(dragState.appId);
+                const toIndex = desktopApps.indexOf(targetId);
+                if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+                    desktopApps.splice(fromIndex, 1);
+                    desktopApps.splice(toIndex, 0, dragState.appId);
+                    saveDesktop();
+                }
             }
-            dragData = null;
-            renderDesktop();
-            renderAllApps();
+            btn.style.position = '';
+            btn.style.left = '';
+            btn.style.top = '';
+            btn.style.width = '';
+            btn.style.height = '';
+            btn.style.zIndex = '';
+            btn.style.pointerEvents = '';
+            btn.style.transition = '';
+            btn.classList.remove('dragging');
+            const wasMoved = dragState.moved;
+            dragState = null;
+            if (wasMoved) {
+                renderDesktop();
+                renderAllApps();
+                setTimeout(function() {
+                    const suppressClick = function(ev) { ev.stopPropagation(); ev.preventDefault(); };
+                    document.addEventListener('click', suppressClick, { capture: true, once: true });
+                }, 0);
+            }
         }
-
         function loadWallpaper() {
             let saved = null;
             try { saved = localStorage.getItem('app_wallpaper'); } catch(e) {}
-            if (saved) {
-                appBackground.style.backgroundImage = 'url(\'' + saved + '\')';
-            } else {
-                appBackground.style.backgroundImage = 'url(\'wall.png\')';
-            }
+            if (saved) appBackground.style.backgroundImage = 'url(\'' + saved + '\')';
+            else appBackground.style.backgroundImage = 'url(\'wall.png\')';
         }
-
         function toggleEditMode() {
             isEditMode = !isEditMode;
             pencilIcon.classList.toggle('active', isEditMode);
-            
             if (isEditMode) {
                 widgetBtn.style.display = 'flex';
             } else {
                 widgetBtn.style.display = 'none';
                 closeWidgetMenu();
             }
-            
             renderDesktop();
             renderAllApps();
         }
-
         function showBottomPanel() {
             if (isBottomVisible) return;
             isBottomVisible = true;
-
             const widgetContainer = document.getElementById('widgetContainer');
             if (widgetContainer) widgetContainer.classList.add('hidden');
-
             appBackground.classList.add('blurred');
             topPanel.classList.add('swiped-down');
-
             renderAllApps();
-
-            setTimeout(function() {
-                bottomPanel.classList.add('visible');
-            }, 50);
+            setTimeout(function() { bottomPanel.classList.add('visible'); }, 50);
         }
-
         function hideBottomPanel() {
             if (!isBottomVisible) return;
             isBottomVisible = false;
-
             bottomPanel.classList.remove('visible');
-
             setTimeout(function() {
                 const widgetContainer = document.getElementById('widgetContainer');
                 if (widgetContainer) widgetContainer.classList.remove('hidden');
-
                 appBackground.classList.remove('blurred');
                 topPanel.classList.remove('swiped-down');
             }, 400);
-
             renderDesktop();
         }
-
         closeAppsBtn.addEventListener('click', hideBottomPanel);
-        pencilIcon.addEventListener('click', function(e) {
-            e.stopPropagation();
-            toggleEditMode();
-        });
-        widgetBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (isEditMode) showWidgetMenu();
-        });
-
+        pencilIcon.addEventListener('click', function(e) { e.stopPropagation(); toggleEditMode(); });
+        widgetBtn.addEventListener('click', function(e) { e.stopPropagation(); if (isEditMode) showWidgetMenu(); });
         let startY = 0, isSwiping = false;
-        app.addEventListener('touchstart', function(e) {
-            startY = e.touches[0].clientY;
-            isSwiping = true;
-        }, { passive: true });
+        app.addEventListener('touchstart', function(e) { startY = e.touches[0].clientY; isSwiping = true; }, { passive: true });
         app.addEventListener('touchmove', function(e) {
             if (!isSwiping) return;
             const deltaY = e.touches[0].clientY - startY;
-            if (deltaY < -60 && !isBottomVisible) {
-                e.preventDefault();
-                showBottomPanel();
-                isSwiping = false;
-            }
-            if (deltaY > 60 && isBottomVisible) {
-                e.preventDefault();
-                hideBottomPanel();
-                isSwiping = false;
-            }
+            if (deltaY < -60 && !isBottomVisible) { e.preventDefault(); showBottomPanel(); isSwiping = false; }
+            if (deltaY > 60 && isBottomVisible) { e.preventDefault(); hideBottomPanel(); isSwiping = false; }
         }, { passive: false });
         app.addEventListener('touchend', function() { isSwiping = false; }, { passive: true });
         app.addEventListener('wheel', function(e) {
-            if (e.deltaY < -30 && !isBottomVisible) {
-                e.preventDefault();
-                showBottomPanel();
-            } else if (e.deltaY > 30 && isBottomVisible) {
-                e.preventDefault();
-                hideBottomPanel();
-            }
+            if (e.deltaY < -30 && !isBottomVisible) { e.preventDefault(); showBottomPanel(); }
+            else if (e.deltaY > 30 && isBottomVisible) { e.preventDefault(); hideBottomPanel(); }
         }, { passive: false });
-
         let lastInstalledHash = '';
         try { lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || ''; } catch(e) {}
         setInterval(function() {
@@ -1597,12 +993,11 @@
                 refreshApps();
             }
         }, 2000);
-
         loadWallpaper();
         setTimeout(() => loadWidget(), 300);
         loadApps();
-
         setTimeout(ensureFullscreen, 500);
+        if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
     };
     </script>
 

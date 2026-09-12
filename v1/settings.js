@@ -622,10 +622,10 @@
         container.id = 'settingsApp';
         container.style.cssText = `
             position: fixed;
-            top: 0;
+            top: var(--livebar-h, 44px);
             left: 0;
             width: 100%;
-            height: 100%;
+            height: calc(100% - var(--livebar-h, 44px));
             background: #ffffff;
             z-index: 99999;
             overflow-y: auto;
@@ -674,7 +674,7 @@
 
                 .settings-dropdown {
                     position: fixed;
-                    top: 70px;
+                    top: calc(var(--livebar-h, 44px) + 20px);
                     right: 24px;
                     background: #ffffff;
                     padding: 16px;
@@ -955,7 +955,7 @@
                 @media (max-width: 500px) {
                     #settingsApp { padding: 24px 16px 60px; }
                     .settings-header h1 { font-size: 20px; }
-                    .settings-dropdown { top: 60px; right: 16px; min-width: 200px; }
+                    .settings-dropdown { top: calc(var(--livebar-h, 44px) + 16px); right: 16px; min-width: 200px; }
                     .wallpaper-grid { gap: 10px; }
                     .custom-wallpapers { gap: 10px; }
                     .wallpaper-name { font-size: 10px; padding: 6px 8px; }

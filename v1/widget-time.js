@@ -4,7 +4,6 @@
     'use strict';
 
     function createTimeWidget() {
-
         const container = document.createElement('div');
         container.id = 'timeWidget';
         container.style.cssText = `

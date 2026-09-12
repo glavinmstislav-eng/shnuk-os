@@ -24,7 +24,6 @@
         models: ['obj', 'fbx', 'gltf', 'glb', 'stl', '3ds', 'ply']
     };
 
-    // ---------- ОТКРЫТИЕ/ЗАКРЫТИЕ ----------
     function openFiles() {
         if (isOpen) {
             const existing = document.getElementById('fileApp');
@@ -51,7 +50,6 @@
         document.removeEventListener('keydown', onKeyDown);
     }
 
-    // ---------- 3D ВИДЕО ----------
     function closeThreeViewer() {
         if (threeAnimationId) {
             cancelAnimationFrame(threeAnimationId);
@@ -73,13 +71,10 @@
 
     function loadRealModel(file) {
         try {
-            // Проверяем, есть ли данные
             if (!file.data) return null;
             
-            // Пробуем распарсить OBJ
             let text = '';
             try {
-                // Если data - это base64
                 if (file.data.startsWith('data:')) {
                     const base64 = file.data.split(',')[1];
                     if (base64) {
@@ -129,7 +124,6 @@
             }
             
             if (hasValidData) {
-                // Если есть вершины но нет граней - создаём точки
                 return createPointsFromVertices(vertices);
             }
             
@@ -164,7 +158,6 @@
             geometry.setIndex(indices);
             geometry.computeVertexNormals();
             
-            // Центрируем
             const box = new THREE.Box3().setFromBufferAttribute(geometry.getAttribute('position'));
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
@@ -196,7 +189,6 @@
             mesh.castShadow = true;
             mesh.receiveShadow = true;
             
-            // Добавляем каркас
             const edges = new THREE.EdgesGeometry(geometry);
             const lineMat = new THREE.LineBasicMaterial({ 
                 color: 0x4488ff, 
@@ -244,7 +236,6 @@
         try {
             const group = new THREE.Group();
             
-            // 1. Тор
             const torusGeo = new THREE.TorusGeometry(0.8, 0.25, 16, 32);
             const torusMat = new THREE.MeshStandardMaterial({
                 color: 0xcc0000,
@@ -259,7 +250,6 @@
             torus.receiveShadow = true;
             group.add(torus);
             
-            // 2. Сфера внутри
             const sphereMat = new THREE.MeshStandardMaterial({
                 color: 0x4488ff,
                 roughness: 0.1,
@@ -274,7 +264,6 @@
             sphere.receiveShadow = true;
             group.add(sphere);
             
-            // 3. Маленькие шарики
             const ballMat = new THREE.MeshStandardMaterial({
                 color: 0xffaa44,
                 roughness: 0.3,
@@ -290,7 +279,6 @@
                 group.add(ball);
             }
             
-            // 4. Кольца
             const ringMat = new THREE.LineBasicMaterial({ 
                 color: 0x4488ff, 
                 transparent: true, 
@@ -312,7 +300,6 @@
                 group.add(ring);
             }
             
-            // 5. Надпись
             const textMat = new THREE.MeshStandardMaterial({
                 color: 0xff4444,
                 emissive: 0xff0000,
@@ -326,7 +313,6 @@
                 group.add(cube);
             }
             
-            // Центрируем
             const box = new THREE.Box3().setFromObject(group);
             const center = box.getCenter(new THREE.Vector3());
             group.position.sub(center);
@@ -415,7 +401,6 @@
             threeRenderer.toneMappingExposure = 1.2;
             container.appendChild(threeRenderer.domElement);
 
-            // Освещение
             const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
             threeScene.add(ambientLight);
 
@@ -431,12 +416,10 @@
             const hemiLight = new THREE.HemisphereLight(0x4488ff, 0x444422, 0.4);
             threeScene.add(hemiLight);
 
-            // Сетка
             const gridHelper = new THREE.GridHelper(8, 8, 0x444466, 0x222244);
             gridHelper.position.y = -0.5;
             threeScene.add(gridHelper);
 
-            // Пол
             const planeGeo = new THREE.PlaneGeometry(10, 10);
             const planeMat = new THREE.MeshStandardMaterial({
                 color: 0x0a0a12,
@@ -451,13 +434,10 @@
             plane.receiveShadow = true;
             threeScene.add(plane);
 
-            // Создаём модель
             let model = null;
             
-            // Пробуем загрузить реальную модель
             model = loadRealModel(file);
             
-            // Если не получилось - демо
             if (!model) {
                 model = createDemoModel(file);
             }
@@ -467,7 +447,6 @@
                 threeScene.add(model);
             }
 
-            // Убираем placeholder
             const placeholder = container.querySelector('.three-placeholder');
             if (placeholder) {
                 placeholder.textContent = 'Готово';
@@ -491,7 +470,6 @@
                 info.style.display = 'block';
             }
 
-            // ---------- КОНТРОЛЛЕРЫ ----------
             let isDragging = false;
             let previousMouse = { x: 0, y: 0 };
             let rotation = { x: 0, y: 0 };
@@ -527,7 +505,6 @@
                 autoRotateTimer = setTimeout(() => { autoRotate = true; }, 3000);
             });
 
-            // Touch
             let touchStart = { x: 0, y: 0 };
             let touchDist = 0;
 
@@ -589,7 +566,6 @@
                 autoRotateTimer = setTimeout(() => { autoRotate = true; }, 3000);
             }, { passive: true });
 
-            // Wheel
             rendererDom.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -605,7 +581,6 @@
                 }
             }, { passive: false });
 
-            // ---------- АНИМАЦИЯ ----------
             function animate() {
                 threeAnimationId = requestAnimationFrame(animate);
 
@@ -620,7 +595,6 @@
 
             animate();
 
-            // ---------- RESIZE ----------
             const resizeObserver = new ResizeObserver(() => {
                 if (threeRenderer && container) {
                     const w = container.clientWidth;
@@ -658,7 +632,6 @@
         }
     }
 
-    // ---------- СОЗДАНИЕ UI ----------
     function createUI() {
         if (document.getElementById('fileApp')) {
             document.getElementById('fileApp').style.display = 'flex';
@@ -672,10 +645,10 @@
         app.id = 'fileApp';
         app.style.cssText = `
             position: fixed;
-            top: 0;
+            top: var(--livebar-h, 44px);
             left: 0;
             width: 100%;
-            height: 100%;
+            height: calc(100% - var(--livebar-h, 44px));
             background: #ffffff;
             z-index: 99999;
             display: flex;
@@ -686,7 +659,6 @@
             animation: fileFadeIn 0.3s ease forwards;
         `;
 
-        // Стили
         if (!document.getElementById('fileStyles')) {
             const style = document.createElement('style');
             style.id = 'fileStyles';
@@ -867,10 +839,10 @@
 
                 .file-preview-overlay {
                     position: fixed;
-                    top: 0;
+                    top: var(--livebar-h, 44px);
                     left: 0;
                     width: 100%;
-                    height: 100%;
+                    height: calc(100% - var(--livebar-h, 44px));
                     background: rgba(0,0,0,0.92);
                     z-index: 100000;
                     display: none;
@@ -1045,7 +1017,6 @@
             document.head.appendChild(style);
         }
 
-        // ---------- HEADER ----------
         const header = document.createElement('div');
         header.className = 'file-header';
         header.innerHTML = `
@@ -1059,12 +1030,10 @@
             </div>
         `;
 
-        // ---------- CONTENT ----------
         const content = document.createElement('div');
         content.className = 'file-content';
         content.id = 'fileContent';
 
-        // ---------- PREVIEW ----------
         const preview = document.createElement('div');
         preview.className = 'file-preview-overlay';
         preview.id = 'filePreview';
@@ -1085,10 +1054,8 @@
         app.appendChild(preview);
         document.body.appendChild(app);
 
-        // ---------- ЗАГРУЗКА ----------
         renderFiles();
 
-        // ---------- ОБРАБОТЧИКИ ----------
         document.getElementById('fileCloseBtn').addEventListener('click', closeFiles);
         document.getElementById('uploadBtn').addEventListener('click', uploadFiles);
         document.getElementById('previewClose').addEventListener('click', closePreview);
@@ -1115,7 +1082,6 @@
         console.log('[Files] Открыт, файлов:', files.length);
     }
 
-    // ---------- РАБОТА С ФАЙЛАМИ ----------
     function loadFiles() {
         try {
             const saved = localStorage.getItem('shnuk_files');
@@ -1207,7 +1173,6 @@
         }
     }
 
-    // ---------- ОТРИСОВКА ----------
     function renderFiles() {
         const content = document.getElementById('fileContent');
         const fileCount = document.getElementById('fileCount');
@@ -1276,7 +1241,6 @@
         content.appendChild(grid);
     }
 
-    // ---------- ИКОНКИ ----------
     function getFileIcon(file) {
         const ext = file.extension || file.name.split('.').pop().toLowerCase();
         
@@ -1296,7 +1260,6 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
-    // ---------- ОТКРЫТИЕ ФАЙЛА ----------
     function openFile(file) {
         const ext = file.extension || file.name.split('.').pop().toLowerCase();
 
@@ -1324,7 +1287,6 @@
         alert('Этот тип файла не поддерживается для просмотра');
     }
 
-    // ---------- ПРЕВЬЮ ----------
     function openPreview(file, type) {
         console.log('[Files] Открытие preview:', file.name, type);
         
@@ -1432,15 +1394,14 @@
         openPreview(file, type);
     }
 
-    // ---------- ТЕКСТ ----------
     function openText(file) {
         const container = document.createElement('div');
         container.style.cssText = `
             position: fixed;
-            top: 0;
+            top: var(--livebar-h, 44px);
             left: 0;
             width: 100%;
-            height: 100%;
+            height: calc(100% - var(--livebar-h, 44px));
             background: #ffffff;
             z-index: 100000;
             display: flex;
@@ -1448,6 +1409,7 @@
             padding: 40px;
             font-family: 'ST-SimpleSquare', monospace;
             color: #1a1a1a;
+            box-sizing: border-box;
         `;
 
         const header = document.createElement('div');
@@ -1499,7 +1461,6 @@
         document.addEventListener('keydown', onEsc);
     }
 
-    // ---------- ГЛОБАЛЬНЫЕ ФУНКЦИИ ----------
     function setWallpaperFromFile(fileId) {
         console.log('[Files] setWallpaperFromFile вызван, id:', fileId);
         
@@ -1578,7 +1539,6 @@
     window.downloadFile = downloadFile;
     window.deleteFileFromPreview = deleteFileFromPreview;
 
-    // ---------- КЛАВИШИ ----------
     function onKeyDown(e) {
         if (!isOpen) return;
         
@@ -1591,7 +1551,6 @@
         }
     }
 
-    // ---------- ЭКСПОРТ ----------
     window.fileInit = function() {
         console.log('[Files] Открытие...');
         openFiles();

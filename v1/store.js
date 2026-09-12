@@ -41,14 +41,6 @@
                 resolve(htmlCache[filename]);
                 return;
             }
-            
-            const cached = localStorage.getItem('shnuk_cache_' + filename);
-            if (cached) {
-                htmlCache[filename] = cached;
-                resolve(cached);
-                return;
-            }
-
             fetch(filename)
                 .then(function(response) {
                     if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -202,7 +194,10 @@
         app.id = 'storeApp';
         app.style.cssText = `
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
+            top: var(--livebar-h, 44px);
+            left: 0;
+            width: 100%;
+            height: calc(100% - var(--livebar-h, 44px));
             background: #ffffff;
             z-index: 99999;
             display: flex;

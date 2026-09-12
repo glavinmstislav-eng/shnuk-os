@@ -1,4 +1,4 @@
-// game.js — 3D игра с управлением жестами (камера смотрит вперёд)
+// game.js — 3D игра с управлением жестами
 
 (function() {
     'use strict';
@@ -19,7 +19,6 @@
     let spawnInterval = 60;
     let gameOverShown = false;
     
-    // Эффекты
     let snowParticles = [];
     let houses = [];
     let snowdrifts = [];
@@ -28,7 +27,6 @@
     let cameraBob = 0;
     let speedLines = [];
 
-    // Управление жестами
     let touchStartX = 0;
     let touchStartY = 0;
     let touchStartTime = 0;
@@ -36,19 +34,14 @@
     let swipeThreshold = 30;
     let swipeTimeThreshold = 500;
 
-    // Наклон устройства
     let deviceOrientationHandler = null;
 
-    // ============================================
-    // КОНСТАНТЫ ПОЛОЖЕНИЯ
-    // ============================================
-    const CAR_START_Z = 8;          // Машина внизу экрана (перед камерой)
-    const CAR_LOOK_AHEAD = -40;     // Куда смотрит камера (далеко вперёд)
-    const CAMERA_HEIGHT = 6;        // Высота камеры
-    const CAMERA_BEHIND = 12;       // Насколько камера позади машины
-    const SPAWN_Z = -50;            // Где появляются препятствия
+    const CAR_START_Z = 8;
+    const CAR_LOOK_AHEAD = -40;
+    const CAMERA_HEIGHT = 6;
+    const CAMERA_BEHIND = 12;
+    const SPAWN_Z = -50;
 
-    // ---------- ИНИЦИАЛИЗАЦИЯ ----------
     function initGame() {
         if (document.getElementById('gameApp')) {
             return;
@@ -58,10 +51,10 @@
         gameContainer.id = 'gameApp';
         gameContainer.style.cssText = `
             position: fixed;
-            top: 0;
+            top: var(--livebar-h, 44px);
             left: 0;
             width: 100%;
-            height: 100%;
+            height: calc(100% - var(--livebar-h, 44px));
             background: #1a1a2e;
             z-index: 99999;
             overflow: hidden;
@@ -72,7 +65,6 @@
             -webkit-tap-highlight-color: transparent;
         `;
 
-        // UI поверх игры
         const ui = document.createElement('div');
         ui.id = 'gameUI';
         ui.style.cssText = `
@@ -111,7 +103,6 @@
             </div>
         `;
 
-        // Экран Game Over
         const gameOverScreen = document.createElement('div');
         gameOverScreen.id = 'gameOverScreen';
         gameOverScreen.style.cssText = `
@@ -167,12 +158,9 @@
         initThree();
         startGame();
 
-        console.log('[Game] Игра запущена. Камера смотрит вперёд');
+        console.log('[Game] Игра запущена');
     }
 
-    // ============================================
-    // УПРАВЛЕНИЕ ЖЕСТАМИ
-    // ============================================
     function initTouchControls() {
         const container = gameContainer;
 
@@ -238,7 +226,6 @@
             }, 100);
         }, { passive: true });
 
-        // Двойной тап — пауза
         let lastTap = 0;
         container.addEventListener('touchend', function(e) {
             if (e.target.closest('button')) return;
@@ -250,9 +237,6 @@
         });
     }
 
-    // ============================================
-    // УПРАВЛЕНИЕ НАКЛОНОМ
-    // ============================================
     function initTiltControls() {
         if (!window.DeviceOrientationEvent) return;
 
@@ -287,9 +271,6 @@
         }
     }
 
-    // ============================================
-    // ПАУЗА
-    // ============================================
     let isPaused = false;
 
     function togglePause() {
@@ -335,9 +316,6 @@
         if (overlay) overlay.remove();
     }
 
-    // ============================================
-    // THREE.JS — КАМЕРА СМОТРИТ ВПЕРЁД
-    // ============================================
     function initThree() {
         const container = gameContainer;
 
@@ -345,11 +323,8 @@
         scene.background = new THREE.Color(0x2a2a4a);
         scene.fog = new THREE.FogExp2(0x2a2a4a, 0.012);
 
-        // КАМЕРА: находится ЗА машиной и смотрит ВПЕРЁД (в -Z)
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
-        // Камера на высоте 6, отступает назад на 12 единиц от машины (машина z=8, камера z=20)
         camera.position.set(0, CAMERA_HEIGHT, CAR_START_Z + CAMERA_BEHIND);
-        // Смотрим далеко вперёд (на отрицательные z)
         camera.lookAt(0, 0, CAR_LOOK_AHEAD);
 
         renderer = new THREE.WebGLRenderer({ 
@@ -364,7 +339,6 @@
         renderer.toneMappingExposure = 1.2;
         container.appendChild(renderer.domElement);
 
-        // Освещение
         const ambientLight = new THREE.AmbientLight(0x4466aa, 0.5);
         scene.add(ambientLight);
 
@@ -404,7 +378,6 @@
             roughness: 0.9,
             metalness: 0.1,
         });
-        // Дорога сдвинута вперёд (в -Z), чтобы покрыть весь видимый путь
         const roadGeo = new THREE.PlaneGeometry(6, 200);
         road = new THREE.Mesh(roadGeo, roadMat);
         road.rotation.x = -Math.PI / 2;
@@ -456,7 +429,7 @@
             const drift = new THREE.Mesh(geo, snowMat);
             const side = Math.random() > 0.5 ? 1 : -1;
             const x = side * (3.6 + Math.random() * 1.5);
-            const z = 20 - Math.random() * 150; // От -130 до 20
+            const z = 20 - Math.random() * 150;
             const y = 0.1 + Math.random() * 0.2;
             drift.position.set(x, y, z);
             drift.scale.y = 0.3 + Math.random() * 0.3;
@@ -614,7 +587,6 @@
         cabin.castShadow = true;
         group.add(cabin);
 
-        // Фары впереди (машина смотрит в -Z)
         const lightMat = new THREE.MeshStandardMaterial({ 
             color: 0xffdd44, 
             emissive: 0xffdd44,
@@ -622,11 +594,10 @@
         });
         for (let side of [-0.35, 0.35]) {
             const light = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), lightMat);
-            light.position.set(side, 0.25, -1.05);  // Фары впереди (-Z)
+            light.position.set(side, 0.25, -1.05);
             group.add(light);
         }
 
-        // Задние фонари
         const tailMat = new THREE.MeshStandardMaterial({ 
             color: 0xff2200, 
             emissive: 0xff2200,
@@ -634,7 +605,7 @@
         });
         for (let side of [-0.35, 0.35]) {
             const light = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), tailMat);
-            light.position.set(side, 0.25, 1.05);  // Сзади (+Z)
+            light.position.set(side, 0.25, 1.05);
             group.add(light);
         }
 
@@ -663,7 +634,6 @@
         spoiler.position.set(0, 0.55, 0.9);
         group.add(spoiler);
 
-        // Машина НИЖЕ экрана — камера смотрит вперёд
         group.position.set(0, 0, CAR_START_Z);
         car = group;
         scene.add(car);
@@ -711,7 +681,6 @@
         });
         const geo = new THREE.BoxGeometry(type.width, type.height, type.depth);
         const mesh = new THREE.Mesh(geo, mat);
-        // Появляются ДАЛЕКО впереди (в -Z)
         mesh.position.set(x, type.height/2, SPAWN_Z);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -742,42 +711,30 @@
         });
     }
 
-    // ============================================
-    // ИГРОВОЙ ЦИКЛ
-    // ============================================
     function gameLoop() {
         if (!gameRunning || isPaused) return;
 
         const currentSpeed = speed + score * 0.001;
 
-        // Движение машины
         carX += (carTargetX - carX) * 0.12;
         if (carX > 2.5) carX = 2.5;
         if (carX < -2.5) carX = -2.5;
         car.position.x = carX;
 
-        // ============================================
-        // КАМЕРА СМОТРИТ ВПЕРЁД
-        // ============================================
         cameraBob += 0.02;
         const bobOffset = Math.sin(cameraBob) * 0.03;
         
-        // Камера следует за машиной по X, но с меньшей амплитудой
         const targetCamX = carX * 0.5;
         camera.position.x += (targetCamX - camera.position.x) * 0.08;
         
-        // Камера стоит на высоте и позади машины (по Z)
         camera.position.y = CAMERA_HEIGHT + bobOffset + Math.sin(cameraBob * 0.5) * 0.03;
         camera.position.z = CAR_START_Z + CAMERA_BEHIND;
         
-        // Небольшой наклон камеры при поворотах
         camera.rotation.z += (-carX * 0.04 - camera.rotation.z) * 0.08;
         
-        // Смотрим ВПЕРЁД — точка обзора далеко в -Z
         const lookTargetX = carX * 0.3;
         camera.lookAt(lookTargetX, 0, CAR_LOOK_AHEAD);
 
-        // Тряска
         if (cameraShake > 0) {
             camera.position.x += (Math.random() - 0.5) * cameraShake * 0.05;
             camera.position.y += (Math.random() - 0.5) * cameraShake * 0.05;
@@ -785,7 +742,6 @@
             if (cameraShake < 0.01) cameraShake = 0;
         }
 
-        // Снег
         if (snowParticles.mesh) {
             const positions = snowParticles.mesh.geometry.attributes.position.array;
             const vels = snowParticles.velocities;
@@ -808,7 +764,6 @@
             snowParticles.mesh.geometry.attributes.position.needsUpdate = true;
         }
 
-        // Дома летят НАВСТРЕЧУ (в +Z)
         for (const house of houses) {
             house.z += currentSpeed;
             house.mesh.position.z += currentSpeed;
@@ -826,7 +781,6 @@
             }
         }
 
-        // Сугробы
         for (const drift of snowdrifts) {
             drift.position.z += currentSpeed;
             if (drift.position.z > 25) {
@@ -838,15 +792,13 @@
             }
         }
 
-        // Разметка летит навстречу
         for (const line of roadLines) {
             line.position.z += currentSpeed;
             if (line.position.z > 25) {
-                line.position.z -= 96; // 80 линий * 1.2
+                line.position.z -= 96;
             }
         }
 
-        // Препятствия летят навстречу
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const obs = obstacles[i];
             obs.mesh.position.z += currentSpeed;
@@ -859,7 +811,6 @@
                 glow.material.opacity = 0.05 + Math.sin(Date.now() * 0.003 + i) * 0.03;
             }
 
-            // Столкновение с машиной
             if (obs.mesh.position.z > CAR_START_Z - 1.0 && obs.mesh.position.z < CAR_START_Z + 1.0) {
                 const dx = Math.abs(obs.mesh.position.x - car.position.x);
                 const halfWidth = 0.6 + obs.width/2;
@@ -871,7 +822,6 @@
                 }
             }
 
-            // Удаление позади камеры
             if (obs.mesh.position.z > CAR_START_Z + CAMERA_BEHIND + 5) {
                 scene.remove(obs.mesh);
                 obstacles.splice(i, 1);
@@ -880,7 +830,6 @@
             }
         }
 
-        // Спавн препятствий
         obstacleTimer++;
         const spawnRate = Math.max(12, spawnInterval - score * 0.4);
         if (obstacleTimer > spawnRate) {
@@ -893,7 +842,6 @@
             }
         }
 
-        // Линии скорости
         if (Math.random() < currentSpeed * 0.3) {
             createSpeedLine();
         }
@@ -923,9 +871,6 @@
         }
     }
 
-    // ============================================
-    // КЛАВИАТУРА
-    // ============================================
     function onKeyDown(e) {
         if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
             keys.left = true;
@@ -959,9 +904,6 @@
         }
     }
 
-    // ============================================
-    // ИГРОВЫЕ ФУНКЦИИ
-    // ============================================
     function startGame() {
         gameRunning = true;
         isPaused = false;
@@ -1027,9 +969,6 @@
         }
     }
 
-    // ============================================
-    // ЗАКРЫТИЕ
-    // ============================================
     function closeGame() {
         gameRunning = false;
         isPaused = false;
@@ -1075,9 +1014,6 @@
         console.log('[Game] Игра закрыта');
     }
 
-    // ============================================
-    // ИНИЦИАЛИЗАЦИЯ
-    // ============================================
     window.gameInit = function() {
         if (document.getElementById('gameApp')) return;
         if (typeof THREE === 'undefined') {
