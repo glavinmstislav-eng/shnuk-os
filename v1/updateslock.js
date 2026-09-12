@@ -1,1 +1,0 @@
-window.UPDATESLOCK = 0;
