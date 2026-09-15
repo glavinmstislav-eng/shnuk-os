@@ -12,6 +12,7 @@
     let timerInterval = null;
     let isRecording = false;
     let isPaused = false;
+    let pendingMimeType = 'audio/webm';
 
     function openRecorder() {
         if (isOpen) {
@@ -69,6 +70,24 @@
         }
     }
 
+    function pickMimeType() {
+        if (typeof MediaRecorder === 'undefined') return '';
+        const candidates = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/ogg',
+            'audio/mp4',
+            'audio/mpeg'
+        ];
+        for (const c of candidates) {
+            try {
+                if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c;
+            } catch(e) {}
+        }
+        return '';
+    }
+
     async function startRecording() {
         if (isRecording) return;
         try {
@@ -76,29 +95,31 @@
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
 
-            let mimeType = 'audio/webm';
-            if (typeof MediaRecorder !== 'undefined') {
-                if (!MediaRecorder.isTypeSupported('audio/webm')) {
-                    if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-                    else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
-                }
-            }
-
+            const mimeType = pickMimeType();
             try {
-                mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+                mediaRecorder = mimeType
+                    ? new MediaRecorder(stream, { mimeType: mimeType })
+                    : new MediaRecorder(stream);
             } catch(e) {
                 mediaRecorder = new MediaRecorder(stream);
-                mimeType = mediaRecorder.mimeType || 'audio/webm';
             }
+
+            pendingMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
 
             chunks = [];
             mediaRecorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) chunks.push(e.data);
             };
             mediaRecorder.onstop = function() {
-                saveRecording(mimeType);
+                saveRecording();
             };
-            mediaRecorder.start();
+            mediaRecorder.onerror = function(e) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Ошибка записи: ' + (e.error ? e.error.name : ''), { type: 'error' });
+                }
+            };
+
+            mediaRecorder.start(1000);
             isRecording = true;
             isPaused = false;
             recordingStartTime = Date.now();
@@ -114,7 +135,9 @@
                 });
             }
         } catch(e) {
-            if (window.Win && window.Win.notify) window.Win.notify('Нет доступа к микрофону', { type: 'error' });
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Нет доступа к микрофону', { type: 'error' });
+            }
         }
     }
 
@@ -142,7 +165,7 @@
 
     function stopRecording(silent) {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+            try { mediaRecorder.stop(); } catch(e) {}
         }
         isRecording = false;
         isPaused = false;
@@ -151,42 +174,115 @@
         if (window.LiveBar) window.LiveBar.clear();
     }
 
-    function saveRecording(mimeType) {
+    function extFromMime(mime) {
+        if (!mime) return 'webm';
+        if (mime.indexOf('mp4') !== -1 || mime.indexOf('mpeg') !== -1) return 'm4a';
+        if (mime.indexOf('ogg') !== -1) return 'ogg';
+        if (mime.indexOf('wav') !== -1) return 'wav';
+        return 'webm';
+    }
+
+    function ensureSharedFiles(cb) {
+        if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
+            cb();
+            return;
+        }
+        const existing = document.querySelector('script[data-shnuk-app="file-storage"]');
+        if (existing) {
+            let tries = 0;
+            const wait = function() {
+                tries++;
+                if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
+                    cb();
+                } else if (tries < 20) {
+                    setTimeout(wait, 100);
+                } else {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Хранилище недоступно', { type: 'error' });
+                    }
+                }
+            };
+            wait();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'file-storage.js?t=' + Date.now();
+        script.async = false;
+        script.dataset.shnukApp = 'file-storage';
+        script.onload = function() {
+            let tries = 0;
+            const wait = function() {
+                tries++;
+                if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
+                    cb();
+                } else if (tries < 20) {
+                    setTimeout(wait, 100);
+                } else {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Хранилище недоступно', { type: 'error' });
+                    }
+                }
+            };
+            wait();
+        };
+        script.onerror = function() {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Не удалось загрузить хранилище', { type: 'error' });
+            }
+        };
+        document.head.appendChild(script);
+    }
+
+    function saveRecording() {
         if (chunks.length === 0) {
-            if (window.Win && window.Win.notify) window.Win.notify('Нет данных для сохранения', { type: 'error' });
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Нет данных для сохранения', { type: 'error' });
+            }
             return;
         }
 
-        const type = mimeType || 'audio/webm';
-        const ext = type.indexOf('mp4') !== -1 ? 'm4a' : (type.indexOf('ogg') !== -1 ? 'ogg' : 'webm');
+        const type = pendingMimeType || 'audio/webm';
+        const ext = extFromMime(type);
         const blob = new Blob(chunks, { type: type });
-        const reader = new FileReader();
+        chunks = [];
 
+        const reader = new FileReader();
         reader.onload = function() {
-            if (!window.SharedFiles) {
-                if (window.Win && window.Win.notify) window.Win.notify('Хранилище недоступно', { type: 'error' });
+            const dataUrl = reader.result;
+            if (!dataUrl) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Ошибка чтения записи', { type: 'error' });
+                }
                 return;
             }
-            const ok = window.SharedFiles.add({
-                id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
-                name: 'recording_' + Date.now() + '.' + ext,
-                size: blob.size,
-                type: type,
-                data: reader.result,
-                date: new Date().toISOString(),
-                extension: ext
+            const name = 'recording_' + Date.now() + '.' + ext;
+            ensureSharedFiles(function() {
+                const ok = window.SharedFiles.add({
+                    id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
+                    name: name,
+                    size: blob.size,
+                    type: type,
+                    data: dataUrl,
+                    date: new Date().toISOString(),
+                    extension: ext
+                });
+                if (ok) {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Запись сохранена в Файлы', { type: 'success' });
+                    }
+                } else {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Не удалось сохранить (переполнено?)', { type: 'error' });
+                    }
+                }
             });
-            if (ok) {
-                if (window.Win && window.Win.notify) window.Win.notify('Запись сохранена в Файлы', { type: 'success' });
-            } else {
-                if (window.Win && window.Win.notify) window.Win.notify('Не удалось сохранить (переполнено?)', { type: 'error' });
-            }
         };
         reader.onerror = function() {
-            if (window.Win && window.Win.notify) window.Win.notify('Ошибка чтения записи', { type: 'error' });
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Ошибка чтения записи', { type: 'error' });
+            }
         };
         reader.readAsDataURL(blob);
-        chunks = [];
     }
 
     function updateUI() {
