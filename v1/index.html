@@ -353,7 +353,6 @@
             osApp.style.display = 'block';
             const scripts = [
                 'file-storage.js',
-                'AOD.js',
                 'l.js',
                 'onboarding.js',
                 'live-bar.js',
@@ -1052,7 +1051,6 @@
         loadApps();
         setTimeout(ensureFullscreen, 500);
         if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
-        if (window.AOD && typeof window.AOD.init === 'function') window.AOD.init();
     };
 
     (function() {
