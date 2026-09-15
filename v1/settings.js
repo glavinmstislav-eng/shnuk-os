@@ -5,12 +5,10 @@
 
     let isOpen = false;
     let currentWallpaper = 'wall1.png';
-    let customWallpapers = [];
     let currentTab = 'wallpaper';
 
     const WALLPAPER_KEY = 'shnuk_wallpaper';
     const WALLPAPER_NAME_KEY = 'shnuk_wallpaper_name';
-    const CUSTOM_WALLPAPERS_KEY = 'shnuk_custom_wallpapers';
     const FULLSCREEN_KEY = 'shnuk_fullscreen';
     const APP_WALLPAPER_KEY = 'app_wallpaper';
 
@@ -79,26 +77,7 @@
         } catch(e) {}
     }
 
-    function loadCustomWallpapersFromStorage() {
-        try {
-            const raw = localStorage.getItem(CUSTOM_WALLPAPERS_KEY);
-            if (!raw) return [];
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed)) return [];
-            return parsed.filter(w => w && w.id && w.data);
-        } catch(e) {
-            return [];
-        }
-    }
-
-    function saveCustomWallpapersToStorage() {
-        try {
-            localStorage.setItem(CUSTOM_WALLPAPERS_KEY, JSON.stringify(customWallpapers));
-        } catch(e) {}
-    }
-
     function loadData() {
-        customWallpapers = loadCustomWallpapersFromStorage();
         try {
             const savedApp = localStorage.getItem(APP_WALLPAPER_KEY);
             if (savedApp) {
@@ -119,12 +98,6 @@
         if (found) {
             url = found.file;
             name = found.name;
-        } else {
-            const custom = customWallpapers.find(w => w.id === id || w.data === id);
-            if (custom) {
-                url = custom.data;
-                name = custom.name;
-            }
         }
 
         if (!url) return;
@@ -138,64 +111,12 @@
 
         applyWallpaperDirect(url);
         renderWallpapers();
-        renderCustomWallpapers();
         notifyWallpaperChanged();
     }
 
     function applyWallpaperDirect(url) {
         const bg = document.getElementById('appBackground');
         if (bg) bg.style.backgroundImage = `url('${url}')`;
-    }
-
-    function loadCustomWallpapers(files) {
-        const promises = [];
-        const newItems = [];
-        
-        Array.from(files).forEach(file => {
-            if (!file.type.startsWith('image/')) return;
-            promises.push(new Promise(resolve => {
-                const reader = new FileReader();
-                reader.onload = e => {
-                    const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-                    newItems.push({ 
-                        id, 
-                        name: file.name.replace(/\.[^.]+$/, ''), 
-                        data: e.target.result 
-                    });
-                    resolve();
-                };
-                reader.onerror = () => resolve();
-                reader.readAsDataURL(file);
-            }));
-        });
-        
-        Promise.all(promises).then(() => {
-            customWallpapers = customWallpapers.concat(newItems);
-            saveCustomWallpapersToStorage();
-            renderCustomWallpapers();
-            if (newItems.length) saveWallpaper(newItems[0].id);
-        });
-    }
-
-    async function removeCustomWallpaper(id) {
-        const Win = getWin();
-        const ok = await Win.confirm('Удалить эти обои?', {
-            title: 'Удаление',
-            okText: 'Удалить',
-            cancelText: 'Отмена',
-            danger: true
-        });
-        if (!ok) return;
-        
-        customWallpapers = customWallpapers.filter(w => w.id !== id);
-        saveCustomWallpapersToStorage();
-        
-        if (currentWallpaper === id || customWallpapers.find(w => w.data === currentWallpaper) === undefined) {
-            const next = customWallpapers.length ? customWallpapers[0].id : 'wall1';
-            saveWallpaper(next);
-        } else {
-            renderCustomWallpapers();
-        }
     }
 
     function renderWallpapers() {
@@ -217,43 +138,8 @@
         });
     }
 
-    function renderCustomWallpapers() {
-        const grid = document.getElementById('customWallpapersGrid');
-        if (!grid) return;
-        grid.innerHTML = '';
-        
-        if (customWallpapers.length === 0) {
-            grid.innerHTML = `<div class="empty-message">Нет загруженных обоев</div>`;
-            return;
-        }
-        
-        customWallpapers.forEach(w => {
-            const div = document.createElement('div');
-            const isSelected = currentWallpaper === w.id || currentWallpaper === w.data;
-            div.className = 'custom-wallpaper-item' + (isSelected ? ' selected' : '');
-            div.innerHTML = `
-                <img src="${w.data}" alt="${w.name}" loading="lazy" />
-                <button class="custom-remove" data-id="${w.id}">
-                    <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
-                </button>
-                <div class="wallpaper-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg></div>
-                <div class="wallpaper-name">${w.name}</div>
-            `;
-            div.addEventListener('click', e => {
-                if (e.target.closest('.custom-remove')) return;
-                saveWallpaper(w.id);
-            });
-            div.querySelector('.custom-remove').addEventListener('click', e => {
-                e.stopPropagation();
-                removeCustomWallpaper(w.id);
-            });
-            grid.appendChild(div);
-        });
-    }
-
     function renderAll() {
         renderWallpapers();
-        renderCustomWallpapers();
     }
 
     function renderSystemInfo() {
@@ -739,17 +625,17 @@
                 .wallpaper-grid {
                     display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
                 }
-                .wallpaper-item, .custom-wallpaper-item {
+                .wallpaper-item {
                     aspect-ratio: 1/1; overflow: hidden; cursor: pointer;
                     border: 3px solid transparent; transition: all 0.2s ease;
                     position: relative; background: #f5f5f5;
                 }
-                .wallpaper-item:hover, .custom-wallpaper-item:hover { transform: scale(1.02); }
-                .wallpaper-item.selected, .custom-wallpaper-item.selected {
+                .wallpaper-item:hover { transform: scale(1.02); }
+                .wallpaper-item.selected {
                     border-color: #cc0000;
                     box-shadow: 0 0 0 3px rgba(204,0,0,0.15);
                 }
-                .wallpaper-item img, .custom-wallpaper-item img {
+                .wallpaper-item img {
                     width: 100%; height: 100%; object-fit: cover; display: block;
                 }
                 .wallpaper-check {
@@ -758,8 +644,7 @@
                     display: flex; align-items: center; justify-content: center;
                     opacity: 0; transition: opacity 0.2s; pointer-events: none;
                 }
-                .wallpaper-item.selected .wallpaper-check,
-                .custom-wallpaper-item.selected .wallpaper-check { opacity: 1; }
+                .wallpaper-item.selected .wallpaper-check { opacity: 1; }
                 .wallpaper-check svg { width: 16px; height: 16px; }
                 .wallpaper-name {
                     position: absolute; bottom: 0; left: 0; right: 0;
@@ -767,39 +652,6 @@
                     color: #fff; font-size: 12px; text-align: center;
                     font-weight: 500; letter-spacing: 0.3px;
                 }
-                .custom-remove {
-                    position: absolute; top: 6px; right: 6px;
-                    width: 28px; height: 28px; background: #cc0000;
-                    border: none; cursor: pointer;
-                    display: flex; align-items: center; justify-content: center;
-                    opacity: 0; transition: opacity 0.2s; padding: 0; z-index: 2;
-                }
-                .custom-wallpaper-item:hover .custom-remove { opacity: 0.9; }
-                .custom-remove svg { width: 14px; height: 14px; }
-                .custom-wallpapers {
-                    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
-                    margin-bottom: 16px;
-                }
-                .empty-message {
-                    grid-column: 1/-1; text-align: center;
-                    padding: 30px 20px; color: #bbb; font-size: 14px;
-                }
-                .custom-upload {
-                    padding: 24px; border: 2px dashed #ddd;
-                    text-align: center; cursor: pointer;
-                    transition: all 0.3s ease; background: #fafafa; margin-top: 8px;
-                }
-                .custom-upload:hover {
-                    border-color: #cc0000; background: #fff5f5;
-                }
-                .custom-upload svg {
-                    display: block; margin: 0 auto 8px;
-                    width: 40px; height: 40px; stroke: #888;
-                }
-                .custom-upload .upload-text {
-                    font-size: 14px; color: #888; font-weight: 500;
-                }
-                .custom-upload input[type="file"] { display: none; }
 
                 .system-info {
                     background: #f8f8f8; padding: 16px 20px; margin-bottom: 24px;
@@ -969,7 +821,6 @@
                     .settings-header h1 { font-size: 20px; }
                     .settings-dropdown { top: calc(var(--livebar-h, 44px) + 16px); right: 16px; min-width: 200px; }
                     .wallpaper-grid { gap: 10px; }
-                    .custom-wallpapers { gap: 10px; }
                     .wallpaper-name { font-size: 10px; padding: 6px 8px; }
                     .system-info { padding: 12px 16px; }
                     .system-info .info-row { padding: 8px 0; font-size: 13px; }
@@ -1008,18 +859,6 @@
             <div class="settings-section active" id="sectionWallpaper">
                 <div class="settings-section-title">Обои рабочего стола</div>
                 <div class="wallpaper-grid" id="wallpaperGrid"></div>
-
-                <div class="settings-section-title" style="margin-top:32px;">Мои обои</div>
-                <div class="custom-wallpapers" id="customWallpapersGrid"></div>
-                <div class="custom-upload" id="customUpload">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    <span class="upload-text">Загрузить свои обои</span>
-                    <input type="file" id="fileInput" accept="image/*" multiple />
-                </div>
             </div>
 
             <div class="settings-section" id="sectionSecurity">
@@ -1131,19 +970,6 @@
                 }
             }
         });
-
-        const upload = document.getElementById('customUpload');
-        const fileInput = document.getElementById('fileInput');
-        
-        if (upload && fileInput) {
-            upload.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', function(e) {
-                if (this.files && this.files.length > 0) {
-                    loadCustomWallpapers(this.files);
-                    this.value = '';
-                }
-            });
-        }
 
         const fsToggle = document.getElementById('fullscreenToggle');
         if (fsToggle) {
