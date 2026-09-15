@@ -125,6 +125,10 @@
         if (activity.type === 'stopwatch') return 'Секундомер ' + formatSecondsTenths(p.elapsed || 0);
         if (activity.type === 'timer') return 'Таймер ' + formatSeconds(p.remaining || 0);
         if (activity.type === 'alarm') return 'Будильник ' + (p.time || '--:--');
+        if (activity.type === 'recording') {
+            const prefix = p.paused ? 'Пауза' : 'Запись';
+            return prefix + ' ' + formatSecondsTenths(p.elapsed || 0);
+        }
         if (activity.type === 'custom') return p.text || '';
         return '';
     }
@@ -215,7 +219,9 @@
         e.stopPropagation();
         if (currentActivity && currentActivity.appId) {
             const id = currentActivity.appId;
-            if (typeof window[id + 'Init'] === 'function') window[id + 'Init']();
+            if (typeof window[id + 'Init'] === 'function') {
+                window[id + 'Init']();
+            }
         }
     }
 
@@ -497,6 +503,9 @@
         if (window.Game && typeof window.Game.destroy === 'function') window.Game.destroy();
         if (window.Settings && typeof window.Settings.destroy === 'function') window.Settings.destroy();
         if (window.Store && typeof window.Store.destroy === 'function') window.Store.destroy();
+        if (window.Camera && typeof window.Camera.destroy === 'function') window.Camera.destroy();
+        if (window.Recorder && typeof window.Recorder.destroy === 'function') window.Recorder.destroy();
+        if (window.Browser && typeof window.Browser.destroy === 'function') window.Browser.destroy();
 
         if (window._timeInterval) {
             clearInterval(window._timeInterval);
@@ -511,7 +520,7 @@
             window._scrollTimeout = null;
         }
 
-        const ids = ['storeApp', 'settingsApp', 'fileApp', 'timeApp', 'gameApp'];
+        const ids = ['storeApp', 'settingsApp', 'fileApp', 'timeApp', 'gameApp', 'cameraApp', 'recorderApp', 'browserApp'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (el) {

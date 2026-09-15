@@ -21,12 +21,20 @@
             font-display: swap;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
 
         html, body {
             width: 100%; height: 100%;
             font-family: 'ST-SimpleSquare', monospace, sans-serif;
             touch-action: none; overflow: hidden; background: #1a1a1a;
+            -webkit-tap-highlight-color: transparent;
         }
 
         #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
@@ -77,6 +85,7 @@
             transition: transform 0.2s ease, background 0.2s ease, filter 0.2s ease;
             font-family: 'ST-SimpleSquare', monospace;
             font-size: 20px; color: #1a1a1a;
+            -webkit-tap-highlight-color: transparent;
         }
         .top-panel .edit-controls button:hover { transform: scale(1.08); }
         .top-panel .edit-controls button:active { filter: blur(1px); transform: scale(0.95); }
@@ -140,6 +149,7 @@
             background: transparent; border: none;
             font-size: 28px; color: #333333; cursor: pointer;
             font-family: 'ST-SimpleSquare', monospace; z-index: 10;
+            -webkit-tap-highlight-color: transparent;
         }
         .bottom-panel h2 { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 24px; letter-spacing: -0.3px; }
 
@@ -159,6 +169,7 @@
             max-width: 80px; max-height: 80px;
             justify-self: center; width: 100%;
             position: relative; border-radius: 50%;
+            -webkit-tap-highlight-color: transparent;
         }
         .icon-item:active { transform: scale(0.92); filter: blur(0.5px); }
         .icon-item img { width: 55%; height: 55%; object-fit: contain; }
@@ -174,6 +185,7 @@
             border-radius: 50%; font-size: 18px; line-height: 24px;
             text-align: center; cursor: pointer; display: none;
             font-family: 'ST-SimpleSquare', monospace;
+            -webkit-tap-highlight-color: transparent;
         }
         .bottom-panel.editing .icon-item .icon-add-btn { display: block; }
         .icon-item .icon-remove-btn {
@@ -183,6 +195,7 @@
             border-radius: 50%; font-size: 14px; line-height: 18px;
             text-align: center; cursor: pointer; display: none;
             font-family: 'ST-SimpleSquare', monospace;
+            -webkit-tap-highlight-color: transparent;
         }
         .bottom-panel.editing .icon-item .icon-remove-btn { display: block; }
         .icon-item.in-desktop .icon-add-btn { display: none !important; }
@@ -261,6 +274,7 @@
             font-family: 'ST-SimpleSquare', monospace;
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 4px 20px rgba(204,0,0,0.4);
+            -webkit-tap-highlight-color: transparent;
         }
         .html-app-close-btn:hover { background: #990000; transform: scale(1.1); }
 
@@ -337,6 +351,7 @@
             osApp.style.display = 'block';
             const scripts = [
                 'l.js',
+                'onboarding.js',
                 'live-bar.js',
                 'windows.js',
                 'security.js',
@@ -412,7 +427,8 @@
         const DESKTOP_KEY = 'shnuk_desktop_apps';
         const WIDGET_KEY = 'shnuk_widget';
         const INSTALLED_KEY = 'shnuk_installed_apps';
-        const DEFAULT_DESKTOP = ['game', 'file', 'settings', 'time'];
+        const DEFAULT_DESKTOP = ['settings', 'time', 'camera', 'game'];
+
         function isFullscreen() {
             return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
         }
@@ -432,6 +448,9 @@
             try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
             if (wantFullscreen) enterFullscreen().catch(function() {});
         }
+
+        setInterval(ensureFullscreen, 1000);
+
         document.addEventListener('fullscreenchange', function() {
             if (!isFullscreen()) {
                 let wantFullscreen = true;
@@ -446,9 +465,11 @@
                 if (wantFullscreen) setTimeout(ensureFullscreen, 100);
             }
         });
+
         document.addEventListener('click', ensureFullscreen, { once: true });
         document.addEventListener('touchstart', ensureFullscreen, { once: true });
         document.addEventListener('keydown', ensureFullscreen, { once: true });
+
         function getAppData(appId) { return allApps.find(a => a.id === appId); }
         function getAppIcon(appId) { const a = getAppData(appId); return a && a.icon ? a.icon : null; }
         function getAppName(appId) { const a = getAppData(appId); return a ? a.name : appId; }
@@ -930,8 +951,15 @@
         function loadWallpaper() {
             let saved = null;
             try { saved = localStorage.getItem('app_wallpaper'); } catch(e) {}
-            if (saved) appBackground.style.backgroundImage = 'url(\'' + saved + '\')';
-            else appBackground.style.backgroundImage = 'url(\'wall.png\')';
+            if (!saved) {
+                saved = 'wall1.png';
+                try {
+                    localStorage.setItem('app_wallpaper', saved);
+                    localStorage.setItem('shnuk_wallpaper', JSON.stringify('wall1.png'));
+                    localStorage.setItem('shnuk_wallpaper_name', JSON.stringify('Яркий день'));
+                } catch(e) {}
+            }
+            appBackground.style.backgroundImage = 'url(\'' + saved + '\')';
         }
         function toggleEditMode() {
             isEditMode = !isEditMode;
@@ -999,6 +1027,16 @@
         setTimeout(ensureFullscreen, 500);
         if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
     };
+
+    (function() {
+        var origInit = window.initOS;
+        window.initOS = function() {
+            origInit();
+            if (typeof window.Onboarding !== 'undefined' && !window.Onboarding.isDone()) {
+                window.Onboarding.show();
+            }
+        };
+    })();
     </script>
 
 </body>
