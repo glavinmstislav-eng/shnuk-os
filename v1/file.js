@@ -1151,8 +1151,20 @@
         });
     }
 
+    function requestFullscreenSafe() {
+        if (document.fullscreenElement || document.webkitFullscreenElement) return;
+        const el = document.documentElement;
+        try {
+            if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+            else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+            else if (el.msRequestFullscreen) el.msRequestFullscreen();
+        } catch(e) {}
+    }
+
     function uploadFiles() {
         console.log('[Files] Вызов загрузки');
+        requestFullscreenSafe();
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
@@ -1490,20 +1502,16 @@
         if (confirm(`Установить "${file.name}" как обои?`)) {
             try {
                 localStorage.setItem('app_wallpaper', file.data);
-                localStorage.setItem('shnuk_wallpaper_name', file.name);
-                
+                localStorage.setItem('shnuk_wallpaper_name', JSON.stringify(file.name));
+                localStorage.setItem('shnuk_wallpaper', JSON.stringify(file.data));
+
                 const bg = document.getElementById('appBackground');
                 if (bg) {
                     bg.style.backgroundImage = `url(${file.data})`;
-                    console.log('[Files] Обои применены к appBackground');
                 }
-                
-                if (typeof svaer !== 'undefined' && svaer) {
-                    svaer.set('wallpaper', file.data);
-                    svaer.set('wallpaper_name', file.name);
-                    console.log('[Files] Сохранено через svaer');
-                }
-                
+
+                window.dispatchEvent(new CustomEvent('shnuk:wallpaper-changed', { detail: { url: file.data } }));
+
                 alert('Обои установлены!');
                 closePreview();
             } catch(e) {

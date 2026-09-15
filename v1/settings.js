@@ -12,6 +12,7 @@
     const WALLPAPER_NAME_KEY = 'shnuk_wallpaper_name';
     const CUSTOM_WALLPAPERS_KEY = 'shnuk_custom_wallpapers';
     const FULLSCREEN_KEY = 'shnuk_fullscreen';
+    const APP_WALLPAPER_KEY = 'app_wallpaper';
 
     const wallpapers = [
         { id: 'wall1', name: 'Яркий день', file: 'wall1.png' },
@@ -87,10 +88,24 @@
         }
     }
 
+    function notifyWallpaperChanged() {
+        try {
+            const url = localStorage.getItem(APP_WALLPAPER_KEY);
+            if (url) {
+                window.dispatchEvent(new CustomEvent('shnuk:wallpaper-changed', { detail: { url: url } }));
+            }
+        } catch(e) {}
+    }
+
     function loadData() {
         try {
-            currentWallpaper = svaer.get(WALLPAPER_KEY, 'wall1.png');
             customWallpapers = svaer.get(CUSTOM_WALLPAPERS_KEY, []);
+            const savedAppWallpaper = localStorage.getItem(APP_WALLPAPER_KEY);
+            if (savedAppWallpaper) {
+                currentWallpaper = savedAppWallpaper;
+            } else {
+                currentWallpaper = svaer.get(WALLPAPER_KEY, 'wall1.png');
+            }
         } catch(e) {
             currentWallpaper = 'wall1.png';
             customWallpapers = [];
@@ -127,7 +142,8 @@
         if (url) {
             const bg = document.getElementById('appBackground');
             if (bg) bg.style.backgroundImage = `url('${url}')`;
-            localStorage.setItem('app_wallpaper', url);
+            try { localStorage.setItem(APP_WALLPAPER_KEY, url); } catch(e) {}
+            notifyWallpaperChanged();
         }
     }
 
@@ -186,7 +202,8 @@
         
         wallpapers.forEach(w => {
             const div = document.createElement('div');
-            div.className = 'wallpaper-item' + (currentWallpaper === w.id ? ' selected' : '');
+            const isSelected = currentWallpaper === w.file || currentWallpaper === w.id;
+            div.className = 'wallpaper-item' + (isSelected ? ' selected' : '');
             div.innerHTML = `
                 <img src="${w.file}" alt="${w.name}" loading="lazy" onerror="this.style.display='none'" />
                 <div class="wallpaper-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg></div>
@@ -209,7 +226,8 @@
         
         customWallpapers.forEach(w => {
             const div = document.createElement('div');
-            div.className = 'custom-wallpaper-item' + (currentWallpaper === w.id ? ' selected' : '');
+            const isSelected = currentWallpaper === w.id || currentWallpaper === w.data;
+            div.className = 'custom-wallpaper-item' + (isSelected ? ' selected' : '');
             div.innerHTML = `
                 <img src="${w.data}" alt="${w.name}" loading="lazy" />
                 <button class="custom-remove" data-id="${w.id}">
@@ -1156,7 +1174,6 @@
         }
 
         renderAll();
-        if (currentWallpaper) applyWallpaper(currentWallpaper);
         renderSystemInfo();
 
         const fsChangeHandler = function() {

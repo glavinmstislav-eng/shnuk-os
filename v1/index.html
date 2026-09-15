@@ -470,6 +470,25 @@
         document.addEventListener('touchstart', ensureFullscreen, { once: true });
         document.addEventListener('keydown', ensureFullscreen, { once: true });
 
+        function applyWallpaperFromStorage() {
+            let url = null;
+            try { url = localStorage.getItem('app_wallpaper'); } catch(e) {}
+            if (!url) {
+                url = 'wall1.png';
+                try {
+                    localStorage.setItem('app_wallpaper', url);
+                    localStorage.setItem('shnuk_wallpaper', JSON.stringify('wall1.png'));
+                    localStorage.setItem('shnuk_wallpaper_name', JSON.stringify('Яркий день'));
+                } catch(e) {}
+            }
+            appBackground.style.backgroundImage = 'url(\'' + url + '\')';
+        }
+
+        window.addEventListener('shnuk:wallpaper-changed', applyWallpaperFromStorage);
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'app_wallpaper') applyWallpaperFromStorage();
+        });
+
         function getAppData(appId) { return allApps.find(a => a.id === appId); }
         function getAppIcon(appId) { const a = getAppData(appId); return a && a.icon ? a.icon : null; }
         function getAppName(appId) { const a = getAppData(appId); return a ? a.name : appId; }
@@ -948,19 +967,6 @@
                 }, 0);
             }
         }
-        function loadWallpaper() {
-            let saved = null;
-            try { saved = localStorage.getItem('app_wallpaper'); } catch(e) {}
-            if (!saved) {
-                saved = 'wall1.png';
-                try {
-                    localStorage.setItem('app_wallpaper', saved);
-                    localStorage.setItem('shnuk_wallpaper', JSON.stringify('wall1.png'));
-                    localStorage.setItem('shnuk_wallpaper_name', JSON.stringify('Яркий день'));
-                } catch(e) {}
-            }
-            appBackground.style.backgroundImage = 'url(\'' + saved + '\')';
-        }
         function toggleEditMode() {
             isEditMode = !isEditMode;
             pencilIcon.classList.toggle('active', isEditMode);
@@ -1021,18 +1027,8 @@
                 refreshApps();
             }
         }, 2000);
-        loadWallpaper();
 
-        let lastWallpaper = null;
-        try { lastWallpaper = localStorage.getItem('app_wallpaper'); } catch(e) {}
-        setInterval(function() {
-            let current = null;
-            try { current = localStorage.getItem('app_wallpaper'); } catch(e) {}
-            if (current && current !== lastWallpaper) {
-                lastWallpaper = current;
-                appBackground.style.backgroundImage = 'url(\'' + current + '\')';
-            }
-        }, 500);
+        applyWallpaperFromStorage();
 
         setTimeout(() => loadWidget(), 300);
         loadApps();
