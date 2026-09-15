@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="robots" content="noindex, nofollow" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Shnuk OS</title>
     <style>
         :root { --livebar-h: 44px; }
@@ -35,6 +36,7 @@
             font-family: 'ST-SimpleSquare', monospace, sans-serif;
             touch-action: none; overflow: hidden; background: #1a1a1a;
             -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
         }
 
         #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
@@ -350,6 +352,8 @@
             osApp.classList.add('visible');
             osApp.style.display = 'block';
             const scripts = [
+                'file-storage.js',
+                'AOD.js',
                 'l.js',
                 'onboarding.js',
                 'live-bar.js',
@@ -358,6 +362,7 @@
                 'app-scanner.js',
                 'store.js',
                 'settings.js',
+                'actions.js',
                 'widget-time.js'
             ];
             let loaded = 0;
@@ -470,6 +475,19 @@
         document.addEventListener('touchstart', ensureFullscreen, { once: true });
         document.addEventListener('keydown', ensureFullscreen, { once: true });
 
+        if ('wakeLock' in navigator) {
+            let wakeLock = null;
+            const requestWakeLock = async function() {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch(e) {}
+            };
+            requestWakeLock();
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && !wakeLock) requestWakeLock();
+            });
+        }
+
         function applyWallpaperFromStorage() {
             let url = null;
             try { url = localStorage.getItem('app_wallpaper'); } catch(e) {}
@@ -477,8 +495,8 @@
                 url = 'wall1.png';
                 try {
                     localStorage.setItem('app_wallpaper', url);
-                    localStorage.setItem('shnuk_wallpaper', JSON.stringify('wall1.png'));
-                    localStorage.setItem('shnuk_wallpaper_name', JSON.stringify('Яркий день'));
+                    localStorage.setItem('shnuk_wallpaper', url);
+                    localStorage.setItem('shnuk_wallpaper_name', 'Яркий день');
                 } catch(e) {}
             }
             appBackground.style.backgroundImage = 'url(\'' + url + '\')';
@@ -1034,6 +1052,7 @@
         loadApps();
         setTimeout(ensureFullscreen, 500);
         if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
+        if (window.AOD && typeof window.AOD.init === 'function') window.AOD.init();
     };
 
     (function() {

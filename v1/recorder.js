@@ -62,8 +62,7 @@
         const el = document.getElementById('recorderTimer');
         if (el && isRecording && !isPaused) {
             recordingElapsed = Date.now() - recordingStartTime;
-            const str = formatTime(recordingElapsed);
-            el.textContent = str;
+            el.textContent = formatTime(recordingElapsed);
             if (window.LiveBar) {
                 window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: false });
             }
@@ -71,17 +70,33 @@
     }
 
     async function startRecording() {
+        if (isRecording) return;
         try {
             if (!stream) {
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
+
+            let mimeType = 'audio/webm';
+            if (typeof MediaRecorder !== 'undefined') {
+                if (!MediaRecorder.isTypeSupported('audio/webm')) {
+                    if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+                    else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+                }
+            }
+
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+            } catch(e) {
+                mediaRecorder = new MediaRecorder(stream);
+                mimeType = mediaRecorder.mimeType || 'audio/webm';
+            }
+
             chunks = [];
-            mediaRecorder = new MediaRecorder(stream);
             mediaRecorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) chunks.push(e.data);
             };
             mediaRecorder.onstop = function() {
-                saveRecording();
+                saveRecording(mimeType);
             };
             mediaRecorder.start();
             isRecording = true;
@@ -136,27 +151,39 @@
         if (window.LiveBar) window.LiveBar.clear();
     }
 
-    function saveRecording() {
-        if (chunks.length === 0) return;
-        const blob = new Blob(chunks, { type: 'audio/webm' });
+    function saveRecording(mimeType) {
+        if (chunks.length === 0) {
+            if (window.Win && window.Win.notify) window.Win.notify('Нет данных для сохранения', { type: 'error' });
+            return;
+        }
+
+        const type = mimeType || 'audio/webm';
+        const ext = type.indexOf('mp4') !== -1 ? 'm4a' : (type.indexOf('ogg') !== -1 ? 'ogg' : 'webm');
+        const blob = new Blob(chunks, { type: type });
         const reader = new FileReader();
+
         reader.onload = function() {
-            try {
-                const saved = JSON.parse(localStorage.getItem('shnuk_files') || '[]');
-                saved.push({
-                    id: Date.now() + '_' + Math.random().toString(36).substr(2, 8),
-                    name: 'recording_' + Date.now() + '.webm',
-                    size: blob.size,
-                    type: 'audio/webm',
-                    data: reader.result,
-                    date: new Date().toISOString(),
-                    extension: 'webm'
-                });
-                localStorage.setItem('shnuk_files', JSON.stringify(saved));
-                if (window.Win && window.Win.notify) window.Win.notify('Запись сохранена в Файлы', { type: 'success' });
-            } catch(e) {
-                if (window.Win && window.Win.notify) window.Win.notify('Ошибка сохранения', { type: 'error' });
+            if (!window.SharedFiles) {
+                if (window.Win && window.Win.notify) window.Win.notify('Хранилище недоступно', { type: 'error' });
+                return;
             }
+            const ok = window.SharedFiles.add({
+                id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
+                name: 'recording_' + Date.now() + '.' + ext,
+                size: blob.size,
+                type: type,
+                data: reader.result,
+                date: new Date().toISOString(),
+                extension: ext
+            });
+            if (ok) {
+                if (window.Win && window.Win.notify) window.Win.notify('Запись сохранена в Файлы', { type: 'success' });
+            } else {
+                if (window.Win && window.Win.notify) window.Win.notify('Не удалось сохранить (переполнено?)', { type: 'error' });
+            }
+        };
+        reader.onerror = function() {
+            if (window.Win && window.Win.notify) window.Win.notify('Ошибка чтения записи', { type: 'error' });
         };
         reader.readAsDataURL(blob);
         chunks = [];
@@ -328,7 +355,11 @@
         if (e.key === 'Escape') closeRecorder();
     }
 
-    window.Recorder = { destroy: destroy };
+    window.Recorder = {
+        destroy: destroy,
+        start: startRecording,
+        stop: stopRecording
+    };
     window.recorderInit = function() { openRecorder(); };
 
 })();

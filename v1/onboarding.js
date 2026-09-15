@@ -26,10 +26,7 @@
         const style = document.createElement('style');
         style.id = 'onboardingStyles';
         style.textContent = `
-            @keyframes obPulse {
-                0%,100% { transform: translateX(0); }
-                50% { transform: translateX(8px); }
-            }
+            @keyframes obPulse { 0%,100% { transform: translateX(0); } 50% { transform: translateX(8px); } }
             @keyframes obSlideUp {
                 from { transform: translateX(-50%) translateY(30px); opacity: 0; filter: blur(10px); }
                 to { transform: translateX(-50%) translateY(0); opacity: 1; filter: blur(0); }
@@ -93,16 +90,17 @@
                 transform: translateX(-50%) translateY(30px);
                 width: calc(100% - 32px);
                 max-width: 400px;
-                background: #ffffff;
+                background: #141414;
+                color: #ffffff;
                 border: 2px solid #cc0000;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+                box-shadow: 0 20px 60px rgba(0,0,0,0.5);
                 padding: 18px 22px;
-                z-index: 2147483638;
+                z-index: 2147483646;
                 font-family: 'ST-SimpleSquare', monospace;
-                color: #1a1a1a;
                 box-sizing: border-box;
                 opacity: 0;
                 pointer-events: none;
+                isolation: isolate;
             }
             #obTooltip.visible {
                 animation: obSlideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -112,11 +110,12 @@
                 font-size: 17px;
                 font-weight: 700;
                 margin-bottom: 6px;
+                color: #ffffff;
             }
             #obTooltip .ob-desc {
                 font-size: 13px;
                 line-height: 1.5;
-                color: #555;
+                color: #dddddd;
                 margin-bottom: 12px;
             }
             #obTooltip .ob-hint {
@@ -124,12 +123,12 @@
                 align-items: center;
                 gap: 8px;
                 font-size: 12px;
-                color: #cc0000;
+                color: #ff6666;
                 font-weight: 600;
                 letter-spacing: 0.5px;
                 padding: 6px 12px;
                 border: 2px dashed #cc0000;
-                background: #fff5f5;
+                background: rgba(204, 0, 0, 0.15);
             }
             #obTooltip .ob-hint .dot {
                 width: 8px; height: 8px;
@@ -147,7 +146,7 @@
             #obTooltip .ob-dot {
                 width: 6px; height: 6px;
                 border-radius: 50%;
-                background: #ddd;
+                background: #555;
                 transition: background 0.3s, transform 0.3s;
             }
             #obTooltip .ob-dot.active {
@@ -161,7 +160,7 @@
                 border: none;
                 cursor: pointer;
                 font-size: 11px;
-                color: #aaa;
+                color: #888;
                 font-family: 'ST-SimpleSquare', monospace;
                 padding: 4px 8px;
             }
@@ -177,13 +176,14 @@
                 border: 2px solid #cc0000;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.35);
                 padding: 40px 24px;
-                z-index: 2147483639;
+                z-index: 2147483646;
                 text-align: center;
                 font-family: 'ST-SimpleSquare', monospace;
                 color: #1a1a1a;
                 box-sizing: border-box;
                 opacity: 0;
                 pointer-events: none;
+                isolation: isolate;
             }
             #obFinalCard.visible {
                 animation: obScaleIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -260,9 +260,9 @@
             },
             {
                 id: 'notif',
-                title: 'Шторка быстрых настроек',
-                desc: 'Нажмите на часы в верхней полоске чтобы открыть шторку',
-                hint: 'Нажмите на часы в верхней полоске'
+                title: 'Шторка уведомлений',
+                desc: 'Свайпните сверху вниз по рабочему столу, чтобы открыть шторку быстрых настроек.',
+                hint: 'Свайпните вниз'
             },
             {
                 id: 'brightness',

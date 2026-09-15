@@ -13,6 +13,7 @@
         { id: 'store', name: 'Store', icon: 'store.png' },
         { id: 'camera', name: 'Камера', icon: 'camera.png' },
         { id: 'recorder', name: 'Звукозапись', icon: 'recording.png' },
+        { id: 'actions', name: 'Actions', icon: 'actions.png' }
     ];
 
     const BASE_PATH = './';
@@ -57,7 +58,7 @@
             const promises = APP_LIST.map(function(appData) {
                 const jsPath = BASE_PATH + appData.id + '.js';
                 const iconPath = appData.icon || appData.id + '.png';
-                
+
                 return imageExists(iconPath).then(function(iconExists) {
                     foundApps.push({
                         id: appData.id,
@@ -81,11 +82,11 @@
 
             Promise.allSettled(promises).then(function() {
                 const installed = getInstalledApps();
-                
+
                 installed.forEach(function(app) {
                     if (!app || !app.id || !app.name) return;
                     if (foundApps.some(function(a) { return a.id === app.id; })) return;
-                    
+
                     foundApps.push({
                         id: app.id,
                         name: app.name,
@@ -136,19 +137,19 @@
     function installApp(appData) {
         try {
             const installed = getInstalledApps();
-            
+
             const existing = installed.findIndex(function(a) { return a.id === appData.id; });
             if (existing !== -1) {
                 installed[existing] = appData;
             } else {
                 installed.push(appData);
             }
-            
+
             localStorage.setItem(INSTALLED_KEY, JSON.stringify(installed));
-            
+
             cachedApps = null;
             scanPromise = null;
-            
+
             return true;
         } catch(e) {
             return false;
@@ -160,10 +161,10 @@
             let installed = getInstalledApps();
             installed = installed.filter(function(a) { return a.id !== appId; });
             localStorage.setItem(INSTALLED_KEY, JSON.stringify(installed));
-            
+
             cachedApps = null;
             scanPromise = null;
-            
+
             return true;
         } catch(e) {
             return false;

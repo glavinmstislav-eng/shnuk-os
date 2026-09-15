@@ -30,24 +30,6 @@
         };
     }
 
-    function getSvaer() {
-        if (typeof window.svaer !== 'undefined') return window.svaer;
-        return {
-            get: (key, def) => {
-                try {
-                    const val = localStorage.getItem(key);
-                    return val ? JSON.parse(val) : def;
-                } catch { return def; }
-            },
-            set: (key, val) => {
-                try { localStorage.setItem(key, JSON.stringify(val)); return true; }
-                catch { return false; }
-            }
-        };
-    }
-
-    const svaer = getSvaer();
-
     function isFullscreen() {
         return !!(document.fullscreenElement || 
                   document.webkitFullscreenElement || 
@@ -79,11 +61,11 @@
     function toggleFullscreen() {
         if (isFullscreen()) {
             return exitFullscreen().then(function() {
-                svaer.set(FULLSCREEN_KEY, false);
+                try { localStorage.setItem(FULLSCREEN_KEY, 'false'); } catch(e) {}
             });
         } else {
             return enterFullscreen().then(function() {
-                svaer.set(FULLSCREEN_KEY, true);
+                try { localStorage.setItem(FULLSCREEN_KEY, 'true'); } catch(e) {}
             });
         }
     }
@@ -97,54 +79,72 @@
         } catch(e) {}
     }
 
-    function loadData() {
+    function loadCustomWallpapersFromStorage() {
         try {
-            customWallpapers = svaer.get(CUSTOM_WALLPAPERS_KEY, []);
-            const savedAppWallpaper = localStorage.getItem(APP_WALLPAPER_KEY);
-            if (savedAppWallpaper) {
-                currentWallpaper = savedAppWallpaper;
+            const raw = localStorage.getItem(CUSTOM_WALLPAPERS_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter(w => w && w.id && w.data);
+        } catch(e) {
+            return [];
+        }
+    }
+
+    function saveCustomWallpapersToStorage() {
+        try {
+            localStorage.setItem(CUSTOM_WALLPAPERS_KEY, JSON.stringify(customWallpapers));
+        } catch(e) {}
+    }
+
+    function loadData() {
+        customWallpapers = loadCustomWallpapersFromStorage();
+        try {
+            const savedApp = localStorage.getItem(APP_WALLPAPER_KEY);
+            if (savedApp) {
+                currentWallpaper = savedApp;
             } else {
-                currentWallpaper = svaer.get(WALLPAPER_KEY, 'wall1.png');
+                currentWallpaper = localStorage.getItem(WALLPAPER_KEY) || 'wall1.png';
             }
         } catch(e) {
             currentWallpaper = 'wall1.png';
-            customWallpapers = [];
         }
     }
 
     function saveWallpaper(id) {
-        currentWallpaper = id;
-        svaer.set(WALLPAPER_KEY, id);
-        
-        let name = id;
-        const found = wallpapers.find(w => w.id === id);
-        if (found) name = found.name;
-        else {
-            const custom = customWallpapers.find(w => w.id === id);
-            if (custom) name = custom.name;
-        }
-        svaer.set(WALLPAPER_NAME_KEY, name);
-        
-        applyWallpaper(id);
-        renderWallpapers();
-        renderCustomWallpapers();
-    }
-
-    function applyWallpaper(id) {
         let url = null;
-        const found = wallpapers.find(w => w.id === id);
+        let name = id;
+
+        const found = wallpapers.find(w => w.id === id || w.file === id);
         if (found) {
             url = found.file;
+            name = found.name;
         } else {
-            const custom = customWallpapers.find(w => w.id === id);
-            if (custom) url = custom.data;
+            const custom = customWallpapers.find(w => w.id === id || w.data === id);
+            if (custom) {
+                url = custom.data;
+                name = custom.name;
+            }
         }
-        if (url) {
-            const bg = document.getElementById('appBackground');
-            if (bg) bg.style.backgroundImage = `url('${url}')`;
-            try { localStorage.setItem(APP_WALLPAPER_KEY, url); } catch(e) {}
-            notifyWallpaperChanged();
-        }
+
+        if (!url) return;
+
+        currentWallpaper = url;
+        try {
+            localStorage.setItem(WALLPAPER_KEY, url);
+            localStorage.setItem(WALLPAPER_NAME_KEY, name);
+            localStorage.setItem(APP_WALLPAPER_KEY, url);
+        } catch(e) {}
+
+        applyWallpaperDirect(url);
+        renderWallpapers();
+        renderCustomWallpapers();
+        notifyWallpaperChanged();
+    }
+
+    function applyWallpaperDirect(url) {
+        const bg = document.getElementById('appBackground');
+        if (bg) bg.style.backgroundImage = `url('${url}')`;
     }
 
     function loadCustomWallpapers(files) {
@@ -164,13 +164,14 @@
                     });
                     resolve();
                 };
+                reader.onerror = () => resolve();
                 reader.readAsDataURL(file);
             }));
         });
         
         Promise.all(promises).then(() => {
             customWallpapers = customWallpapers.concat(newItems);
-            svaer.set(CUSTOM_WALLPAPERS_KEY, customWallpapers);
+            saveCustomWallpapersToStorage();
             renderCustomWallpapers();
             if (newItems.length) saveWallpaper(newItems[0].id);
         });
@@ -187,9 +188,11 @@
         if (!ok) return;
         
         customWallpapers = customWallpapers.filter(w => w.id !== id);
-        svaer.set(CUSTOM_WALLPAPERS_KEY, customWallpapers);
-        if (currentWallpaper === id) {
-            saveWallpaper(customWallpapers.length ? customWallpapers[0].id : 'wall1.png');
+        saveCustomWallpapersToStorage();
+        
+        if (currentWallpaper === id || customWallpapers.find(w => w.data === currentWallpaper) === undefined) {
+            const next = customWallpapers.length ? customWallpapers[0].id : 'wall1';
+            saveWallpaper(next);
         } else {
             renderCustomWallpapers();
         }
@@ -259,7 +262,7 @@
 
         let filesCount = 0;
         try {
-            const files = localStorage.getItem('shnuk_downloaded_files');
+            const files = localStorage.getItem('shnuk_files');
             if (files) {
                 const parsed = JSON.parse(files);
                 filesCount = Array.isArray(parsed) ? parsed.length : 0;
@@ -298,7 +301,7 @@
 
         container.innerHTML = `
             <div class="info-row">
-                <span class="info-label">Загружено файлов</span>
+                <span class="info-label">Файлов в менеджере</span>
                 <span class="info-value">${filesCount}</span>
             </div>
             <div class="info-row">
@@ -471,11 +474,8 @@
                 for (let i = 0; i < selectedPattern.length; i++) {
                     const dot = dots.find(d => d.id === selectedPattern[i]);
                     if (dot) {
-                        if (i === 0) {
-                            ctx.moveTo(dot.x, dot.y);
-                        } else {
-                            ctx.lineTo(dot.x, dot.y);
-                        }
+                        if (i === 0) ctx.moveTo(dot.x, dot.y);
+                        else ctx.lineTo(dot.x, dot.y);
                     }
                 }
                 ctx.stroke();
@@ -509,9 +509,7 @@
                 const dx = dot.x - pos.x;
                 const dy = dot.y - pos.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < dotRadius * 2.5) {
-                    return dot;
-                }
+                if (dist < dotRadius * 2.5) return dot;
             }
             return null;
         }
@@ -520,7 +518,6 @@
             e.preventDefault();
             isDrawing = true;
             currentMouse = getMousePos(e);
-            
             const dot = findDot(currentMouse);
             if (dot && !dot.used) {
                 dot.used = true;
@@ -534,7 +531,6 @@
             if (!isDrawing) return;
             e.preventDefault();
             currentMouse = getMousePos(e);
-            
             const dot = findDot(currentMouse);
             if (dot && !dot.used) {
                 dot.used = true;
@@ -553,9 +549,7 @@
 
         function updateHint() {
             const hint = document.getElementById('patternHint');
-            if (hint) {
-                hint.textContent = 'Точек: ' + selectedPattern.length;
-            }
+            if (hint) hint.textContent = 'Точек: ' + selectedPattern.length;
         }
 
         canvas.addEventListener('mousedown', startDrawing);
@@ -1072,7 +1066,6 @@
                 closeSectionsMenu();
                 return;
             }
-
             isDropdownOpen = true;
 
             dropdownMenu = document.createElement('div');
@@ -1117,11 +1110,8 @@
             const section = document.getElementById('section' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1));
             if (section) section.classList.add('active');
             
-            if (sectionId === 'system') {
-                renderSystemInfo();
-            } else if (sectionId === 'security') {
-                renderSecurity();
-            }
+            if (sectionId === 'system') renderSystemInfo();
+            else if (sectionId === 'security') renderSecurity();
         }
 
         document.getElementById('settingsMenuBtn').addEventListener('click', function(e) {
@@ -1159,11 +1149,8 @@
         if (fsToggle) {
             fsToggle.addEventListener('click', function() {
                 toggleFullscreen().then(function() {
-                    if (isFullscreen()) {
-                        fsToggle.classList.add('active');
-                    } else {
-                        fsToggle.classList.remove('active');
-                    }
+                    if (isFullscreen()) fsToggle.classList.add('active');
+                    else fsToggle.classList.remove('active');
                 }).catch(function(err) {});
             });
         }
@@ -1222,7 +1209,31 @@
         document.querySelectorAll('.settings-dropdown').forEach(m => m.remove());
     }
 
-    window.Settings = { destroy: destroy };
+    window.Settings = {
+        destroy: destroy,
+        openSection: function(sectionId) {
+            if (!isOpen) createUI();
+            setTimeout(function() {
+                const container = document.getElementById('settingsApp');
+                if (!container) return;
+                container.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+                const section = document.getElementById('section' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1));
+                if (section) section.classList.add('active');
+                if (sectionId === 'system') renderSystemInfo();
+                else if (sectionId === 'security') renderSecurity();
+            }, 400);
+        },
+        toggle: function(id) {
+            setTimeout(function() {
+                const el = document.getElementById(id);
+                if (el) el.click();
+            }, 400);
+        },
+        selectWallpaper: function(id) {
+            if (!id) return;
+            saveWallpaper(id);
+        }
+    };
     window.settingsInit = function() {
         if (isOpen) {
             const el = document.getElementById('settingsApp');
