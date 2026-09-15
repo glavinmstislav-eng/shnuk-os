@@ -13,6 +13,7 @@
     const CUSTOM_WALLPAPERS_KEY = 'shnuk_custom_wallpapers';
     const FULLSCREEN_KEY = 'shnuk_fullscreen';
     const APP_WALLPAPER_KEY = 'app_wallpaper';
+    const AOD_KEY = 'shnuk_aod_enabled';
 
     const wallpapers = [
         { id: 'wall1', name: 'Яркий день', file: 'wall1.png' },
@@ -68,6 +69,105 @@
                 try { localStorage.setItem(FULLSCREEN_KEY, 'true'); } catch(e) {}
             });
         }
+    }
+
+    function isAODEnabled() {
+        try { return localStorage.getItem(AOD_KEY) === 'true'; }
+        catch(e) { return false; }
+    }
+
+    function setAODEnabled(on) {
+        try { localStorage.setItem(AOD_KEY, on ? 'true' : 'false'); } catch(e) {}
+        if (window.AOD && typeof window.AOD.setEnabled === 'function') {
+            window.AOD.setEnabled(on);
+        }
+    }
+
+    function showAODWarning(callback) {
+        const overlay = document.createElement('div');
+        overlay.id = 'aodWarningOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            z-index: 2147483646;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'ST-SimpleSquare', monospace;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: #ffffff;
+            max-width: 440px;
+            width: calc(100% - 40px);
+            padding: 28px 24px 24px;
+            box-sizing: border-box;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+            border: 2px solid #cc0000;
+            transform: scale(0.94);
+            transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+        `;
+
+        dialog.innerHTML = `
+            <div style="font-size:18px;font-weight:700;color:#cc0000;margin-bottom:14px;">Внимание</div>
+            <div style="font-size:14px;line-height:1.6;color:#333;margin-bottom:24px;">
+                AOD опасен для устройств с IPS экраном, пожалуйста, не включайте эту функцию если на вашем устройстве IPS экран. Shnuk не несет отвественности за ваше устройство в случае выгарания экрана из-за IPS, или чего похуже.
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button id="aodConfirmBtn" style="
+                    padding:14px 20px;border:none;
+                    background:#cc0000;color:#fff;
+                    cursor:pointer;font-family:'ST-SimpleSquare',monospace;
+                    font-size:14px;font-weight:600;
+                    transition:background 0.2s;
+                ">Всё равно включить AOD</button>
+                <button id="aodCancelBtn" style="
+                    padding:14px 20px;border:2px solid #e0e0e0;
+                    background:#fff;color:#666;
+                    cursor:pointer;font-family:'ST-SimpleSquare',monospace;
+                    font-size:14px;font-weight:600;
+                    transition:all 0.2s;
+                ">Отмена</button>
+            </div>
+        `;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        requestAnimationFrame(function() {
+            overlay.style.opacity = '1';
+            dialog.style.transform = 'scale(1)';
+        });
+
+        function close() {
+            overlay.style.opacity = '0';
+            dialog.style.transform = 'scale(0.94)';
+            setTimeout(function() {
+                if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }, 300);
+        }
+
+        document.getElementById('aodConfirmBtn').addEventListener('click', function() {
+            close();
+            if (callback) callback(true);
+        });
+        document.getElementById('aodCancelBtn').addEventListener('click', function() {
+            close();
+            if (callback) callback(false);
+        });
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                close();
+                if (callback) callback(false);
+            }
+        });
     }
 
     function notifyWallpaperChanged() {
@@ -847,31 +947,31 @@
                     border-color: #ffcccc; background: #fff5f5;
                 }
 
-                .fullscreen-toggle {
+                .toggle-row {
                     display: flex; align-items: center;
                     justify-content: space-between;
                     padding: 16px 20px; background: #f8f8f8;
                     border: 2px solid #e0e0e0; margin-bottom: 16px;
                     cursor: pointer; transition: all 0.2s;
                 }
-                .fullscreen-toggle:hover {
+                .toggle-row:hover {
                     border-color: #cc0000; background: #fff5f5;
                 }
-                .fullscreen-toggle .fs-left {
+                .toggle-row .tr-left {
                     display: flex; align-items: center; gap: 12px;
                 }
-                .fullscreen-toggle .fs-text {
+                .toggle-row .tr-text {
                     font-size: 15px; font-weight: 600; color: #1a1a1a;
                 }
-                .fullscreen-toggle .fs-sub {
+                .toggle-row .tr-sub {
                     font-size: 12px; color: #888; margin-top: 2px;
                 }
-                .fullscreen-toggle .fs-switch {
+                .toggle-row .tr-switch {
                     width: 48px; height: 28px; background: #ddd;
                     border-radius: 14px; position: relative;
                     transition: background 0.3s; flex-shrink: 0;
                 }
-                .fullscreen-toggle .fs-switch::after {
+                .toggle-row .tr-switch::after {
                     content: ''; position: absolute;
                     top: 2px; left: 2px;
                     width: 24px; height: 24px;
@@ -879,8 +979,8 @@
                     transition: transform 0.3s;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
-                .fullscreen-toggle.active .fs-switch { background: #cc0000; }
-                .fullscreen-toggle.active .fs-switch::after {
+                .toggle-row.active .tr-switch { background: #cc0000; }
+                .toggle-row.active .tr-switch::after {
                     transform: translateX(20px);
                 }
 
@@ -976,8 +1076,8 @@
                     .action-card { padding: 16px; }
                     .action-card .action-title { font-size: 15px; }
                     .action-card button { padding: 8px 18px; font-size: 13px; }
-                    .fullscreen-toggle { padding: 14px 16px; }
-                    .fullscreen-toggle .fs-text { font-size: 14px; }
+                    .toggle-row { padding: 14px 16px; }
+                    .toggle-row .tr-text { font-size: 14px; }
                     .security-section { padding: 16px; }
                 }
             `;
@@ -985,6 +1085,7 @@
         }
 
         const isFs = isFullscreen();
+        const isAOD = isAODEnabled();
 
         container.innerHTML = `
             <div class="settings-header">
@@ -1030,14 +1131,24 @@
             <div class="settings-section" id="sectionSystem">
                 <div class="settings-section-title">Отображение</div>
 
-                <div class="fullscreen-toggle ${isFs ? 'active' : ''}" id="fullscreenToggle">
-                    <div class="fs-left">
+                <div class="toggle-row ${isFs ? 'active' : ''}" id="fullscreenToggle">
+                    <div class="tr-left">
                         <div>
-                            <div class="fs-text">Полноэкранный режим</div>
-                            <div class="fs-sub">Скрыть элементы браузера</div>
+                            <div class="tr-text">Полноэкранный режим</div>
+                            <div class="tr-sub">Скрыть элементы браузера</div>
                         </div>
                     </div>
-                    <div class="fs-switch"></div>
+                    <div class="tr-switch"></div>
+                </div>
+
+                <div class="toggle-row ${isAOD ? 'active' : ''}" id="aodToggle">
+                    <div class="tr-left">
+                        <div>
+                            <div class="tr-text">AOD</div>
+                            <div class="tr-sub">Always On Display (часы на заблокированном экране)</div>
+                        </div>
+                    </div>
+                    <div class="tr-switch"></div>
                 </div>
 
                 <div class="settings-section-title" style="margin-top:32px;">Информация о системе</div>
@@ -1155,6 +1266,24 @@
             });
         }
 
+        const aodToggle = document.getElementById('aodToggle');
+        if (aodToggle) {
+            aodToggle.addEventListener('click', function() {
+                const currentlyOn = isAODEnabled();
+                if (currentlyOn) {
+                    setAODEnabled(false);
+                    aodToggle.classList.remove('active');
+                } else {
+                    showAODWarning(function(confirmed) {
+                        if (confirmed) {
+                            setAODEnabled(true);
+                            aodToggle.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }
+
         const clearAllBtn = document.getElementById('clearAllBtn');
         if (clearAllBtn) {
             clearAllBtn.addEventListener('click', clearAllData);
@@ -1221,12 +1350,6 @@
                 if (section) section.classList.add('active');
                 if (sectionId === 'system') renderSystemInfo();
                 else if (sectionId === 'security') renderSecurity();
-            }, 400);
-        },
-        toggle: function(id) {
-            setTimeout(function() {
-                const el = document.getElementById(id);
-                if (el) el.click();
             }, 400);
         },
         selectWallpaper: function(id) {

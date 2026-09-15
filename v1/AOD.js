@@ -5,6 +5,7 @@
 
     const IDLE_MS = 15000;
     const MOVE_MS = 120000;
+    const ENABLED_KEY = 'shnuk_aod_enabled';
 
     let overlay = null;
     let idleTimer = null;
@@ -12,7 +13,24 @@
     let clockTimer = null;
     let clockEl = null;
     let isVisible = false;
+    let enabled = false;
     let liveBarSnapshot = null;
+
+    function isEnabled() {
+        try { return localStorage.getItem(ENABLED_KEY) === 'true'; }
+        catch(e) { return false; }
+    }
+
+    function setEnabled(on) {
+        enabled = !!on;
+        try { localStorage.setItem(ENABLED_KEY, enabled ? 'true' : 'false'); } catch(e) {}
+        if (!enabled) {
+            hideAOD();
+            if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+        } else {
+            resetIdle();
+        }
+    }
 
     function formatClock() {
         const now = new Date();
@@ -137,6 +155,7 @@
     }
 
     function showAOD() {
+        if (!enabled) return;
         ensureOverlay();
         if (isVisible) return;
         isVisible = true;
@@ -176,14 +195,17 @@
     function resetIdle() {
         if (idleTimer) clearTimeout(idleTimer);
         if (isVisible) hideAOD();
+        if (!enabled) return;
         idleTimer = setTimeout(function() {
             showAOD();
         }, IDLE_MS);
     }
 
     function init() {
+        enabled = isEnabled();
         ensureOverlay();
         updateClock();
+
         ['touchstart', 'touchmove', 'mousedown', 'mousemove', 'keydown', 'wheel', 'scroll', 'click']
             .forEach(function(ev) {
                 document.addEventListener(ev, resetIdle, { passive: true });
@@ -212,7 +234,9 @@
         destroy: destroy,
         show: showAOD,
         hide: hideAOD,
-        resetIdle: resetIdle
+        resetIdle: resetIdle,
+        isEnabled: isEnabled,
+        setEnabled: setEnabled
     };
 
 })();
