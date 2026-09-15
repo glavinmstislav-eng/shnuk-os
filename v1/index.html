@@ -1022,6 +1022,18 @@
             }
         }, 2000);
         loadWallpaper();
+
+        let lastWallpaper = null;
+        try { lastWallpaper = localStorage.getItem('app_wallpaper'); } catch(e) {}
+        setInterval(function() {
+            let current = null;
+            try { current = localStorage.getItem('app_wallpaper'); } catch(e) {}
+            if (current && current !== lastWallpaper) {
+                lastWallpaper = current;
+                appBackground.style.backgroundImage = 'url(\'' + current + '\')';
+            }
+        }, 500);
+
         setTimeout(() => loadWidget(), 300);
         loadApps();
         setTimeout(ensureFullscreen, 500);
