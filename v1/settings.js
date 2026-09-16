@@ -259,6 +259,23 @@
             </div>
         `;
 
+        const authUser = (window.Auth && window.Auth.isLoggedIn()) ? window.Auth.getUser() : null;
+        const authStatus = authUser
+            ? '<span style="color:#4CAF50;">Вход выполнен</span>'
+            : '<span style="color:#cc0000;">Не выполнен</span>';
+
+        html += `
+            <div class="security-section">
+                <div class="security-section-title">Firebase аккаунт</div>
+                <div class="security-status-row" style="margin-bottom:12px;">
+                    <span class="security-label">Статус</span>
+                    <span class="security-value">${authStatus}</span>
+                </div>
+                ${authUser ? `<div style="font-size:13px;color:#666;margin-bottom:12px;word-break:break-all;">${authUser.email}</div>` : ''}
+                <button class="security-btn" id="authAccountBtn">${authUser ? 'Выйти из аккаунта' : 'Создать аккаунт / Войти'}</button>
+            </div>
+        `;
+
         container.innerHTML = html;
 
         if (hasSec) {
@@ -298,6 +315,20 @@
                 if (window.Security.setPassword(pwd)) {
                     getWin().alert('Пароль установлен', { title: 'Готово' });
                     renderSecurity();
+                }
+            });
+        }
+
+        const authBtn = document.getElementById('authAccountBtn');
+        if (authBtn) {
+            authBtn.addEventListener('click', async function() {
+                if (window.Auth && window.Auth.isLoggedIn()) {
+                    await window.Auth.signOut();
+                    renderSecurity();
+                } else {
+                    if (typeof window.showAuthScreenGlobal === 'function') {
+                        window.showAuthScreenGlobal(function() { renderSecurity(); });
+                    }
                 }
             });
         }

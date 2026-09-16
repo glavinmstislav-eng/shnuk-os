@@ -23,7 +23,11 @@
     };
 
     function refreshFromStorage() {
-        if (!window.SharedFiles) return;
+        if (!window.SharedFiles) {
+            files = [];
+            if (isOpen) renderFiles();
+            return;
+        }
         files = window.SharedFiles.get();
         if (isOpen) renderFiles();
     }
@@ -515,13 +519,15 @@
     function saveFiles(fileList) {
         const arr = Array.from(fileList);
         if (arr.length === 0) return;
+
         let index = 0;
+        let savedCount = 0;
 
         function processNext() {
             if (index >= arr.length) {
                 refreshFromStorage();
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify('Загружено файлов: ' + arr.length, { type: 'success' });
+                if (window.Win && window.Win.notify && savedCount > 0) {
+                    window.Win.notify('Загружено файлов: ' + savedCount, { type: 'success' });
                 }
                 return;
             }
@@ -540,7 +546,8 @@
                 };
                 if (window.SharedFiles) {
                     const ok = window.SharedFiles.add(fileData);
-                    if (!ok && window.Win && window.Win.notify) {
+                    if (ok) savedCount++;
+                    else if (window.Win && window.Win.notify) {
                         window.Win.notify('Не удалось сохранить: ' + file.name, { type: 'error' });
                     }
                 }
@@ -584,7 +591,12 @@
 
     function deleteFile(fileId) {
         if (!confirm('Удалить файл?')) return;
-        if (window.SharedFiles) window.SharedFiles.remove(fileId);
+        if (window.SharedFiles && typeof window.SharedFiles.remove === 'function') {
+            window.SharedFiles.remove(fileId);
+        } else {
+            files = files.filter(f => f.id !== fileId);
+            try { localStorage.setItem('shnuk_files', JSON.stringify(files)); } catch(e) {}
+        }
         refreshFromStorage();
         if (previewData && previewData.file.id === fileId) closePreview();
     }
@@ -593,6 +605,7 @@
         const content = document.getElementById('fileContent');
         const fileCount = document.getElementById('fileCount');
         if (!content) return;
+
         if (fileCount) fileCount.textContent = files.length;
 
         if (files.length === 0) {

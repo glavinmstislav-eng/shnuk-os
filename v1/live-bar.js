@@ -129,6 +129,7 @@
             const prefix = p.paused ? 'Пауза' : 'Запись';
             return prefix + ' ' + formatSecondsTenths(p.elapsed || 0);
         }
+        if (activity.type === 'cooop') return p.text || 'Cooop';
         if (activity.type === 'custom') return p.text || '';
         return '';
     }
@@ -506,6 +507,7 @@
         if (window.Camera && typeof window.Camera.destroy === 'function') window.Camera.destroy();
         if (window.Recorder && typeof window.Recorder.destroy === 'function') window.Recorder.destroy();
         if (window.Browser && typeof window.Browser.destroy === 'function') window.Browser.destroy();
+        if (window.Actions && typeof window.Actions.destroy === 'function') window.Actions.destroy();
 
         if (window._timeInterval) {
             clearInterval(window._timeInterval);
@@ -520,7 +522,7 @@
             window._scrollTimeout = null;
         }
 
-        const ids = ['storeApp', 'settingsApp', 'fileApp', 'timeApp', 'gameApp', 'cameraApp', 'recorderApp', 'browserApp'];
+        const ids = ['storeApp', 'settingsApp', 'fileApp', 'timeApp', 'gameApp', 'cameraApp', 'recorderApp', 'browserApp', 'actionsApp'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
