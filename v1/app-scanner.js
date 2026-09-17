@@ -11,9 +11,8 @@
         { id: 'time', name: 'Часы', icon: 'time.png' },
         { id: 'file', name: 'Файлы', icon: 'file.png' },
         { id: 'store', name: 'Store', icon: 'store.png' },
-        { id: 'camera', name: 'Камера', icon: 'shnuk-cam.png' },
-        { id: 'recorder', name: 'Звукозапись', icon: 'shnuk-recording.png' },
-        { id: 'browser', name: 'Браузер', icon: 'shnuk-browser.png' },
+        { id: 'camera', name: 'Камера', icon: 'camera.png' },
+        { id: 'recorder', name: 'Звукозапись', icon: 'recording.png' },
         { id: 'cooop', name: 'Cooop', icon: 'cooop.png' }
     ];
 
