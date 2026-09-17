@@ -38,7 +38,9 @@
     function set(list) {
         const arr = Array.isArray(list) ? list.slice() : [];
         cache = arr;
-        return setLocal(arr);
+        const ok = setLocal(arr);
+        if (ok) notify(arr.length);
+        return ok;
     }
 
     function notify(count) {
@@ -90,7 +92,6 @@
             if (!Array.isArray(parsed)) return false;
 
             set(parsed);
-            notify(get().length);
             return true;
         } catch(e) {
             console.warn('[Files] Ошибка загрузки из Firebase:', e);
@@ -104,7 +105,6 @@
         list.push(fileData);
         const ok = set(list);
         if (ok) {
-            notify(list.length);
             syncToCloud();
         }
         return ok;
@@ -114,7 +114,6 @@
         const list = get().filter(f => f.id !== id);
         const ok = set(list);
         if (ok) {
-            notify(list.length);
             syncToCloud();
         }
         return ok;

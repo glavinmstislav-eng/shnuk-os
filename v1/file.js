@@ -1,4 +1,4 @@
-// file.js — Полный файловый менеджер с 3D просмотром
+// file.js — Полный файловый менеджер с 3D просмотром и шарингом через Cooop
 
 (function() {
     'use strict';
@@ -436,6 +436,8 @@
                 .file-preview-overlay .preview-actions-row button:hover { background: #444; border-color: #cc0000; }
                 .file-preview-overlay .preview-actions-row button.set-wallpaper { border-color: #cc0000; color: #cc0000; }
                 .file-preview-overlay .preview-actions-row button.set-wallpaper:hover { background: #cc0000; color: #ffffff; }
+                .file-preview-overlay .preview-actions-row button.share-cooop { border-color: #4488ff; color: #4488ff; }
+                .file-preview-overlay .preview-actions-row button.share-cooop:hover { background: #4488ff; color: #ffffff; }
                 .file-preview-overlay .preview-close-bottom { width: 56px; height: 56px; border-radius: 50%; background: #cc0000; color: #ffffff; border: 2px solid #ffffff; font-size: 26px; cursor: pointer; font-family: 'ST-SimpleSquare', monospace; display: flex; align-items: center; justify-content: center; transition: all 0.2s; line-height: 1; }
                 .file-preview-overlay .preview-close-bottom:hover { background: #990000; transform: scale(1.08); }
 
@@ -724,6 +726,7 @@
         actions.innerHTML = `
             ${isImage ? `<button class="set-wallpaper" data-file-id="${file.id}">Установить как обои</button>` : ''}
             ${isModel ? `<button class="reset-view" id="resetViewBtn">⟲ Сброс вида</button>` : ''}
+            <button data-file-id="${file.id}" class="share-cooop">Поделиться через Cooop</button>
             <button data-file-id="${file.id}" class="download-btn">Скачать</button>
             <button data-file-id="${file.id}" class="delete-btn">Удалить</button>
         `;
@@ -735,6 +738,7 @@
                 else if (this.classList.contains('download-btn')) downloadFile(fileId);
                 else if (this.classList.contains('delete-btn')) deleteFileFromPreview(fileId);
                 else if (this.id === 'resetViewBtn') resetThreeView();
+                else if (this.classList.contains('share-cooop')) shareViaCooop(fileId);
             });
         });
 
@@ -861,6 +865,62 @@
         }
     }
 
+    async function shareViaCooop(fileId) {
+        const file = files.find(f => f.id === fileId);
+        if (!file) { alert('Файл не найден'); return; }
+
+        if (!window.Cooop || typeof window.Cooop.shareFile !== 'function') {
+            alert('Cooop недоступен');
+            return;
+        }
+
+        let url = null;
+        try {
+            url = await window.Cooop.shareFile({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                extension: file.extension,
+                data: file.data
+            });
+        } catch(e) {
+            alert('Ошибка публикации: ' + (e.message || ''));
+            return;
+        }
+
+        if (!url) return;
+
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = url;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch(e) {
+            if (navigator.clipboard) {
+                try { navigator.clipboard.writeText(url); } catch(e) {}
+            }
+        }
+
+        if (window.Win && window.Win.confirm) {
+            Win.confirm('Файл опубликован. Ссылка скопирована:\n\n' + url, {
+                title: 'Cooop',
+                okText: 'Открыть в Cooop',
+                cancelText: 'Закрыть'
+            }).then(function(ok) {
+                if (ok && window.Cooop && window.Cooop.open) {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Ссылка скопирована', { type: 'success' });
+                    }
+                    window.Cooop.open();
+                }
+            });
+        } else {
+            alert('Файл опубликован. Ссылка скопирована:\n\n' + url);
+        }
+    }
+
     function downloadFile(fileId) {
         const file = files.find(f => f.id === fileId);
         if (!file) { alert('Файл не найден'); return; }
@@ -882,6 +942,7 @@
     window.setWallpaperFromFile = setWallpaperFromFile;
     window.downloadFile = downloadFile;
     window.deleteFileFromPreview = deleteFileFromPreview;
+    window.shareViaCooop = shareViaCooop;
 
     function onKeyDown(e) {
         if (!isOpen) return;

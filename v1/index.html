@@ -339,14 +339,17 @@
         'use strict';
         var params = new URLSearchParams(window.location.search);
         var token = params.get('t');
-        if (!token || !token.startsWith('shnuk_')) {
+        var cooopParam = params.get('cooop');
+        if ((!token || !token.startsWith('shnuk_')) && !cooopParam) {
             document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
             return;
         }
         setTimeout(function() {
             try {
                 if (window.history && window.history.replaceState) {
-                    window.history.replaceState(null, '', window.location.pathname);
+                    var cleanUrl = window.location.pathname;
+                    if (cooopParam) cleanUrl += '?cooop=' + encodeURIComponent(cooopParam);
+                    window.history.replaceState(null, '', cleanUrl);
                 }
             } catch(e) {}
         }, 1000);
@@ -535,7 +538,7 @@
                         await window.Auth.signUp(email, password);
                     }
                     if (window.SharedFiles && typeof window.SharedFiles.pullFromCloud === 'function') {
-                        await window.SharedFiles.pullFromCloud();
+                        try { await window.SharedFiles.pullFromCloud(); } catch(e) {}
                     }
                     overlay.remove();
                     if (onSuccess) onSuccess();
@@ -634,9 +637,7 @@
         if ('wakeLock' in navigator) {
             let wakeLock = null;
             const requestWakeLock = async function() {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                } catch(e) {}
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
             };
             requestWakeLock();
             document.addEventListener('visibilitychange', function() {
@@ -658,7 +659,9 @@
             appBackground.style.backgroundImage = 'url(\'' + url + '\')';
         }
 
-        window.addEventListener('shnuk:wallpaper-changed', applyWallpaperFromStorage);
+        window.addEventListener('shnuk:wallpaper-changed', function() {
+            applyWallpaperFromStorage();
+        });
         window.addEventListener('storage', function(e) {
             if (e.key === 'app_wallpaper') applyWallpaperFromStorage();
         });
@@ -679,6 +682,12 @@
             return ordered;
         }
         function openAppWithAnimation(appId) {
+            if (window.__cooopGuestActive) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('В режиме Cooop приложения недоступны', { type: 'info' });
+                }
+                return;
+            }
             if (isAppAnimating) return;
             const appData = getAppData(appId);
             if (!appData) return;
@@ -936,7 +945,10 @@
             }
         }
         function saveDesktop() {
-            try { localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps)); } catch(e) {}
+            try {
+                localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps));
+                window.dispatchEvent(new CustomEvent('shnuk:desktop-changed'));
+            } catch(e) {}
         }
         function renderDesktop() {
             buttonGroup.innerHTML = '';
@@ -1203,6 +1215,16 @@
         }, 2000);
 
         applyWallpaperFromStorage();
+
+        window.addEventListener('shnuk:desktop-changed', function() {
+            try { loadDesktop(); } catch(e) {}
+            try { renderDesktop(); } catch(e) {}
+            try { renderAllApps(); } catch(e) {}
+        });
+
+        window.addEventListener('shnuk:files-changed', function() {
+            try { renderDesktop(); } catch(e) {}
+        });
 
         setTimeout(() => loadWidget(), 300);
         loadApps();
