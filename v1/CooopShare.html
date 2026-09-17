@@ -96,13 +96,10 @@
         }
         .btn:hover { background: #990000; }
         .btn:active { transform: scale(0.98); }
-        .btn.secondary {
-            background: none;
-            color: #666;
-            border: 2px solid #e0e0e0;
-            margin-top: 12px;
+        .btn:disabled {
+            background: #888;
+            cursor: default;
         }
-        .btn.secondary:hover { background: #f0f0f0; color: #333; }
         .status {
             text-align: center;
             font-size: 14px;
@@ -110,6 +107,7 @@
             padding: 40px 20px;
         }
         .status.error { color: #cc0000; }
+        .status.success { color: #4CAF50; }
         .preview-image {
             max-width: 100%;
             max-height: 260px;
@@ -118,6 +116,13 @@
             border: 2px solid #e0e0e0;
             background: #f8f8f8;
             object-fit: contain;
+        }
+        .debug {
+            font-size: 11px;
+            color: #cc0000;
+            text-align: center;
+            margin-top: 12px;
+            word-break: break-all;
         }
         .footer {
             margin-top: auto;
@@ -181,23 +186,29 @@
             }
         }
 
-        function showError(message) {
-            document.getElementById('content').innerHTML =
-                '<div class="status error">' + escapeHtml(message) + '</div>';
+        function showStatus(message, kind, debug) {
+            const cls = kind === 'error' ? 'status error'
+                      : kind === 'success' ? 'status success'
+                      : 'status';
+            let html = '<div class="' + cls + '">' + escapeHtml(message) + '</div>';
+            if (debug) {
+                html += '<div class="debug">' + escapeHtml(debug) + '</div>';
+            }
+            document.getElementById('content').innerHTML = html;
         }
 
         async function load() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if (!id) {
-                showError('Ссылка повреждена: не указан id файла');
+                showStatus('Ссылка повреждена: не указан id файла', 'error');
                 return;
             }
 
             await waitForFirebase();
 
             if (!window.firebaseDb || !window.firebaseSDK) {
-                showError('Firebase не загружен. Проверьте интернет.');
+                showStatus('Firebase не загружен. Проверьте интернет.', 'error');
                 return;
             }
 
@@ -208,28 +219,41 @@
                 const snap = await getDoc(ref);
 
                 if (!snap.exists()) {
-                    showError('Файл не найден или ссылка удалена');
+                    showStatus('Файл не найден, уже скачан или ссылка удалена', 'error');
                     return;
                 }
 
                 const data = snap.data();
                 if (!data || !data.data) {
-                    showError('Файл повреждён');
+                    showStatus('Файл повреждён', 'error');
                     return;
                 }
 
-                render(data);
+                render(data, ref, id);
             } catch(e) {
-                console.warn('[CooopShare]', e);
+                console.warn('[CooopShare] load error:', e);
                 let msg = 'Ошибка загрузки';
-                if (e.code === 'permission-denied') msg = 'Нет доступа. Проверьте правила Firestore.';
+                if (e.code === 'permission-denied') msg = 'Нет доступа к файлу';
                 else if (e.code === 'unavailable') msg = 'Нет соединения с сервером';
                 else if (e.message) msg = 'Ошибка: ' + e.message;
-                showError(msg);
+                showStatus(msg, 'error', e.code || '');
             }
         }
 
-        function render(data) {
+        async function tryDelete(ref, id) {
+            if (!window.firebaseSDK || typeof window.firebaseSDK.deleteDoc !== 'function') {
+                return { ok: false, reason: 'deleteDoc недоступен в firebaseSDK' };
+            }
+            const { deleteDoc } = window.firebaseSDK;
+            try {
+                await deleteDoc(ref);
+                return { ok: true };
+            } catch(e) {
+                return { ok: false, reason: (e.code || '') + ' ' + (e.message || '') };
+            }
+        }
+
+        function render(data, ref, id) {
             const isImage = /^image\//.test(data.type || '') ||
                 ['jpg','jpeg','png','gif','bmp','webp','svg','ico'].indexOf((data.extension || '').toLowerCase()) !== -1;
 
@@ -250,20 +274,56 @@
                     <div class="file-name">${escapeHtml(data.name || 'Файл')}</div>
                     <div class="file-meta">${formatSize(data.size || 0)}${data.extension ? ' • ' + escapeHtml(data.extension.toUpperCase()) : ''}</div>
                     ${ownerLine}
+                    <div class="owner">Одноразовая ссылка: файл удалится после скачивания</div>
                     <button class="btn" id="downloadBtn">Скачать файл</button>
                 </div>
             `;
 
-            document.getElementById('downloadBtn').addEventListener('click', function() {
+            const btn = document.getElementById('downloadBtn');
+            btn.addEventListener('click', async function() {
+                btn.disabled = true;
+                btn.textContent = 'Скачивание...';
+
+                // 1. Запускаем скачивание
                 try {
                     const a = document.createElement('a');
                     a.href = data.data;
                     a.download = data.name || 'file';
                     document.body.appendChild(a);
                     a.click();
-                    setTimeout(function() { document.body.removeChild(a); }, 200);
+                    setTimeout(function() {
+                        if (a.parentNode) a.parentNode.removeChild(a);
+                    }, 200);
                 } catch(e) {
-                    alert('Не удалось скачать файл');
+                    btn.disabled = false;
+                    btn.textContent = 'Скачать файл';
+                    showStatus('Не удалось скачать файл: ' + (e.message || ''), 'error');
+                    return;
+                }
+
+                // 2. Ждём, чтобы браузер начал загрузку
+                await new Promise(function(r) { setTimeout(r, 800); });
+
+                // 3. Удаляем документ (с одной повторной попыткой)
+                btn.textContent = 'Удаление с сервера...';
+
+                let result = await tryDelete(ref, id);
+                console.log('[CooopShare] delete attempt 1:', result);
+
+                if (!result.ok) {
+                    await new Promise(function(r) { setTimeout(r, 1500); });
+                    result = await tryDelete(ref, id);
+                    console.log('[CooopShare] delete attempt 2:', result);
+                }
+
+                if (result.ok) {
+                    showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
+                } else {
+                    showStatus(
+                        'Файл скачан. Удаление с сервера не удалось.',
+                        'error',
+                        'Причина: ' + result.reason
+                    );
                 }
             });
         }

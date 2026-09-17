@@ -498,7 +498,7 @@
         quickPanel.style.pointerEvents = 'none';
     }
 
-    function optimizeSystem() {
+      function optimizeSystem() {
         if (window.Time && typeof window.Time.destroy === 'function') window.Time.destroy();
         if (window.FileApp && typeof window.FileApp.destroy === 'function') window.FileApp.destroy();
         if (window.Game && typeof window.Game.destroy === 'function') window.Game.destroy();
@@ -507,7 +507,6 @@
         if (window.Camera && typeof window.Camera.destroy === 'function') window.Camera.destroy();
         if (window.Recorder && typeof window.Recorder.destroy === 'function') window.Recorder.destroy();
         if (window.Browser && typeof window.Browser.destroy === 'function') window.Browser.destroy();
-        if (window.Actions && typeof window.Actions.destroy === 'function') window.Actions.destroy();
 
         if (window._timeInterval) {
             clearInterval(window._timeInterval);
@@ -522,7 +521,7 @@
             window._scrollTimeout = null;
         }
 
-        const ids = ['storeApp', 'settingsApp', 'fileApp', 'timeApp', 'gameApp', 'cameraApp', 'recorderApp', 'browserApp', 'actionsApp'];
+        const ids = ['storeApp', 'settingsApp', 'fileApp', 'timeApp', 'gameApp', 'cameraApp', 'recorderApp', 'browserApp'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -540,8 +539,6 @@
         });
 
         document.querySelectorAll('.win-backdrop').forEach(b => b.remove());
-        document.querySelectorAll('.widget-menu').forEach(m => m.remove());
-        document.querySelectorAll('.widget-menu-backdrop').forEach(m => m.remove());
 
         if (window.LiveBar) window.LiveBar.clear();
 

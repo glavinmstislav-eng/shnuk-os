@@ -222,43 +222,6 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        #widgetContainer {
-            position: absolute; top: var(--livebar-h, 44px); left: 0;
-            width: 100%; height: calc(100% - var(--livebar-h, 44px));
-            pointer-events: none; z-index: 1;
-            transition: opacity 0.5s ease, filter 0.5s ease;
-        }
-        #widgetContainer.hidden { opacity: 0; filter: blur(20px); }
-
-        .widget-menu {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%) scale(0.9);
-            background: #ffffff; padding: 30px 24px 24px;
-            z-index: 9998; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            min-width: 280px; font-family: 'ST-SimpleSquare', monospace;
-            opacity: 0; filter: blur(20px);
-            transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-        }
-        .widget-menu.open { transform: translate(-50%, -50%) scale(1); opacity: 1; filter: blur(0); }
-        .widget-menu .title { font-size: 18px; font-weight: 600; color: #1a1a1a; margin-bottom: 16px; text-align: center; letter-spacing: -0.3px; }
-        .widget-menu .widget-btn {
-            display: block; width: 100%; padding: 12px 16px; margin-bottom: 8px;
-            background: #f5f5f5; color: #1a1a1a; border: 2px solid #e0e0e0;
-            cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
-            font-size: 14px; transition: all 0.2s; text-align: left;
-        }
-        .widget-menu .widget-btn:hover { background: #e0e0e0; border-color: #cc0000; }
-        .widget-menu .widget-btn.selected { background: #cc0000; color: #ffffff; border-color: #cc0000; }
-        .widget-menu .widget-btn .check { float: right; opacity: 0; }
-        .widget-menu .widget-btn.selected .check { opacity: 1; }
-        .widget-menu .cancel-btn {
-            display: block; width: 100%; padding: 10px; margin-top: 8px;
-            background: none; border: 2px solid #e0e0e0;
-            cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
-            font-size: 13px; color: #888; transition: all 0.2s;
-        }
-        .widget-menu .cancel-btn:hover { background: #f0f0f0; }
-
         .html-app-window {
             position: fixed; top: 0; left: 0;
             width: 100%; height: 100%;
@@ -291,7 +254,6 @@
             .icon-item { padding: 14px; max-width: 64px; max-height: 64px; }
             .top-panel { padding: 0 16px 70px 16px; }
             .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 40px; height: 40px; font-size: 20px; }
-            .widget-menu { min-width: 220px; padding: 20px 16px; }
         }
     </style>
 </head>
@@ -309,7 +271,6 @@
                         <path d="M4 20L8 18" stroke="#2c3e50" stroke-width="1.8" stroke-linecap="round"/>
                     </svg>
                 </button>
-                <button class="widget-btn" id="widgetBtn" style="display:none;">◈</button>
             </div>
             <div class="button-group" id="buttonGroup">
                 <div class="loader" id="desktopLoader">
@@ -368,8 +329,6 @@
                 'app-scanner.js',
                 'store.js',
                 'settings.js',
-                'actions.js',
-                'widget-time.js',
                 'cooop.js'
             ];
             let loaded = 0;
@@ -574,7 +533,6 @@
         const appBackground = document.getElementById('appBackground');
         const topPanel = document.getElementById('topPanel');
         const pencilIcon = document.getElementById('pencilIcon');
-        const widgetBtn = document.getElementById('widgetBtn');
         const buttonGroup = document.getElementById('buttonGroup');
         const bottomPanel = document.getElementById('bottomPanel');
         const iconGrid = document.getElementById('iconGrid');
@@ -585,11 +543,9 @@
         let isBottomVisible = false;
         let allApps = [];
         let desktopApps = [];
-        let isWidgetMenuOpen = false;
         let isAppAnimating = false;
         let appsOrderSnapshot = null;
         const DESKTOP_KEY = 'shnuk_desktop_apps';
-        const WIDGET_KEY = 'shnuk_widget';
         const INSTALLED_KEY = 'shnuk_installed_apps';
         const DEFAULT_DESKTOP = ['settings', 'time', 'camera', 'game'];
 
@@ -796,107 +752,6 @@
                 }
             };
             document.addEventListener('keydown', onEsc);
-        }
-        let widgetInstance = null;
-        let currentWidget = 'none';
-        const WIDGETS = [
-            { id: 'none', name: 'Без виджета', create: null },
-            { id: 'analog', name: 'Часы', create: window.createTimeWidget }
-        ];
-        function removeWidget() {
-            if (widgetInstance) {
-                if (widgetInstance.interval) clearInterval(widgetInstance.interval);
-                if (widgetInstance.element && widgetInstance.element.parentNode) {
-                    widgetInstance.element.parentNode.removeChild(widgetInstance.element);
-                }
-                widgetInstance = null;
-            }
-            const c = document.getElementById('widgetContainer');
-            if (c) c.innerHTML = '';
-        }
-        function createWidget(widget) {
-            removeWidget();
-            if (widget.id === 'none' || !widget.create) return;
-            try {
-                const result = widget.create();
-                if (result && result.element) {
-                    let widgetContainer = document.getElementById('widgetContainer');
-                    if (!widgetContainer) {
-                        widgetContainer = document.createElement('div');
-                        widgetContainer.id = 'widgetContainer';
-                        widgetContainer.style.cssText = 'position:absolute;top:var(--livebar-h, 44px);left:0;width:100%;height:calc(100% - var(--livebar-h, 44px));pointer-events:none;z-index:1;';
-                        topPanel.appendChild(widgetContainer);
-                    }
-                    widgetContainer.appendChild(result.element);
-                    widgetInstance = result;
-                }
-            } catch(e) {}
-        }
-        function loadWidget() {
-            removeWidget();
-            let saved = 'none';
-            try { saved = localStorage.getItem(WIDGET_KEY) || 'none'; } catch(e) {}
-            const widget = WIDGETS.find(w => w.id === saved);
-            if (widget && widget.id !== 'none' && widget.create) {
-                currentWidget = saved;
-                createWidget(widget);
-            } else {
-                currentWidget = 'none';
-            }
-        }
-        function selectWidget(widgetId) {
-            try { localStorage.setItem(WIDGET_KEY, widgetId); } catch(e) {}
-            const widget = WIDGETS.find(w => w.id === widgetId);
-            if (widget) {
-                currentWidget = widgetId;
-                removeWidget();
-                if (widget.id !== 'none' && widget.create) createWidget(widget);
-            }
-            closeWidgetMenu();
-        }
-        function showWidgetMenu() {
-            if (isWidgetMenuOpen) { closeWidgetMenu(); return; }
-            const existing = document.querySelector('.widget-menu');
-            if (existing) { existing.remove(); isWidgetMenuOpen = false; return; }
-            isWidgetMenuOpen = true;
-            const backdrop = document.createElement('div');
-            backdrop.className = 'widget-menu-backdrop';
-            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9997;background:rgba(0,0,0,0);backdrop-filter:blur(0px);transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);';
-            document.body.appendChild(backdrop);
-            requestAnimationFrame(() => {
-                backdrop.style.background = 'rgba(0,0,0,0.4)';
-                backdrop.style.backdropFilter = 'blur(15px)';
-            });
-            const menu = document.createElement('div');
-            menu.className = 'widget-menu';
-            menu.innerHTML = '<div class="title">Выберите виджет</div>';
-            WIDGETS.forEach(w => {
-                const btn = document.createElement('button');
-                const isSelected = currentWidget === w.id;
-                btn.className = 'widget-btn' + (isSelected ? ' selected' : '');
-                btn.innerHTML = `${w.name}<span class="check">✓</span>`;
-                btn.addEventListener('click', function() { selectWidget(w.id); });
-                menu.appendChild(btn);
-            });
-            const cancelBtn = document.createElement('button');
-            cancelBtn.className = 'cancel-btn';
-            cancelBtn.textContent = 'Отмена';
-            cancelBtn.addEventListener('click', closeWidgetMenu);
-            menu.appendChild(cancelBtn);
-            document.body.appendChild(menu);
-            requestAnimationFrame(() => menu.classList.add('open'));
-            backdrop.addEventListener('click', closeWidgetMenu);
-        }
-        function closeWidgetMenu() {
-            const menu = document.querySelector('.widget-menu');
-            const backdrop = document.querySelector('.widget-menu-backdrop');
-            if (menu) { menu.classList.remove('open'); setTimeout(() => menu.remove(), 400); }
-            if (backdrop) {
-                backdrop.style.background = 'rgba(0,0,0,0)';
-                backdrop.style.backdropFilter = 'blur(0px)';
-                setTimeout(() => backdrop.remove(), 400);
-            }
-            isWidgetMenuOpen = false;
         }
         function loadApps() {
             AppScanner.scan().then(function(apps) {
@@ -1156,20 +1011,12 @@
         function toggleEditMode() {
             isEditMode = !isEditMode;
             pencilIcon.classList.toggle('active', isEditMode);
-            if (isEditMode) {
-                widgetBtn.style.display = 'flex';
-            } else {
-                widgetBtn.style.display = 'none';
-                closeWidgetMenu();
-            }
             renderDesktop();
             renderAllApps();
         }
         function showBottomPanel() {
             if (isBottomVisible) return;
             isBottomVisible = true;
-            const widgetContainer = document.getElementById('widgetContainer');
-            if (widgetContainer) widgetContainer.classList.add('hidden');
             appBackground.classList.add('blurred');
             topPanel.classList.add('swiped-down');
             renderAllApps();
@@ -1180,8 +1027,6 @@
             isBottomVisible = false;
             bottomPanel.classList.remove('visible');
             setTimeout(function() {
-                const widgetContainer = document.getElementById('widgetContainer');
-                if (widgetContainer) widgetContainer.classList.remove('hidden');
                 appBackground.classList.remove('blurred');
                 topPanel.classList.remove('swiped-down');
             }, 400);
@@ -1189,7 +1034,6 @@
         }
         closeAppsBtn.addEventListener('click', hideBottomPanel);
         pencilIcon.addEventListener('click', function(e) { e.stopPropagation(); toggleEditMode(); });
-        widgetBtn.addEventListener('click', function(e) { e.stopPropagation(); if (isEditMode) showWidgetMenu(); });
         let startY = 0, isSwiping = false;
         app.addEventListener('touchstart', function(e) { startY = e.touches[0].clientY; isSwiping = true; }, { passive: true });
         app.addEventListener('touchmove', function(e) {
@@ -1226,7 +1070,6 @@
             try { renderDesktop(); } catch(e) {}
         });
 
-        setTimeout(() => loadWidget(), 300);
         loadApps();
         setTimeout(ensureFullscreen, 500);
         if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
