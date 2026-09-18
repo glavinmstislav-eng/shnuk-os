@@ -243,6 +243,74 @@
         }
         .html-app-close-btn:hover { background: #990000; transform: scale(1.1); }
 
+        #cacheOverlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #ffffff;
+            z-index: 2147483647;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px 20px;
+            box-sizing: border-box;
+            font-family: 'ST-SimpleSquare', monospace;
+            color: #1a1a1a;
+        }
+        #cacheOverlay.visible { display: flex; }
+        #cacheOverlay .cache-logo {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            margin-bottom: 24px;
+        }
+        #cacheOverlay .cache-title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+        #cacheOverlay .cache-sub {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+        #cacheOverlay .cache-bar-wrap {
+            width: 100%;
+            max-width: 320px;
+            height: 8px;
+            background: #f0f0f0;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        #cacheOverlay .cache-bar {
+            width: 0%;
+            height: 100%;
+            background: #cc0000;
+            transition: width 0.2s ease;
+        }
+        #cacheOverlay .cache-count {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 24px;
+        }
+        #cacheOverlay .cache-note {
+            font-size: 11px;
+            color: #bbb;
+            text-align: center;
+            max-width: 320px;
+            line-height: 1.5;
+        }
+        #cacheOverlay .cache-error {
+            color: #cc0000;
+            font-size: 13px;
+            margin-top: 16px;
+            text-align: center;
+            display: none;
+        }
+
         @media (max-width: 500px) {
             .btn { width: 64px; height: 64px; }
             .button-group { gap: 16px; }
@@ -258,6 +326,14 @@
     </style>
 
     <script src="os-storage.js"></script>
+    <script src="os-cache.js"></script>
+    <script>
+    (function() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function() {});
+        }
+    })();
+    </script>
 </head>
 <body>
 
@@ -292,6 +368,18 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="cacheOverlay">
+        <img src="icoon.png" alt="Shnuk" class="cache-logo" onerror="this.style.display='none'" />
+        <div class="cache-title">SHNUK OS</div>
+        <div class="cache-sub" id="cacheSub">Первый запуск — сохраняем систему для офлайн-работы</div>
+        <div class="cache-bar-wrap">
+            <div class="cache-bar" id="cacheBar"></div>
+        </div>
+        <div class="cache-count" id="cacheCount">0 / 0</div>
+        <div class="cache-note">После завершения система будет доступна без интернета</div>
+        <div class="cache-error" id="cacheError"></div>
     </div>
 
     <script src="firebase-config.js"></script>
@@ -332,14 +420,13 @@
             });
         }
 
-        async function loadScriptWithFallback(src) {
+        function loadScriptWithFallback(src) {
             return new Promise(function(resolve) {
                 const script = document.createElement('script');
                 script.src = src + '?t=' + Date.now();
                 script.async = false;
                 script.onload = function() { resolve(true); };
                 script.onerror = function() {
-                    // Пробуем из IndexedDB
                     if (window.OSStorage) {
                         window.OSStorage.system.get('asset:' + src).then(function(asset) {
                             if (asset && asset.type === 'text') {
@@ -361,11 +448,67 @@
             });
         }
 
+        function showCacheOverlay() {
+            const el = document.getElementById('cacheOverlay');
+            if (el) el.classList.add('visible');
+        }
+
+        function hideCacheOverlay() {
+            const el = document.getElementById('cacheOverlay');
+            if (el) el.classList.remove('visible');
+        }
+
+        function updateCacheProgress(done, total) {
+            const bar = document.getElementById('cacheBar');
+            const count = document.getElementById('cacheCount');
+            const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+            if (bar) bar.style.width = pct + '%';
+            if (count) count.textContent = done + ' / ' + total;
+        }
+
+        function showCacheError(msg) {
+            const err = document.getElementById('cacheError');
+            if (err) {
+                err.textContent = msg;
+                err.style.display = 'block';
+            }
+        }
+
+        async function runCaching() {
+            if (!window.OSCache || typeof window.OSCache.ensureCached !== 'function') {
+                return { ok: false, reason: 'OSCache недоступен' };
+            }
+            if (window.OSCache.needsCaching) {
+                const need = await window.OSCache.needsCaching();
+                if (!need) return { ok: true, cached: true };
+            }
+            showCacheOverlay();
+            updateCacheProgress(0, window.OSCache.list.length);
+            const res = await window.OSCache.ensureCached(function(done, total) {
+                updateCacheProgress(done, total);
+            });
+            return res;
+        }
+
         async function launchOS() {
             osApp.classList.add('visible');
             osApp.style.display = 'block';
 
             await waitForOSStorage();
+
+            // Сначала кэшируем всю систему (если нужно), показываем прогресс
+            try {
+                const res = await runCaching();
+                if (res && res.ok) {
+                    hideCacheOverlay();
+                } else {
+                    showCacheError('Ошибка кэширования: ' + (res && res.reason ? res.reason : 'неизвестно'));
+                    setTimeout(hideCacheOverlay, 3000);
+                }
+            } catch(e) {
+                showCacheError('Ошибка: ' + (e.message || ''));
+                setTimeout(hideCacheOverlay, 3000);
+            }
 
             const scripts = [
                 'l.js',
@@ -377,8 +520,7 @@
                 'app-scanner.js',
                 'store.js',
                 'settings.js',
-                'cooop.js',
-                'os-cache.js'
+                'cooop.js'
             ];
 
             for (let i = 0; i < scripts.length; i++) {
@@ -762,6 +904,22 @@
                             script.onload = function() {
                                 if (typeof window[appData.id + 'Init'] === 'function') {
                                     window[appData.id + 'Init']();
+                                }
+                            };
+                            script.onerror = function() {
+                                if (window.OSStorage) {
+                                    window.OSStorage.system.get('asset:' + appData.file).then(function(asset) {
+                                        if (asset && asset.type === 'text') {
+                                            try {
+                                                const s = document.createElement('script');
+                                                s.textContent = asset.data;
+                                                document.head.appendChild(s);
+                                                if (typeof window[appData.id + 'Init'] === 'function') {
+                                                    window[appData.id + 'Init']();
+                                                }
+                                            } catch(e) {}
+                                        }
+                                    });
                                 }
                             };
                             document.head.appendChild(script);
