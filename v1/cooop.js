@@ -1,17 +1,14 @@
-// cooop.js — Shnuk Cooop (шаринг файлов)
+// cooop.js — Shnuk Cooop
 
 (function() {
     'use strict';
 
     const SHARES_COLLECTION = 'cooop_shares';
     const SHARE_PAGE = 'CooopShare.html';
-    const TTL_MS = 24 * 60 * 60 * 1000;
-    const PURGE_INTERVAL_MS = 10 * 60 * 1000;
 
     let isOpen = false;
     let shares = [];
     let sharesUnsubscribe = null;
-    let purgeTimer = null;
 
     function log() {
         try { console.log.apply(console, ['[Cooop]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
@@ -58,81 +55,6 @@
         return (e.code ? e.code + ': ' : '') + (e.message || '');
     }
 
-    function getExpiryMs(share) {
-        if (!share || !share.expiresAt) return 0;
-        if (share.expiresAt.seconds) return share.expiresAt.seconds * 1000;
-        const t = new Date(share.expiresAt).getTime();
-        return isNaN(t) ? 0 : t;
-    }
-
-    function isExpired(share) {
-        const t = getExpiryMs(share);
-        if (!t) return false;
-        return Date.now() >= t;
-    }
-
-    function formatTtl(share) {
-        const t = getExpiryMs(share);
-        if (!t) return '';
-        const left = t - Date.now();
-        if (left <= 0) return 'истекла';
-        const h = Math.floor(left / 3600000);
-        const m = Math.floor((left % 3600000) / 60000);
-        if (h > 0) return 'осталось ' + h + ' ч ' + m + ' мин';
-        return 'осталось ' + m + ' мин';
-    }
-
-    async function purgeExpired() {
-        if (!window.firebaseDb || !window.firebaseSDK) return 0;
-        const user = await ensureAuth();
-        if (!user) return 0;
-
-        const { collection, getDocs, doc, deleteDoc } = window.firebaseSDK;
-        let removed = 0;
-
-        try {
-            const snap = await getDocs(collection(window.firebaseDb, SHARES_COLLECTION));
-            const now = Date.now();
-            const deletions = [];
-
-            snap.forEach(function(d) {
-                const data = d.data();
-                const t = getExpiryMs(data);
-                if (t && now >= t) {
-                    deletions.push(deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, d.id)));
-                }
-            });
-
-            if (deletions.length > 0) {
-                const results = await Promise.allSettled(deletions);
-                results.forEach(function(r) {
-                    if (r.status === 'fulfilled') removed++;
-                    else err('purge delete:', r.reason);
-                });
-                log('Удалено просроченных ссылок:', removed);
-            }
-        } catch(e) {
-            err('purgeExpired:', e);
-        }
-
-        return removed;
-    }
-
-    function startPurgeTimer() {
-        if (purgeTimer) return;
-        purgeExpired();
-        purgeTimer = setInterval(function() {
-            purgeExpired();
-        }, PURGE_INTERVAL_MS);
-    }
-
-    function stopPurgeTimer() {
-        if (purgeTimer) {
-            clearInterval(purgeTimer);
-            purgeTimer = null;
-        }
-    }
-
     async function shareFile(fileData) {
         const user = await ensureAuth();
         if (!user) {
@@ -157,12 +79,11 @@
                 size: fileData.size || 0,
                 extension: fileData.extension || '',
                 data: fileData.data,
-                createdAt: serverTimestamp(),
-                expiresAt: new Date(Date.now() + TTL_MS)
+                createdAt: serverTimestamp()
             });
 
             const url = buildShareUrl(id);
-            log('Файл опубликован на 24 часа:', id);
+            log('Ссылка создана:', id, url);
             return url;
         } catch(e) {
             err('shareFile:', e);
@@ -207,7 +128,6 @@
 
     function destroy() {
         closeCooop();
-        stopPurgeTimer();
         const el = document.getElementById('cooopApp');
         if (el && el.parentNode) el.parentNode.removeChild(el);
     }
@@ -222,31 +142,17 @@
         if (!user) return;
         if (!window.firebaseDb || !window.firebaseSDK) return;
 
-        const { collection, query, where, onSnapshot, doc, deleteDoc } = window.firebaseSDK;
+        const { collection, query, where, onSnapshot } = window.firebaseSDK;
         try {
             const q = query(
                 collection(window.firebaseDb, SHARES_COLLECTION),
                 where('ownerUid', '==', user.uid)
             );
             sharesUnsubscribe = onSnapshot(q, function(snap) {
-                const raw = [];
-                snap.forEach(function(d) { raw.push(d.data()); });
-
-                const expired = raw.filter(isExpired);
-                const alive = raw.filter(function(s) { return !isExpired(s); });
-
-                if (expired.length > 0) {
-                    const now = Date.now();
-                    expired.forEach(function(s) {
-                        const t = getExpiryMs(s);
-                        if (t && now >= t) {
-                            deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, s.id))
-                                .catch(function(e) { err('snapshot delete:', e); });
-                        }
-                    });
-                }
-
-                shares = alive;
+                shares = [];
+                snap.forEach(function(d) {
+                    shares.push(d.data());
+                });
                 shares.sort(function(a, b) {
                     const ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
                     const tb = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
@@ -274,13 +180,12 @@
         shares.forEach(function(s) {
             const url = buildShareUrl(s.id);
             const sizeStr = formatSize(s.size);
-            const ttlStr = formatTtl(s);
             const card = document.createElement('div');
             card.style.cssText = 'background:#f8f8f8;border:2px solid #e0e0e0;padding:16px;margin-bottom:12px;display:flex;gap:12px;align-items:center;';
             card.innerHTML = `
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:14px;font-weight:600;margin-bottom:4px;word-break:break-all;">${escapeHtml(s.name)}</div>
-                    <div style="font-size:11px;color:#888;">${sizeStr} • ${escapeHtml(s.extension || '')} • ${escapeHtml(ttlStr)}</div>
+                    <div style="font-size:11px;color:#888;">${sizeStr} • ${escapeHtml(s.extension || '')} • одноразовая</div>
                     <input type="text" readonly value="${escapeHtml(url)}" style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #e0e0e0;font-family:'ST-SimpleSquare',monospace;font-size:11px;background:#fff;color:#333;box-sizing:border-box;" />
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
@@ -393,7 +298,7 @@
         content.className = 'cooop-content';
         content.innerHTML = `
             <div class="cooop-title">Опубликованные файлы</div>
-            <div class="cooop-desc">Файлы, которыми вы поделились. Ссылки живут 24 часа, потом удаляются автоматически.</div>
+            <div class="cooop-desc">Файлы, которыми вы поделились. Каждая ссылка одноразовая: после первого скачивания файл удаляется с сервера.</div>
             <div class="cooop-list" id="cooopSharesList">
                 <div style="text-align:center;color:#888;padding:40px 20px;font-size:14px;">Загрузка...</div>
             </div>
@@ -412,19 +317,8 @@
         destroy: destroy,
         open: openCooop,
         shareFile: shareFile,
-        deleteShare: deleteShare,
-        purgeExpired: purgeExpired
+        deleteShare: deleteShare
     };
-    window.cooopInit = function() {
-        openCooop();
-        startPurgeTimer();
-    };
-
-    // Фоновая чистка запускается сразу при загрузке скрипта,
-    // если пользователь уже авторизован. Повторяется каждые 10 минут.
-    (async function autoStart() {
-        await ensureAuth();
-        startPurgeTimer();
-    })();
+    window.cooopInit = function() { openCooop(); };
 
 })();

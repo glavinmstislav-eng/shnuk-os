@@ -96,10 +96,7 @@
         }
         .btn:hover { background: #990000; }
         .btn:active { transform: scale(0.98); }
-        .btn:disabled {
-            background: #888;
-            cursor: default;
-        }
+        .btn:disabled { background: #888; cursor: default; }
         .status {
             text-align: center;
             font-size: 14px;
@@ -120,9 +117,14 @@
         .debug {
             font-size: 11px;
             color: #cc0000;
-            text-align: center;
+            text-align: left;
             margin-top: 12px;
             word-break: break-all;
+            background: #fff5f5;
+            padding: 12px;
+            border: 1px solid #ffcccc;
+            font-family: monospace;
+            white-space: pre-wrap;
         }
         .footer {
             margin-top: auto;
@@ -181,8 +183,10 @@
             if (window.__firebaseReady) {
                 try { await window.__firebaseReady; } catch(e) {}
             }
-            if (!window.firebaseDb || !window.firebaseSDK) {
-                await new Promise(function(r) { setTimeout(r, 500); });
+            let tries = 0;
+            while ((!window.firebaseDb || !window.firebaseSDK) && tries < 40) {
+                tries++;
+                await new Promise(function(r) { setTimeout(r, 250); });
             }
         }
 
@@ -200,6 +204,9 @@
         async function load() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
+
+            console.log('[CooopShare] id =', id);
+
             if (!id) {
                 showStatus('Ссылка повреждена: не указан id файла', 'error');
                 return;
@@ -207,8 +214,12 @@
 
             await waitForFirebase();
 
-            if (!window.firebaseDb || !window.firebaseSDK) {
-                showStatus('Firebase не загружен. Проверьте интернет.', 'error');
+            if (!window.firebaseDb) {
+                showStatus('Firebase Firestore не загружен', 'error', 'firebaseDb отсутствует');
+                return;
+            }
+            if (!window.firebaseSDK || typeof window.firebaseSDK.doc !== 'function') {
+                showStatus('Firebase SDK не загружен', 'error', 'firebaseSDK.doc отсутствует');
                 return;
             }
 
@@ -216,16 +227,28 @@
 
             try {
                 const ref = doc(window.firebaseDb, SHARES_COLLECTION, id);
+                console.log('[CooopShare] ref path =', ref.path);
+
                 const snap = await getDoc(ref);
+                console.log('[CooopShare] snap.exists() =', snap.exists());
+                console.log('[CooopShare] snap.data() =', snap.data());
 
                 if (!snap.exists()) {
-                    showStatus('Файл не найден, уже скачан или ссылка удалена', 'error');
+                    showStatus(
+                        'Файл не найден или уже удалён',
+                        'error',
+                        'id: ' + id + '\nref: ' + ref.path + '\nexists: false'
+                    );
                     return;
                 }
 
                 const data = snap.data();
                 if (!data || !data.data) {
-                    showStatus('Файл повреждён', 'error');
+                    showStatus(
+                        'Файл повреждён: нет поля data',
+                        'error',
+                        'Поля документа: ' + Object.keys(data || {}).join(', ')
+                    );
                     return;
                 }
 
@@ -233,16 +256,22 @@
             } catch(e) {
                 console.warn('[CooopShare] load error:', e);
                 let msg = 'Ошибка загрузки';
-                if (e.code === 'permission-denied') msg = 'Нет доступа к файлу';
+                if (e.code === 'permission-denied') msg = 'Нет доступа к файлу. Проверьте правила Firestore.';
                 else if (e.code === 'unavailable') msg = 'Нет соединения с сервером';
                 else if (e.message) msg = 'Ошибка: ' + e.message;
-                showStatus(msg, 'error', e.code || '');
+
+                const debugInfo =
+                    'id: ' + id + '\n' +
+                    'code: ' + (e.code || '-') + '\n' +
+                    'message: ' + (e.message || '-');
+
+                showStatus(msg, 'error', debugInfo);
             }
         }
 
-        async function tryDelete(ref, id) {
+        async function tryDelete(ref) {
             if (!window.firebaseSDK || typeof window.firebaseSDK.deleteDoc !== 'function') {
-                return { ok: false, reason: 'deleteDoc недоступен в firebaseSDK' };
+                return { ok: false, reason: 'deleteDoc недоступен' };
             }
             const { deleteDoc } = window.firebaseSDK;
             try {
@@ -284,7 +313,6 @@
                 btn.disabled = true;
                 btn.textContent = 'Скачивание...';
 
-                // 1. Запускаем скачивание
                 try {
                     const a = document.createElement('a');
                     a.href = data.data;
@@ -297,30 +325,27 @@
                 } catch(e) {
                     btn.disabled = false;
                     btn.textContent = 'Скачать файл';
-                    showStatus('Не удалось скачать файл: ' + (e.message || ''), 'error');
+                    showStatus('Не удалось скачать: ' + (e.message || ''), 'error');
                     return;
                 }
 
-                // 2. Ждём, чтобы браузер начал загрузку
                 await new Promise(function(r) { setTimeout(r, 800); });
-
-                // 3. Удаляем документ (с одной повторной попыткой)
                 btn.textContent = 'Удаление с сервера...';
 
-                let result = await tryDelete(ref, id);
+                let result = await tryDelete(ref);
                 console.log('[CooopShare] delete attempt 1:', result);
 
                 if (!result.ok) {
                     await new Promise(function(r) { setTimeout(r, 1500); });
-                    result = await tryDelete(ref, id);
+                    result = await tryDelete(ref);
                     console.log('[CooopShare] delete attempt 2:', result);
                 }
 
                 if (result.ok) {
-                    showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
+                    showStatus('Файл скачан и удалён с сервера.', 'success');
                 } else {
                     showStatus(
-                        'Файл скачан. Удаление с сервера не удалось.',
+                        'Файл скачан. Удаление не удалось.',
                         'error',
                         'Причина: ' + result.reason
                     );
