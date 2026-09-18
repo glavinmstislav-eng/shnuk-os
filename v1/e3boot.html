@@ -107,6 +107,8 @@
         .choice-btn.secondary { border-color: #333; background: #333; color: #ffffff; }
         .choice-btn.secondary:hover { background: #111; border-color: #111; }
         .choice-btn.secondary .choice-sub { color: rgba(255,255,255,0.7); }
+        .choice-btn.ghost { border-color: #e0e0e0; background: #f8f8f8; color: #666; }
+        .choice-btn.ghost:hover { background: #f0f0f0; border-color: #999; }
         .choice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .choice-title { font-size: 15px; font-weight: 600; }
         .choice-sub { font-size: 11px; color: #888; letter-spacing: 0.3px; }
@@ -129,12 +131,42 @@
             vertical-align: middle;
             margin-right: 8px;
         }
+        .choice-btn.ghost .spinner {
+            border-color: rgba(0,0,0,0.15);
+            border-top-color: #666;
+        }
+        .progress-wrap {
+            display: none;
+            width: 100%;
+            max-width: 320px;
+            margin-top: 16px;
+        }
+        .progress-wrap.visible { display: block; }
+        .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: #f0f0f0;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #cc0000;
+            transition: width 0.2s ease;
+        }
+        .progress-text {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
     </style>
     <script src="os-storage.js"></script>
+    <script src="os-cache.js"></script>
 </head>
 <body>
     <div class="page">
@@ -150,12 +182,23 @@
         <div class="choices">
             <button class="choice-btn primary" id="btnOnline">
                 <span class="choice-title">Открыть онлайн</span>
-                <span class="choice-sub">Перейти на стартовую страницу загрузки</span>
+                <span class="choice-sub">Загрузить свежую версию из сети</span>
             </button>
             <button class="choice-btn secondary" id="btnOffline">
                 <span class="choice-title">Открыть офлайн</span>
-                <span class="choice-sub">Запустить сохранённую копию системы</span>
+                <span class="choice-sub">Использовать сохранённую копию</span>
             </button>
+            <button class="choice-btn ghost" id="btnRecache">
+                <span class="choice-title">Перекэшировать</span>
+                <span class="choice-sub">Скачать систему заново в офлайн-хранилище</span>
+            </button>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+            <div class="progress-bar-bg">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-text" id="progressText">0 / 0</div>
         </div>
 
         <div class="footer-note" id="footerNote">
@@ -166,6 +209,34 @@
     <script>
     (function() {
         'use strict';
+
+        const SELF_KEY = 'shnuk_e318_html';
+        const TOKEN_PREFIX = 'shnuk_';
+
+        try {
+            if (!localStorage.getItem(SELF_KEY)) {
+                localStorage.setItem(SELF_KEY, document.documentElement.outerHTML);
+            }
+        } catch(e) {}
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function() {});
+        }
+
+        // Прямая работа с IDB через os-storage.js, если он загружен
+        function idbGet(key) {
+            if (!window.OSStorage) return Promise.resolve(null);
+            return window.OSStorage.system.get(key).catch(function() { return null; });
+        }
+
+        function idbPut(key, data) {
+            if (!window.OSStorage) return Promise.resolve(false);
+            return window.OSStorage.system.put(key, data).catch(function() { return false; });
+        }
+
+        function saveSelfToIDB() {
+            return idbPut('asset:e3.html', { type: 'text', data: document.documentElement.outerHTML });
+        }
 
         function updateNetStatus() {
             const el = document.getElementById('netStatus');
@@ -181,42 +252,17 @@
         window.addEventListener('offline', updateNetStatus);
 
         function makeToken() {
-            return 'shnuk_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+            return TOKEN_PREFIX + Date.now() + '_' + Math.random().toString(36).substring(2);
         }
 
         function openOnline() {
             const btn = document.getElementById('btnOnline');
             btn.disabled = true;
-            btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Переход...';
+            btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Загрузка...';
+            const token = makeToken();
             setTimeout(function() {
-                window.location.href = 'e3boot.html';
+                window.location.href = 'index.html?t=' + encodeURIComponent(token);
             }, 100);
-        }
-
-        async function readIndexHtml() {
-            // 1. asset:e3starter (основной ключ)
-            if (window.OSStorage) {
-                try {
-                    const a = await window.OSStorage.system.get('asset:e3starter');
-                    if (a && a.type === 'text' && a.data && a.data.length > 100) return a.data;
-                } catch(e) {}
-                // 2. asset:index.html (на случай, если e3starter ещё не готов)
-                try {
-                    const b = await window.OSStorage.system.get('asset:index.html');
-                    if (b && b.type === 'text' && b.data && b.data.length > 100) return b.data;
-                } catch(e) {}
-            }
-            // 3. Cache API
-            if ('caches' in window) {
-                try {
-                    const cache = await caches.open('shnuk-cache-v1');
-                    let m = await cache.match('index.html');
-                    if (m) return await m.text();
-                    m = await cache.match('/index.html');
-                    if (m) return await m.text();
-                } catch(e) {}
-            }
-            return null;
         }
 
         function renderIndexHtml(html, token) {
@@ -226,7 +272,6 @@
             document.head.innerHTML = doc.head.innerHTML;
             document.body.innerHTML = doc.body.innerHTML;
 
-            // Перезапускаем скрипты в body
             const bodyScripts = document.body.querySelectorAll('script');
             bodyScripts.forEach(function(oldScript) {
                 const newScript = document.createElement('script');
@@ -241,7 +286,6 @@
                 oldScript.parentNode.replaceChild(newScript, oldScript);
             });
 
-            // Перезапускаем инлайн-скрипты в head
             const headScripts = document.head.querySelectorAll('script');
             headScripts.forEach(function(oldScript) {
                 if (oldScript.src) return;
@@ -268,7 +312,22 @@
             btn.disabled = true;
             btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Загрузка...';
 
-            const html = await readIndexHtml();
+            let html = null;
+
+            try {
+                const asset = await idbGet('asset:index.html');
+                if (asset && asset.type === 'text' && asset.data) {
+                    html = asset.data;
+                }
+            } catch(e) {}
+
+            if (!html && 'caches' in window) {
+                try {
+                    const cache = await caches.open('shnuk-cache-v1');
+                    const match = await cache.match('index.html');
+                    if (match) html = await match.text();
+                } catch(e) {}
+            }
 
             if (html) {
                 const token = makeToken();
@@ -277,17 +336,77 @@
                 btn.disabled = false;
                 btn.querySelector('.choice-title').textContent = 'Открыть офлайн';
                 if (footer) {
-                    footer.innerHTML = '<span style="color:#cc0000;">Сохранённой копии нет.</span><br>Сначала откройте систему онлайн.';
+                    footer.innerHTML = '<span style="color:#cc0000;">Сохранённой копии нет.</span><br>Нажмите «Перекэшировать» при наличии интернета.';
                 }
             }
         }
 
+        async function recache() {
+            const btn = document.getElementById('btnRecache');
+            const footer = document.getElementById('footerNote');
+            const wrap = document.getElementById('progressWrap');
+            const bar = document.getElementById('progressBar');
+            const txt = document.getElementById('progressText');
+
+            btn.disabled = true;
+            btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Кэширование...';
+            if (wrap) wrap.classList.add('visible');
+
+            if (!window.OSCache || typeof window.OSCache.forceRecache !== 'function') {
+                btn.disabled = false;
+                btn.querySelector('.choice-title').textContent = 'Перекэшировать';
+                if (wrap) wrap.classList.remove('visible');
+                if (footer) footer.innerHTML = '<span style="color:#cc0000;">OSCache не загрузился.</span>';
+                return;
+            }
+
+            try {
+                const res = await window.OSCache.forceRecache(function(done, total) {
+                    const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+                    if (bar) bar.style.width = pct + '%';
+                    if (txt) txt.textContent = done + ' / ' + total;
+                });
+
+                btn.disabled = false;
+                btn.querySelector('.choice-title').textContent = 'Перекэшировать';
+                btn.querySelector('.choice-sub').textContent = 'Скачать систему заново в офлайн-хранилище';
+                if (wrap) wrap.classList.remove('visible');
+
+                if (footer) {
+                    if (res && res.ok) {
+                        footer.innerHTML = '<span style="color:#4CAF50;">Кэш обновлён.</span><br>Теперь можно открывать офлайн.';
+                    } else {
+                        footer.innerHTML = '<span style="color:#cc0000;">Ошибка кэширования' +
+                            (res && res.reason ? ': ' + res.reason : '') + '</span>';
+                    }
+                }
+            } catch(e) {
+                btn.disabled = false;
+                btn.querySelector('.choice-title').textContent = 'Перекэшировать';
+                btn.querySelector('.choice-sub').textContent = 'Скачать систему заново в офлайн-хранилище';
+                if (wrap) wrap.classList.remove('visible');
+                if (footer) footer.innerHTML = '<span style="color:#cc0000;">Ошибка: ' + (e.message || '') + '</span>';
+            }
+        }
+
         async function checkOfflineAvailable() {
-            const html = await readIndexHtml();
-            return !!html;
+            try {
+                const asset = await idbGet('asset:index.html');
+                if (asset && asset.data) return true;
+            } catch(e) {}
+            if ('caches' in window) {
+                try {
+                    const cache = await caches.open('shnuk-cache-v1');
+                    const m = await cache.match('index.html');
+                    if (m) return true;
+                } catch(e) {}
+            }
+            return false;
         }
 
         async function init() {
+            try { await saveSelfToIDB(); } catch(e) {}
+
             updateNetStatus();
 
             const hasOffline = await checkOfflineAvailable();
@@ -296,11 +415,12 @@
             if (hasOffline) {
                 if (footer) footer.innerHTML = '<span style="color:#4CAF50;">Офлайн-копия найдена.</span><br>Можно запускать без интернета.';
             } else {
-                if (footer) footer.innerHTML = 'Офлайн-копии пока нет.<br>Сначала откройте систему онлайн.';
+                if (footer) footer.innerHTML = 'Офлайн-копии пока нет.<br>Откройте онлайн или нажмите «Перекэшировать».';
             }
 
             document.getElementById('btnOnline').addEventListener('click', openOnline);
             document.getElementById('btnOffline').addEventListener('click', openOffline);
+            document.getElementById('btnRecache').addEventListener('click', recache);
         }
 
         if (document.readyState === 'loading') {

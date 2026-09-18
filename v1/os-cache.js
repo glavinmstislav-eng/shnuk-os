@@ -4,12 +4,13 @@
     'use strict';
 
     const CACHE_VERSION_KEY = '__system_cache_version';
-    const CACHE_VERSION = 'v6';
+    const CACHE_VERSION = 'v7';
     const CACHE_API_NAME = 'shnuk-cache-v1';
 
     const CRITICAL_LIST = [
         'index.html',
         'e3.html',
+        'e3boot.html',
         'sw.js',
         'os-storage.js'
     ];
@@ -133,10 +134,8 @@
     }
 
     async function fetchAsset(url) {
-        // __direct=1 заставляет SW пропустить этот запрос и отдать напрямую из сети
         const sep = url.indexOf('?') === -1 ? '?' : '&';
         const fullUrl = url + sep + '__direct=1&v=' + CACHE_VERSION;
-
         let resp;
         try {
             resp = await fetch(fullUrl, { cache: 'no-cache' });
@@ -144,18 +143,10 @@
             warn('fetch exception', url, e);
             return null;
         }
-
         if (!resp || !resp.ok) {
             warn('fetch bad status', url, resp ? resp.status : 'null');
             return null;
         }
-
-        // Проверка на HTML-заглушку от SW — если это index.html, а мы получили заглушку,
-        // значит SW всё-таки перехватил (не должно случаться с __direct=1)
-        if ((url === 'index.html' || url === 'e3.html') && resp.headers) {
-            // ничего не делаем, просто читаем содержимое
-        }
-
         return resp;
     }
 
@@ -178,12 +169,11 @@
                     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
                 }
                 const b64 = btoa(binary);
-                const ok = await saveToIDB(url, {
+                return await saveToIDB(url, {
                     type: 'base64',
                     mime: detectMime(url),
                     data: b64
                 });
-                return ok;
             } else {
                 const text = await resp.text();
                 if (!text || text.length < 10) {
@@ -191,6 +181,17 @@
                     return false;
                 }
                 const ok = await saveToIDB(url, { type: 'text', data: text });
+
+                // Дублируем index.html под ключом e3starter
+                if (ok && url === 'index.html') {
+                    try {
+                        await window.OSStorage.system.put('asset:e3starter', { type: 'text', data: text });
+                        log('asset:e3starter записан (дубль index.html)');
+                    } catch(e) {
+                        warn('не удалось записать asset:e3starter:', e);
+                    }
+                }
+
                 return ok;
             }
         } catch(e) {
@@ -220,6 +221,17 @@
             }
 
             if (await isCacheComplete()) {
+                // Проверим наличие e3starter
+                try {
+                    const st = await window.OSStorage.system.get('asset:e3starter');
+                    if (!st || !st.data) {
+                        const idx = await window.OSStorage.system.get('asset:index.html');
+                        if (idx && idx.data) {
+                            await window.OSStorage.system.put('asset:e3starter', { type: 'text', data: idx.data });
+                        }
+                    }
+                } catch(e) {}
+
                 log('кэш актуален');
                 if (onProgress) onProgress(ALL_ASSETS.length, ALL_ASSETS.length);
                 return { ok: true, cached: true, total: ALL_ASSETS.length };
