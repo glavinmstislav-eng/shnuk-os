@@ -109,7 +109,7 @@
                 return;
             }
 
-            const ok = window.SharedFiles.add({
+            window.SharedFiles.add({
                 id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
                 name: 'photo_' + Date.now() + '.jpg',
                 size: Math.round(dataUrl.length * 0.75),
@@ -117,13 +117,15 @@
                 data: dataUrl,
                 date: new Date().toISOString(),
                 extension: 'jpg'
+            }).then(function(ok) {
+                if (ok) {
+                    if (window.Win && window.Win.notify) window.Win.notify('Сохранено в Файлы', { type: 'success' });
+                } else {
+                    if (window.Win && window.Win.notify) window.Win.notify('Не удалось сохранить', { type: 'error' });
+                }
+            }).catch(function() {
+                if (window.Win && window.Win.notify) window.Win.notify('Ошибка сохранения', { type: 'error' });
             });
-
-            if (ok) {
-                if (window.Win && window.Win.notify) window.Win.notify('Сохранено в Файлы', { type: 'success' });
-            } else {
-                if (window.Win && window.Win.notify) window.Win.notify('Не удалось сохранить (переполнено?)', { type: 'error' });
-            }
         } catch(e) {
             if (window.Win && window.Win.notify) window.Win.notify('Ошибка снимка: ' + e.message, { type: 'error' });
         }

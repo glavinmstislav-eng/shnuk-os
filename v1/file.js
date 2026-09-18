@@ -22,13 +22,29 @@
         models: ['obj', 'fbx', 'gltf', 'glb', 'stl', '3ds', 'ply']
     };
 
-    function refreshFromStorage() {
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>"']/g, function(m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+        });
+    }
+
+    async function refreshFromStorage() {
         if (!window.SharedFiles) {
             files = [];
             if (isOpen) renderFiles();
             return;
         }
-        files = window.SharedFiles.get();
+        try {
+            if (window.SharedFiles.ready) await window.SharedFiles.ready();
+            if (window.SharedFiles.getAsync) {
+                files = await window.SharedFiles.getAsync();
+            } else {
+                files = window.SharedFiles.get();
+            }
+        } catch(e) {
+            files = window.SharedFiles.get();
+        }
         if (isOpen) renderFiles();
     }
 
@@ -36,8 +52,10 @@
         if (filesListenerBound) return;
         filesListenerBound = true;
         window.addEventListener('shnuk:files-changed', function() {
-            files = window.SharedFiles ? window.SharedFiles.get() : [];
-            if (isOpen) renderFiles();
+            if (window.SharedFiles) {
+                files = window.SharedFiles.get();
+                if (isOpen) renderFiles();
+            }
         });
     }
 
@@ -355,11 +373,11 @@
     function createUI() {
         if (document.getElementById('fileApp')) {
             document.getElementById('fileApp').style.display = 'flex';
+            refreshFromStorage();
             return;
         }
 
         isOpen = true;
-        refreshFromStorage();
 
         const app = document.createElement('div');
         app.id = 'fileApp';
@@ -441,6 +459,8 @@
                 .file-preview-overlay .preview-close-bottom { width: 56px; height: 56px; border-radius: 50%; background: #cc0000; color: #ffffff; border: 2px solid #ffffff; font-size: 26px; cursor: pointer; font-family: 'ST-SimpleSquare', monospace; display: flex; align-items: center; justify-content: center; transition: all 0.2s; line-height: 1; }
                 .file-preview-overlay .preview-close-bottom:hover { background: #990000; transform: scale(1.08); }
 
+                @keyframes cooopSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
                 @media (max-width: 500px) {
                     .file-header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
                     .file-header-left h1 { font-size: 16px; }
@@ -499,8 +519,6 @@
         app.appendChild(preview);
         document.body.appendChild(app);
 
-        renderFiles();
-
         document.getElementById('fileCloseBtn').addEventListener('click', closeFiles);
         document.getElementById('uploadBtn').addEventListener('click', uploadFiles);
         document.getElementById('previewClose').addEventListener('click', closePreview);
@@ -516,6 +534,11 @@
         });
 
         document.addEventListener('keydown', onKeyDown);
+
+        (async function() {
+            try { await refreshFromStorage(); } catch(e) {}
+            renderFiles();
+        })();
     }
 
     function saveFiles(fileList) {
@@ -527,10 +550,11 @@
 
         function processNext() {
             if (index >= arr.length) {
-                refreshFromStorage();
-                if (window.Win && window.Win.notify && savedCount > 0) {
-                    window.Win.notify('Загружено файлов: ' + savedCount, { type: 'success' });
-                }
+                refreshFromStorage().then(function() {
+                    if (window.Win && window.Win.notify && savedCount > 0) {
+                        window.Win.notify('Загружено файлов: ' + savedCount, { type: 'success' });
+                    }
+                });
                 return;
             }
             const file = arr[index];
@@ -547,13 +571,21 @@
                     extension: file.name.split('.').pop().toLowerCase()
                 };
                 if (window.SharedFiles) {
-                    const ok = window.SharedFiles.add(fileData);
-                    if (ok) savedCount++;
-                    else if (window.Win && window.Win.notify) {
-                        window.Win.notify('Не удалось сохранить: ' + file.name, { type: 'error' });
-                    }
+                    window.SharedFiles.add(fileData).then(function(ok) {
+                        if (ok) savedCount++;
+                        else if (window.Win && window.Win.notify) {
+                            window.Win.notify('Не удалось сохранить: ' + file.name, { type: 'error' });
+                        }
+                        setTimeout(processNext, 10);
+                    }).catch(function() {
+                        if (window.Win && window.Win.notify) {
+                            window.Win.notify('Ошибка сохранения: ' + file.name, { type: 'error' });
+                        }
+                        setTimeout(processNext, 10);
+                    });
+                } else {
+                    setTimeout(processNext, 10);
                 }
-                setTimeout(processNext, 10);
             };
             reader.onerror = function() {
                 if (window.Win && window.Win.notify) {
@@ -591,15 +623,18 @@
         setTimeout(() => input.remove(), 1000);
     }
 
-    function deleteFile(fileId) {
+    async function deleteFile(fileId) {
         if (!confirm('Удалить файл?')) return;
         if (window.SharedFiles && typeof window.SharedFiles.remove === 'function') {
-            window.SharedFiles.remove(fileId);
+            try {
+                await window.SharedFiles.remove(fileId);
+            } catch(e) {
+                console.warn('[Files] remove error:', e);
+            }
         } else {
             files = files.filter(f => f.id !== fileId);
-            try { localStorage.setItem('shnuk_files', JSON.stringify(files)); } catch(e) {}
         }
-        refreshFromStorage();
+        await refreshFromStorage();
         if (previewData && previewData.file.id === fileId) closePreview();
     }
 
@@ -651,7 +686,7 @@
             item.innerHTML = `
                 <span class="file-icon">${icon}</span>
                 ${badge ? `<span class="file-badge">${badge}</span>` : ''}
-                <div class="file-name">${file.name}</div>
+                <div class="file-name">${escapeHtml(file.name)}</div>
                 <div class="file-size">${size}</div>
             `;
             item.appendChild(deleteBtn);
@@ -712,7 +747,7 @@
         nameEl.textContent = file.name;
 
         let html = '';
-        if (type === 'image') html = `<img src="${file.data}" alt="${file.name}" />`;
+        if (type === 'image') html = `<img src="${file.data}" alt="${escapeHtml(file.name)}" />`;
         else if (type === 'video') html = `<video controls autoplay><source src="${file.data}" type="${file.type}"></video>`;
         else if (type === 'audio') html = `<audio controls autoplay><source src="${file.data}" type="${file.type}"></audio>`;
         else if (type === 'model') html = `<div class="three-viewer" id="threeViewer"><div class="three-placeholder">Загрузка 3D...</div></div>`;
@@ -725,7 +760,7 @@
 
         actions.innerHTML = `
             ${isImage ? `<button class="set-wallpaper" data-file-id="${file.id}">Установить как обои</button>` : ''}
-            ${isModel ? `<button class="reset-view" id="resetViewBtn">⟲ Сброс вида</button>` : ''}
+            ${isModel ? `<button class="reset-view" id="resetViewBtn">Сброс вида</button>` : ''}
             <button data-file-id="${file.id}" class="share-cooop">Поделиться через Cooop</button>
             <button data-file-id="${file.id}" class="download-btn">Скачать</button>
             <button data-file-id="${file.id}" class="delete-btn">Удалить</button>
@@ -790,7 +825,7 @@
         const header = document.createElement('div');
         header.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:2px solid #e0e0e0;';
         header.innerHTML = `
-            <span style="color:#333;font-size:14px;">${file.name}</span>
+            <span style="color:#333;font-size:14px;">${escapeHtml(file.name)}</span>
             <button style="background:none;border:none;color:#333;font-size:24px;cursor:pointer;font-family:'ST-SimpleSquare',monospace;">✕</button>
         `;
         header.querySelector('button').onclick = () => container.remove();
@@ -869,13 +904,122 @@
         const file = files.find(f => f.id === fileId);
         if (!file) { alert('Файл не найден'); return; }
 
+        const MAX_BYTES = 950000;
+        const dataLen = file.data ? file.data.length : 0;
+        if (dataLen > MAX_BYTES) {
+            const mb = ((file.size || dataLen * 0.75) / (1024 * 1024)).toFixed(2);
+            if (window.Win && window.Win.notify) {
+                window.Win.notify(
+                    'Файл слишком большой для Cooop: ' + mb + ' МБ. Лимит ~700 КБ.',
+                    { type: 'error', duration: 5000 }
+                );
+            } else {
+                alert('Файл слишком большой для Cooop: ' + mb + ' МБ. Лимит ~700 КБ.');
+            }
+            return;
+        }
+
         if (!window.Cooop || typeof window.Cooop.shareFile !== 'function') {
             alert('Cooop недоступен');
             return;
         }
 
+        // --- Модальное окно публикации ---
+        const overlay = document.createElement('div');
+        overlay.id = 'cooopPublishOverlay';
+        overlay.style.cssText = `
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 200000;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'ST-SimpleSquare', monospace;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        `;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            background: #ffffff;
+            width: 320px;
+            max-width: calc(100% - 32px);
+            padding: 28px 24px;
+            box-sizing: border-box;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        `;
+        panel.innerHTML = `
+            <div id="cooopSpinner" style="
+                width: 56px; height: 56px;
+                border: 4px solid #f0f0f0;
+                border-top: 4px solid #cc0000;
+                border-radius: 50%;
+                margin: 0 auto 20px;
+                animation: cooopSpin 0.9s linear infinite;
+            "></div>
+            <div id="cooopTitle" style="font-size:17px;font-weight:600;color:#1a1a1a;margin-bottom:8px;">
+                Публикация файла...
+            </div>
+            <div id="cooopStatus" style="font-size:13px;color:#888;line-height:1.5;word-break:break-word;">
+                ${escapeHtml(file.name)}
+            </div>
+            <div id="cooopActions" style="margin-top:20px;display:none;">
+                <button id="cooopCloseModalBtn" style="
+                    padding: 10px 24px;
+                    border: 2px solid #cc0000;
+                    background: #cc0000;
+                    color: #ffffff;
+                    cursor: pointer;
+                    font-family: 'ST-SimpleSquare', monospace;
+                    font-size: 14px;
+                    font-weight: 600;
+                ">Закрыть</button>
+            </div>
+        `;
+
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+        requestAnimationFrame(function() { overlay.style.opacity = '1'; });
+
+        function setStatus(text, kind) {
+            const el = document.getElementById('cooopStatus');
+            if (!el) return;
+            el.textContent = text;
+            el.style.color = kind === 'error' ? '#cc0000' : (kind === 'success' ? '#4CAF50' : '#888');
+        }
+
+        function setTitle(text) {
+            const el = document.getElementById('cooopTitle');
+            if (el) el.textContent = text;
+        }
+
+        function stopSpinner() {
+            const sp = document.getElementById('cooopSpinner');
+            if (sp) sp.style.display = 'none';
+        }
+
+        function showCloseBtn() {
+            const a = document.getElementById('cooopActions');
+            if (a) a.style.display = 'block';
+        }
+
+        function closeOverlay() {
+            overlay.style.opacity = '0';
+            setTimeout(function() {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }, 250);
+        }
+
+        document.getElementById('cooopCloseModalBtn').addEventListener('click', closeOverlay);
+
+        // --- Публикация ---
         let url = null;
+        let failed = false;
         try {
+            setTitle('Публикация файла...');
+            setStatus(file.name);
             url = await window.Cooop.shareFile({
                 name: file.name,
                 type: file.type,
@@ -884,11 +1028,26 @@
                 data: file.data
             });
         } catch(e) {
-            alert('Ошибка публикации: ' + (e.message || ''));
+            failed = true;
+            stopSpinner();
+            setTitle('Ошибка');
+            setStatus('Не удалось: ' + (e.message || ''), 'error');
+            showCloseBtn();
+        }
+
+        if (failed) return;
+
+        if (!url) {
+            stopSpinner();
+            setTitle('Ошибка публикации');
+            setStatus('Cooop не вернул ссылку', 'error');
+            showCloseBtn();
             return;
         }
 
-        if (!url) return;
+        // Успех
+        stopSpinner();
+        setTitle('Ссылка готова');
 
         try {
             const ta = document.createElement('textarea');
@@ -903,22 +1062,14 @@
             }
         }
 
-        if (window.Win && window.Win.confirm) {
-            Win.confirm('Файл опубликован. Ссылка скопирована:\n\n' + url, {
-                title: 'Cooop',
-                okText: 'Открыть в Cooop',
-                cancelText: 'Закрыть'
-            }).then(function(ok) {
-                if (ok && window.Cooop && window.Cooop.open) {
-                    if (window.Win && window.Win.notify) {
-                        window.Win.notify('Ссылка скопирована', { type: 'success' });
-                    }
-                    window.Cooop.open();
-                }
-            });
-        } else {
-            alert('Файл опубликован. Ссылка скопирована:\n\n' + url);
+        const statusEl = document.getElementById('cooopStatus');
+        if (statusEl) {
+            statusEl.style.color = '#4CAF50';
+            statusEl.innerHTML = '<div style="margin-bottom:8px;">Ссылка скопирована:</div>' +
+                '<div style="word-break:break-all;font-size:11px;color:#333;">' + escapeHtml(url) + '</div>';
         }
+
+        showCloseBtn();
     }
 
     function downloadFile(fileId) {

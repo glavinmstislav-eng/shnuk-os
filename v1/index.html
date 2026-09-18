@@ -256,6 +256,8 @@
             .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 40px; height: 40px; font-size: 20px; }
         }
     </style>
+
+    <script src="os-storage.js"></script>
 </head>
 <body>
 
@@ -316,12 +318,58 @@
         }, 1000);
         const osApp = document.getElementById('osApp');
 
-        function launchOS() {
+        function waitForOSStorage() {
+            return new Promise(function(resolve) {
+                if (window.OSStorage) { resolve(true); return; }
+                let tries = 0;
+                const iv = setInterval(function() {
+                    tries++;
+                    if (window.OSStorage || tries > 50) {
+                        clearInterval(iv);
+                        resolve(!!window.OSStorage);
+                    }
+                }, 100);
+            });
+        }
+
+        async function loadScriptWithFallback(src) {
+            return new Promise(function(resolve) {
+                const script = document.createElement('script');
+                script.src = src + '?t=' + Date.now();
+                script.async = false;
+                script.onload = function() { resolve(true); };
+                script.onerror = function() {
+                    // Пробуем из IndexedDB
+                    if (window.OSStorage) {
+                        window.OSStorage.system.get('asset:' + src).then(function(asset) {
+                            if (asset && asset.type === 'text') {
+                                try {
+                                    const s = document.createElement('script');
+                                    s.textContent = asset.data;
+                                    document.head.appendChild(s);
+                                    resolve(true);
+                                    return;
+                                } catch(e) {}
+                            }
+                            resolve(false);
+                        }).catch(function() { resolve(false); });
+                    } else {
+                        resolve(false);
+                    }
+                };
+                document.head.appendChild(script);
+            });
+        }
+
+        async function launchOS() {
             osApp.classList.add('visible');
             osApp.style.display = 'block';
+
+            await waitForOSStorage();
+
             const scripts = [
-                'file-storage.js',
                 'l.js',
+                'file-storage.js',
                 'onboarding.js',
                 'live-bar.js',
                 'windows.js',
@@ -329,26 +377,21 @@
                 'app-scanner.js',
                 'store.js',
                 'settings.js',
-                'cooop.js'
+                'cooop.js',
+                'os-cache.js'
             ];
-            let loaded = 0;
-            function loadScript(index) {
-                if (index >= scripts.length) {
-                    setTimeout(function() { checkSecurityAndStart(); }, 200);
-                    return;
-                }
-                const src = scripts[index];
-                const script = document.createElement('script');
-                script.src = src + '?t=' + Date.now();
-                script.async = false;
-                script.onload = function() { loaded++; loadScript(index + 1); };
-                script.onerror = function() { loadScript(index + 1); };
-                document.head.appendChild(script);
+
+            for (let i = 0; i < scripts.length; i++) {
+                await loadScriptWithFallback(scripts[i]);
             }
-            loadScript(0);
+
+            setTimeout(function() { checkSecurityAndStart(); }, 200);
         }
 
         async function checkSecurityAndStart() {
+            if (window.SharedFiles && window.SharedFiles.ready) {
+                try { await window.SharedFiles.ready(); } catch(e) {}
+            }
             if (window.__firebaseReady) {
                 try { await window.__firebaseReady; } catch(e) {}
             }
@@ -495,9 +538,6 @@
                         await window.Auth.signIn(email, password);
                     } else {
                         await window.Auth.signUp(email, password);
-                    }
-                    if (window.SharedFiles && typeof window.SharedFiles.pullFromCloud === 'function') {
-                        try { await window.SharedFiles.pullFromCloud(); } catch(e) {}
                     }
                     overlay.remove();
                     if (onSuccess) onSuccess();

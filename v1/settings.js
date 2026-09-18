@@ -142,16 +142,18 @@
         renderWallpapers();
     }
 
-    function renderSystemInfo() {
+    async function renderSystemInfo() {
         const container = document.getElementById('systemInfo');
         if (!container) return;
 
         let filesCount = 0;
         try {
-            const files = localStorage.getItem('shnuk_files');
-            if (files) {
-                const parsed = JSON.parse(files);
-                filesCount = Array.isArray(parsed) ? parsed.length : 0;
+            if (window.SharedFiles && window.SharedFiles.getAsync) {
+                const arr = await window.SharedFiles.getAsync();
+                filesCount = Array.isArray(arr) ? arr.length : 0;
+            } else if (window.SharedFiles) {
+                const arr = window.SharedFiles.get();
+                filesCount = Array.isArray(arr) ? arr.length : 0;
             }
         } catch(e) {}
 
@@ -182,6 +184,13 @@
                 }
             }
         } catch(e) {}
+
+        if (window.OSStorage && window.OSStorage.estimate) {
+            try {
+                const est = await window.OSStorage.estimate();
+                if (est && est.usage) storageSize += est.usage;
+            } catch(e) {}
+        }
 
         const sizeFormatted = formatBytes(storageSize);
 
@@ -529,6 +538,10 @@
         try {
             localStorage.clear();
             sessionStorage.clear();
+            if (window.OSStorage) {
+                try { await window.OSStorage.files.clear(); } catch(e) {}
+                try { await window.OSStorage.system.clear(); } catch(e) {}
+            }
         } catch(e) {}
         
         closeSettings();
