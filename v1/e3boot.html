@@ -3,431 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Shnuk OS — Запуск</title>
+    <title>Loading</title>
     <style>
-        @font-face {
-            font-family: 'ST-SimpleSquare';
-            src: url('ST-SimpleSquare.ttf') format('truetype');
-            font-weight: 400;
-            font-display: swap;
-        }
-        * {
+        html, body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-        html, body {
             width: 100%;
             height: 100%;
-            background: #ffffff;
-            font-family: 'ST-SimpleSquare', monospace, sans-serif;
-            color: #1a1a1a;
-            overflow: hidden;
+            background: #000000;
         }
-        .page {
+        #msg {
             position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 30px 20px;
-            overflow-y: auto;
-        }
-        .logo {
-            width: 100px;
-            height: 100px;
-            object-fit: contain;
-            margin-bottom: 20px;
-        }
-        .title {
-            font-size: 24px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            margin-bottom: 6px;
-        }
-        .subtitle {
-            font-size: 13px;
-            color: #888;
-            margin-bottom: 28px;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #333;
+            font-family: monospace;
+            font-size: 14px;
             text-align: center;
-        }
-        .network-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 24px;
-            padding: 8px 16px;
-            border: 2px solid #e0e0e0;
-            background: #f8f8f8;
-        }
-        .network-status .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #888;
-        }
-        .network-status.online .dot { background: #4CAF50; }
-        .network-status.offline .dot { background: #cc0000; }
-        .network-status.online { color: #4CAF50; border-color: #c8e6c9; background: #f1f8f4; }
-        .network-status.offline { color: #cc0000; border-color: #ffcccc; background: #fff5f5; }
-        .choices {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            width: 100%;
-            max-width: 320px;
-        }
-        .choice-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 4px;
-            padding: 16px 20px;
-            border: 2px solid #e0e0e0;
-            background: #ffffff;
-            cursor: pointer;
-            font-family: 'ST-SimpleSquare', monospace;
-            font-size: 15px;
-            color: #1a1a1a;
-            text-align: left;
-            transition: all 0.2s ease;
-            width: 100%;
-        }
-        .choice-btn:hover { border-color: #cc0000; background: #fff5f5; }
-        .choice-btn:active { transform: scale(0.98); }
-        .choice-btn.primary { border-color: #cc0000; background: #cc0000; color: #ffffff; }
-        .choice-btn.primary:hover { background: #990000; border-color: #990000; }
-        .choice-btn.primary .choice-sub { color: rgba(255,255,255,0.75); }
-        .choice-btn.secondary { border-color: #333; background: #333; color: #ffffff; }
-        .choice-btn.secondary:hover { background: #111; border-color: #111; }
-        .choice-btn.secondary .choice-sub { color: rgba(255,255,255,0.7); }
-        .choice-btn.ghost { border-color: #e0e0e0; background: #f8f8f8; color: #666; }
-        .choice-btn.ghost:hover { background: #f0f0f0; border-color: #999; }
-        .choice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .choice-title { font-size: 15px; font-weight: 600; }
-        .choice-sub { font-size: 11px; color: #888; letter-spacing: 0.3px; }
-        .footer-note {
-            margin-top: 24px;
-            font-size: 11px;
-            color: #bbb;
-            text-align: center;
-            max-width: 320px;
-            line-height: 1.5;
-        }
-        .spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top: 2px solid #ffffff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            vertical-align: middle;
-            margin-right: 8px;
-        }
-        .choice-btn.ghost .spinner {
-            border-color: rgba(0,0,0,0.15);
-            border-top-color: #666;
-        }
-        .progress-wrap {
-            display: none;
-            width: 100%;
-            max-width: 320px;
-            margin-top: 16px;
-        }
-        .progress-wrap.visible { display: block; }
-        .progress-bar-bg {
-            width: 100%;
-            height: 8px;
-            background: #f0f0f0;
-            overflow: hidden;
-            margin-bottom: 8px;
-        }
-        .progress-bar {
-            width: 0%;
-            height: 100%;
-            background: #cc0000;
-            transition: width 0.2s ease;
-        }
-        .progress-text {
-            font-size: 12px;
-            color: #666;
-            text-align: center;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
         }
     </style>
-    <script src="os-storage.js"></script>
-    <script src="os-cache.js"></script>
 </head>
 <body>
-    <div class="page">
-        <img src="icoon.png" alt="Shnuk OS" class="logo" onerror="this.style.display='none'" />
-        <div class="title">SHNUK OS</div>
-        <div class="subtitle">Выберите способ запуска</div>
-
-        <div class="network-status" id="netStatus">
-            <span class="dot"></span>
-            <span id="netText">Проверка сети...</span>
-        </div>
-
-        <div class="choices">
-            <button class="choice-btn primary" id="btnOnline">
-                <span class="choice-title">Открыть онлайн</span>
-                <span class="choice-sub">Загрузить свежую версию из сети</span>
-            </button>
-            <button class="choice-btn secondary" id="btnOffline">
-                <span class="choice-title">Открыть офлайн</span>
-                <span class="choice-sub">Использовать сохранённую копию</span>
-            </button>
-            <button class="choice-btn ghost" id="btnRecache">
-                <span class="choice-title">Перекэшировать</span>
-                <span class="choice-sub">Скачать систему заново в офлайн-хранилище</span>
-            </button>
-        </div>
-
-        <div class="progress-wrap" id="progressWrap">
-            <div class="progress-bar-bg">
-                <div class="progress-bar" id="progressBar"></div>
-            </div>
-            <div class="progress-text" id="progressText">0 / 0</div>
-        </div>
-
-        <div class="footer-note" id="footerNote">
-            Проверка офлайн-копии...
-        </div>
-    </div>
-
+    <div id="msg">Загрузка...</div>
     <script>
     (function() {
         'use strict';
 
         const SELF_KEY = 'shnuk_e318_html';
-        const TOKEN_PREFIX = 'shnuk_';
+        const SELF_KEY_BOOT = 'shnuk_e3boot_html';
 
+        // 1. Токен генерируется здесь и попадёт в URL index.html
+        const token = 'shnuk_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+
+        // 2. Сохраняем себя и токен в localStorage
         try {
-            if (!localStorage.getItem(SELF_KEY)) {
-                localStorage.setItem(SELF_KEY, document.documentElement.outerHTML);
-            }
+            const selfHtml = document.documentElement.outerHTML;
+            if (!localStorage.getItem(SELF_KEY)) localStorage.setItem(SELF_KEY, selfHtml);
+            if (!localStorage.getItem(SELF_KEY_BOOT)) localStorage.setItem(SELF_KEY_BOOT, selfHtml);
+            localStorage.setItem('shnuk_current_token', token);
         } catch(e) {}
 
+        // 3. Регистрируем Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function() {});
         }
 
-        // Прямая работа с IDB через os-storage.js, если он загружен
-        function idbGet(key) {
-            if (!window.OSStorage) return Promise.resolve(null);
-            return window.OSStorage.system.get(key).catch(function() { return null; });
+        // 4. Хелперы IndexedDB (прямая работа, без OSStorage)
+        function openIDB() {
+            return new Promise(function(resolve, reject) {
+                const req = indexedDB.open('shnuk_os', 1);
+                req.onupgradeneeded = function(e) {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('files')) {
+                        db.createObjectStore('files', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('system')) {
+                        db.createObjectStore('system', { keyPath: 'key' });
+                    }
+                };
+                req.onsuccess = function() { resolve(req.result); };
+                req.onerror = function() { reject(req.error); };
+            });
         }
 
         function idbPut(key, data) {
-            if (!window.OSStorage) return Promise.resolve(false);
-            return window.OSStorage.system.put(key, data).catch(function() { return false; });
-        }
-
-        function saveSelfToIDB() {
-            return idbPut('asset:e3.html', { type: 'text', data: document.documentElement.outerHTML });
-        }
-
-        function updateNetStatus() {
-            const el = document.getElementById('netStatus');
-            const txt = document.getElementById('netText');
-            if (!el || !txt) return;
-            const online = navigator.onLine;
-            el.classList.toggle('online', online);
-            el.classList.toggle('offline', !online);
-            txt.textContent = online ? 'Сеть доступна' : 'Сети нет';
-        }
-
-        window.addEventListener('online', updateNetStatus);
-        window.addEventListener('offline', updateNetStatus);
-
-        function makeToken() {
-            return TOKEN_PREFIX + Date.now() + '_' + Math.random().toString(36).substring(2);
-        }
-
-        function openOnline() {
-            const btn = document.getElementById('btnOnline');
-            btn.disabled = true;
-            btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Загрузка...';
-            const token = makeToken();
-            setTimeout(function() {
-                window.location.href = 'index.html?t=' + encodeURIComponent(token);
-            }, 100);
-        }
-
-        function renderIndexHtml(html, token) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-
-            document.head.innerHTML = doc.head.innerHTML;
-            document.body.innerHTML = doc.body.innerHTML;
-
-            const bodyScripts = document.body.querySelectorAll('script');
-            bodyScripts.forEach(function(oldScript) {
-                const newScript = document.createElement('script');
-                if (oldScript.src) {
-                    newScript.src = oldScript.src;
-                } else {
-                    newScript.textContent = oldScript.textContent;
-                }
-                Array.from(oldScript.attributes).forEach(function(attr) {
-                    if (attr.name !== 'src') newScript.setAttribute(attr.name, attr.value);
+            return openIDB().then(function(db) {
+                return new Promise(function(resolve) {
+                    try {
+                        const t = db.transaction('system', 'readwrite');
+                        t.objectStore('system').put({ key: key, data: data, updated: Date.now() });
+                        t.oncomplete = function() { resolve(true); };
+                        t.onerror = function() { resolve(false); };
+                    } catch(e) { resolve(false); }
                 });
-                oldScript.parentNode.replaceChild(newScript, oldScript);
             });
+        }
 
-            const headScripts = document.head.querySelectorAll('script');
-            headScripts.forEach(function(oldScript) {
-                if (oldScript.src) return;
-                const newScript = document.createElement('script');
-                newScript.textContent = oldScript.textContent;
-                Array.from(oldScript.attributes).forEach(function(attr) {
-                    newScript.setAttribute(attr.name, attr.value);
+        function idbGet(key) {
+            return openIDB().then(function(db) {
+                return new Promise(function(resolve) {
+                    try {
+                        const t = db.transaction('system', 'readonly');
+                        const req = t.objectStore('system').get(key);
+                        req.onsuccess = function() {
+                            const row = req.result;
+                            resolve(row ? row.data : null);
+                        };
+                        req.onerror = function() { resolve(null); };
+                    } catch(e) { resolve(null); }
                 });
-                oldScript.parentNode.replaceChild(newScript, oldScript);
             });
-
-            try {
-                if (window.history && window.history.replaceState) {
-                    const u = new URL(window.location.href);
-                    u.searchParams.set('t', token);
-                    window.history.replaceState(null, '', u.toString());
-                }
-            } catch(e) {}
         }
 
-        async function openOffline() {
-            const btn = document.getElementById('btnOffline');
-            const footer = document.getElementById('footerNote');
-            btn.disabled = true;
-            btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Загрузка...';
+        // 5. Сохраняем e3boot и заодно подтягиваем index.html с токеном
+        async function saveSelfToIDB() {
+            const html = document.documentElement.outerHTML;
+            await idbPut('asset:e3boot.html', { type: 'text', data: html });
+        }
 
-            let html = null;
-
+        async function saveStarterFromNetwork() {
+            // Если e3starter уже есть и свежий — не трогаем
             try {
-                const asset = await idbGet('asset:index.html');
-                if (asset && asset.type === 'text' && asset.data) {
-                    html = asset.data;
+                const existing = await idbGet('asset:e3starter');
+                if (existing && existing.data && existing.data.length > 100) {
+                    // Есть копия — но убедимся, что в ней есть токен
+                    if (existing.data.indexOf('__SHNUK_TOKEN') !== -1) return;
                 }
             } catch(e) {}
 
-            if (!html && 'caches' in window) {
-                try {
-                    const cache = await caches.open('shnuk-cache-v1');
-                    const match = await cache.match('index.html');
-                    if (match) html = await match.text();
-                } catch(e) {}
-            }
-
-            if (html) {
-                const token = makeToken();
-                renderIndexHtml(html, token);
-            } else {
-                btn.disabled = false;
-                btn.querySelector('.choice-title').textContent = 'Открыть офлайн';
-                if (footer) {
-                    footer.innerHTML = '<span style="color:#cc0000;">Сохранённой копии нет.</span><br>Нажмите «Перекэшировать» при наличии интернета.';
-                }
-            }
-        }
-
-        async function recache() {
-            const btn = document.getElementById('btnRecache');
-            const footer = document.getElementById('footerNote');
-            const wrap = document.getElementById('progressWrap');
-            const bar = document.getElementById('progressBar');
-            const txt = document.getElementById('progressText');
-
-            btn.disabled = true;
-            btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Кэширование...';
-            if (wrap) wrap.classList.add('visible');
-
-            if (!window.OSCache || typeof window.OSCache.forceRecache !== 'function') {
-                btn.disabled = false;
-                btn.querySelector('.choice-title').textContent = 'Перекэшировать';
-                if (wrap) wrap.classList.remove('visible');
-                if (footer) footer.innerHTML = '<span style="color:#cc0000;">OSCache не загрузился.</span>';
-                return;
-            }
-
             try {
-                const res = await window.OSCache.forceRecache(function(done, total) {
-                    const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
-                    if (bar) bar.style.width = pct + '%';
-                    if (txt) txt.textContent = done + ' / ' + total;
-                });
+                const url = 'index.html?t=' + encodeURIComponent(token) + '&__direct=1';
+                const resp = await fetch(url, { cache: 'no-cache' });
+                if (!resp || !resp.ok) return;
+                const html = await resp.text();
+                if (!html || html.length < 100) return;
 
-                btn.disabled = false;
-                btn.querySelector('.choice-title').textContent = 'Перекэшировать';
-                btn.querySelector('.choice-sub').textContent = 'Скачать систему заново в офлайн-хранилище';
-                if (wrap) wrap.classList.remove('visible');
-
-                if (footer) {
-                    if (res && res.ok) {
-                        footer.innerHTML = '<span style="color:#4CAF50;">Кэш обновлён.</span><br>Теперь можно открывать офлайн.';
-                    } else {
-                        footer.innerHTML = '<span style="color:#cc0000;">Ошибка кэширования' +
-                            (res && res.reason ? ': ' + res.reason : '') + '</span>';
-                    }
+                // Инжектим токен прямо в head — пригодится для офлайн-рендера
+                let injected = html;
+                if (injected.indexOf('__SHNUK_TOKEN') === -1) {
+                    injected = injected.replace(
+                        '<head>',
+                        '<head>\n<script>window.__SHNUK_TOKEN = ' + JSON.stringify(token) + ';<' + '/script>'
+                    );
                 }
-            } catch(e) {
-                btn.disabled = false;
-                btn.querySelector('.choice-title').textContent = 'Перекэшировать';
-                btn.querySelector('.choice-sub').textContent = 'Скачать систему заново в офлайн-хранилище';
-                if (wrap) wrap.classList.remove('visible');
-                if (footer) footer.innerHTML = '<span style="color:#cc0000;">Ошибка: ' + (e.message || '') + '</span>';
-            }
-        }
 
-        async function checkOfflineAvailable() {
-            try {
-                const asset = await idbGet('asset:index.html');
-                if (asset && asset.data) return true;
+                await idbPut('asset:e3starter', { type: 'text', data: injected });
+                await idbPut('asset:index.html', { type: 'text', data: injected });
             } catch(e) {}
-            if ('caches' in window) {
-                try {
-                    const cache = await caches.open('shnuk-cache-v1');
-                    const m = await cache.match('index.html');
-                    if (m) return true;
-                } catch(e) {}
-            }
-            return false;
         }
 
-        async function init() {
+        // 6. Переход
+        async function go() {
             try { await saveSelfToIDB(); } catch(e) {}
+            try { await saveStarterFromNetwork(); } catch(e) {}
 
-            updateNetStatus();
-
-            const hasOffline = await checkOfflineAvailable();
-            const footer = document.getElementById('footerNote');
-
-            if (hasOffline) {
-                if (footer) footer.innerHTML = '<span style="color:#4CAF50;">Офлайн-копия найдена.</span><br>Можно запускать без интернета.';
-            } else {
-                if (footer) footer.innerHTML = 'Офлайн-копии пока нет.<br>Откройте онлайн или нажмите «Перекэшировать».';
+            try {
+                window.location.href = 'index.html?t=' + encodeURIComponent(token);
+            } catch(e) {
+                document.getElementById('msg').textContent = 'Не удалось открыть систему';
             }
-
-            document.getElementById('btnOnline').addEventListener('click', openOnline);
-            document.getElementById('btnOffline').addEventListener('click', openOffline);
-            document.getElementById('btnRecache').addEventListener('click', recache);
         }
 
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
+        go();
     })();
     </script>
 </body>

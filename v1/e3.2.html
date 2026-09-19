@@ -180,10 +180,6 @@
         window.addEventListener('online', updateNetStatus);
         window.addEventListener('offline', updateNetStatus);
 
-        function makeToken() {
-            return 'shnuk_' + Date.now() + '_' + Math.random().toString(36).substring(2);
-        }
-
         function openOnline() {
             const btn = document.getElementById('btnOnline');
             btn.disabled = true;
@@ -193,20 +189,16 @@
             }, 100);
         }
 
-        async function readIndexHtml() {
-            // 1. asset:e3starter (основной ключ)
-            if (window.OSStorage) {
-                try {
-                    const a = await window.OSStorage.system.get('asset:e3starter');
-                    if (a && a.type === 'text' && a.data && a.data.length > 100) return a.data;
-                } catch(e) {}
-                // 2. asset:index.html (на случай, если e3starter ещё не готов)
-                try {
-                    const b = await window.OSStorage.system.get('asset:index.html');
-                    if (b && b.type === 'text' && b.data && b.data.length > 100) return b.data;
-                } catch(e) {}
-            }
-            // 3. Cache API
+        async function readStarterHtml() {
+            if (!window.OSStorage) return null;
+            try {
+                const a = await window.OSStorage.system.get('asset:e3starter');
+                if (a && a.type === 'text' && a.data && a.data.length > 100) return a.data;
+            } catch(e) {}
+            try {
+                const b = await window.OSStorage.system.get('asset:index.html');
+                if (b && b.type === 'text' && b.data && b.data.length > 100) return b.data;
+            } catch(e) {}
             if ('caches' in window) {
                 try {
                     const cache = await caches.open('shnuk-cache-v1');
@@ -219,14 +211,27 @@
             return null;
         }
 
-        function renderIndexHtml(html, token) {
+        function renderIndexHtml(html) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
 
             document.head.innerHTML = doc.head.innerHTML;
             document.body.innerHTML = doc.body.innerHTML;
 
-            // Перезапускаем скрипты в body
+            // Перезапускаем скрипты — сначала инлайн в head, потом все в body
+            const inlineHead = [];
+            document.head.querySelectorAll('script').forEach(function(s) {
+                if (!s.src) inlineHead.push(s);
+            });
+            inlineHead.forEach(function(oldScript) {
+                const newScript = document.createElement('script');
+                newScript.textContent = oldScript.textContent;
+                Array.from(oldScript.attributes).forEach(function(attr) {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+
             const bodyScripts = document.body.querySelectorAll('script');
             bodyScripts.forEach(function(oldScript) {
                 const newScript = document.createElement('script');
@@ -240,26 +245,6 @@
                 });
                 oldScript.parentNode.replaceChild(newScript, oldScript);
             });
-
-            // Перезапускаем инлайн-скрипты в head
-            const headScripts = document.head.querySelectorAll('script');
-            headScripts.forEach(function(oldScript) {
-                if (oldScript.src) return;
-                const newScript = document.createElement('script');
-                newScript.textContent = oldScript.textContent;
-                Array.from(oldScript.attributes).forEach(function(attr) {
-                    newScript.setAttribute(attr.name, attr.value);
-                });
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-
-            try {
-                if (window.history && window.history.replaceState) {
-                    const u = new URL(window.location.href);
-                    u.searchParams.set('t', token);
-                    window.history.replaceState(null, '', u.toString());
-                }
-            } catch(e) {}
         }
 
         async function openOffline() {
@@ -268,11 +253,10 @@
             btn.disabled = true;
             btn.querySelector('.choice-title').innerHTML = '<span class="spinner"></span>Загрузка...';
 
-            const html = await readIndexHtml();
+            const html = await readStarterHtml();
 
             if (html) {
-                const token = makeToken();
-                renderIndexHtml(html, token);
+                renderIndexHtml(html);
             } else {
                 btn.disabled = false;
                 btn.querySelector('.choice-title').textContent = 'Открыть офлайн';
@@ -283,7 +267,7 @@
         }
 
         async function checkOfflineAvailable() {
-            const html = await readIndexHtml();
+            const html = await readStarterHtml();
             return !!html;
         }
 

@@ -389,7 +389,7 @@
     (function() {
         'use strict';
         var params = new URLSearchParams(window.location.search);
-        var token = params.get('t');
+        var token = params.get('t') || window.__SHNUK_TOKEN || null;
         var cooopParam = params.get('cooop');
         if ((!token || !token.startsWith('shnuk_')) && !cooopParam) {
             document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
@@ -404,6 +404,24 @@
                 }
             } catch(e) {}
         }, 1000);
+
+        // Сохраняем себя как e3starter (с токеном) — для офлайн-запуска
+        (function saveStarterEarly() {
+            if (!window.OSStorage) return;
+            var html = document.documentElement.outerHTML;
+            var injected = html;
+            if (injected.indexOf('__SHNUK_TOKEN') === -1) {
+                injected = injected.replace(
+                    '<head>',
+                    '<head>\n<script>window.__SHNUK_TOKEN = ' + JSON.stringify(token) + ';<' + '/script>'
+                );
+            }
+            try {
+                window.OSStorage.system.put('asset:e3starter', { type: 'text', data: injected }).catch(function() {});
+                window.OSStorage.system.put('asset:index.html', { type: 'text', data: injected }).catch(function() {});
+            } catch(e) {}
+        })();
+
         const osApp = document.getElementById('osApp');
 
         function waitForOSStorage() {
@@ -452,12 +470,10 @@
             const el = document.getElementById('cacheOverlay');
             if (el) el.classList.add('visible');
         }
-
         function hideCacheOverlay() {
             const el = document.getElementById('cacheOverlay');
             if (el) el.classList.remove('visible');
         }
-
         function updateCacheProgress(done, total) {
             const bar = document.getElementById('cacheBar');
             const count = document.getElementById('cacheCount');
@@ -465,13 +481,9 @@
             if (bar) bar.style.width = pct + '%';
             if (count) count.textContent = done + ' / ' + total;
         }
-
         function showCacheError(msg) {
             const err = document.getElementById('cacheError');
-            if (err) {
-                err.textContent = msg;
-                err.style.display = 'block';
-            }
+            if (err) { err.textContent = msg; err.style.display = 'block'; }
         }
 
         async function runCaching() {
@@ -496,7 +508,6 @@
 
             await waitForOSStorage();
 
-            // Сначала кэшируем всю систему (если нужно), показываем прогресс
             try {
                 const res = await runCaching();
                 if (res && res.ok) {

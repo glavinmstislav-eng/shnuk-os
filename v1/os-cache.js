@@ -1,16 +1,13 @@
-// os-cache.js — кэширование системы в IndexedDB (блокирующее при первом запуске)
+// os-cache.js — кэширование системы в IndexedDB
 
 (function() {
     'use strict';
 
     const CACHE_VERSION_KEY = '__system_cache_version';
-    const CACHE_VERSION = 'v7';
+    const CACHE_VERSION = 'v9';
     const CACHE_API_NAME = 'shnuk-cache-v1';
 
     const CRITICAL_LIST = [
-        'index.html',
-        'e3.html',
-        'e3boot.html',
         'sw.js',
         'os-storage.js'
     ];
@@ -180,19 +177,7 @@
                     warn('пустое содержимое:', url);
                     return false;
                 }
-                const ok = await saveToIDB(url, { type: 'text', data: text });
-
-                // Дублируем index.html под ключом e3starter
-                if (ok && url === 'index.html') {
-                    try {
-                        await window.OSStorage.system.put('asset:e3starter', { type: 'text', data: text });
-                        log('asset:e3starter записан (дубль index.html)');
-                    } catch(e) {
-                        warn('не удалось записать asset:e3starter:', e);
-                    }
-                }
-
-                return ok;
+                return await saveToIDB(url, { type: 'text', data: text });
             }
         } catch(e) {
             warn('cacheOne exception', url, e);
@@ -202,8 +187,10 @@
 
     async function isCacheComplete() {
         try {
-            const idx = await window.OSStorage.system.get('asset:index.html');
-            if (!idx || !idx.data || idx.data.length < 100) return false;
+            const st = await window.OSStorage.system.get('asset:e3starter');
+            if (!st || !st.data || st.data.length < 100) return false;
+            const live = await window.OSStorage.system.get('asset:live-bar.js');
+            if (!live || !live.data) return false;
             return true;
         } catch(e) {
             return false;
@@ -221,17 +208,6 @@
             }
 
             if (await isCacheComplete()) {
-                // Проверим наличие e3starter
-                try {
-                    const st = await window.OSStorage.system.get('asset:e3starter');
-                    if (!st || !st.data) {
-                        const idx = await window.OSStorage.system.get('asset:index.html');
-                        if (idx && idx.data) {
-                            await window.OSStorage.system.put('asset:e3starter', { type: 'text', data: idx.data });
-                        }
-                    }
-                } catch(e) {}
-
                 log('кэш актуален');
                 if (onProgress) onProgress(ALL_ASSETS.length, ALL_ASSETS.length);
                 return { ok: true, cached: true, total: ALL_ASSETS.length };
@@ -256,12 +232,12 @@
             } catch(e) {}
 
             const finalCheck = await isCacheComplete();
-            log('кэширование завершено. Сохранено:', saved + '/' + total, 'index.html в IDB:', finalCheck);
+            log('кэширование завершено. Сохранено:', saved + '/' + total, 'e3starter:', finalCheck);
 
             if (!finalCheck) {
                 return {
                     ok: false,
-                    reason: 'index.html не сохранился (' + saved + '/' + total + ')',
+                    reason: 'критичные файлы не сохранились (' + saved + '/' + total + ')',
                     total: total,
                     done: done,
                     saved: saved
