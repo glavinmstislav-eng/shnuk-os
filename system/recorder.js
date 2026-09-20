@@ -14,13 +14,11 @@
     let isPaused = false;
     let pendingMimeType = 'audio/webm';
 
-    // AudioContext / Analyser
     let audioCtx = null;
     let analyser = null;
     let sourceNode = null;
     let frequencyData = null;
 
-    // Three.js
     let threeScene = null;
     let threeCamera = null;
     let threeRenderer = null;
@@ -71,9 +69,6 @@
         }
     }
 
-    // =========================================
-    // AUDIO ANALYSE
-    // =========================================
     function startAudioAnalysis(mediaStream) {
         stopAudioAnalysis();
         try {
@@ -122,9 +117,6 @@
         return out;
     }
 
-    // =========================================
-    // THREE.JS — круговая визуализация
-    // =========================================
     function closeThree() {
         if (threeAnimationId) {
             cancelAnimationFrame(threeAnimationId);
@@ -168,7 +160,6 @@
             const height = container.clientHeight || 200;
 
             threeScene = new THREE.Scene();
-            // Фон прозрачный
             threeScene.background = null;
 
             threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
@@ -178,7 +169,6 @@
             threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             threeRenderer.setSize(width, height);
             threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            // Прозрачный clear color
             threeRenderer.setClearColor(0x000000, 0);
             container.appendChild(threeRenderer.domElement);
 
@@ -188,7 +178,6 @@
             dir.position.set(3, 5, 5);
             threeScene.add(dir);
 
-            // Круг из 40 столбиков
             const COUNT = 40;
             const radius = 1.4;
             const barWidth = 0.08;
@@ -217,7 +206,6 @@
                 threeBars.push(mesh);
             }
 
-            // Центральное кольцо-подиум
             const ringGeo = new THREE.RingGeometry(1.2, 1.6, 64);
             const ringMat = new THREE.MeshBasicMaterial({
                 color: 0xcc0000,
@@ -235,13 +223,11 @@
             function animate() {
                 threeAnimationId = requestAnimationFrame(animate);
 
-                // Обновляем уровни
                 let levels = null;
                 if (isRecording && !isPaused) {
                     levels = sampleLevels(threeBars.length);
                 }
                 if (!levels) {
-                    // плавно опускаем в ноль
                     levels = lastLevels.map(v => v * 0.92);
                 }
                 lastLevels = levels;
@@ -253,19 +239,16 @@
                     bar.scale.y = Math.max(0.1, h / 0.06);
                     bar.position.y = (0.06 * bar.scale.y) / 2;
 
-                    // Лёгкое покачивание
                     const t = performance.now() * 0.001 + i * 0.3;
                     const sway = Math.sin(t) * 0.02 * (0.5 + lvl);
                     bar.position.x = Math.cos((i / threeBars.length) * Math.PI * 2) * (1.4 + sway);
                     bar.position.z = Math.sin((i / threeBars.length) * Math.PI * 2) * (1.4 + sway);
 
-                    // Свечение растёт с уровнем
                     if (bar.material) {
                         bar.material.emissiveIntensity = 0.3 + lvl * 0.9;
                     }
                 }
 
-                // Медленное покачивание камеры
                 const camAngle = performance.now() * 0.00015;
                 threeCamera.position.x = Math.sin(camAngle) * 0.3;
                 threeCamera.lookAt(0, 0.3, 0);
@@ -291,9 +274,6 @@
         threeRenderer.setSize(w, h);
     }
 
-    // =========================================
-    // RECORDING
-    // =========================================
     function formatTime(ms) {
         const total = Math.floor(ms / 1000);
         const m = Math.floor(total / 60);
@@ -338,7 +318,6 @@
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
 
-            // Подключаем анализатор
             startAudioAnalysis(stream);
 
             const mimeType = pickMimeType();
@@ -428,58 +407,21 @@
         return 'webm';
     }
 
-    function ensureSharedFiles(cb) {
-        if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
-            cb();
-            return;
+    async function waitForSharedFiles() {
+        if (window.SharedFiles && window.SharedFiles.ready) {
+            try { await window.SharedFiles.ready(); } catch(e) {}
         }
-        const existing = document.querySelector('script[data-shnuk-app="file-storage"]');
-        if (existing) {
-            let tries = 0;
-            const wait = function() {
-                tries++;
-                if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
-                    cb();
-                } else if (tries < 20) {
-                    setTimeout(wait, 100);
-                } else {
-                    if (window.Win && window.Win.notify) {
-                        window.Win.notify('Хранилище недоступно', { type: 'error' });
-                    }
-                }
-            };
-            wait();
-            return;
+        let tries = 0;
+        while (!window.SharedFiles && tries < 50) {
+            tries++;
+            await new Promise(function(r) { setTimeout(r, 100); });
         }
-        const script = document.createElement('script');
-        script.src = 'file-storage.js?t=' + Date.now();
-        script.async = false;
-        script.dataset.shnukApp = 'file-storage';
-        script.onload = function() {
-            let tries = 0;
-            const wait = function() {
-                tries++;
-                if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
-                    cb();
-                } else if (tries < 20) {
-                    setTimeout(wait, 100);
-                } else {
-                    if (window.Win && window.Win.notify) {
-                        window.Win.notify('Хранилище недоступно', { type: 'error' });
-                    }
-                }
-            };
-            wait();
-        };
-        script.onerror = function() {
-            if (window.Win && window.Win.notify) {
-                window.Win.notify('Не удалось загрузить хранилище', { type: 'error' });
-            }
-        };
-        document.head.appendChild(script);
+        if (window.SharedFiles && window.SharedFiles.ready) {
+            try { await window.SharedFiles.ready(); } catch(e) {}
+        }
     }
 
-    function saveRecording() {
+    async function saveRecording() {
         if (chunks.length === 0) {
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Нет данных для сохранения', { type: 'error' });
@@ -493,7 +435,7 @@
         chunks = [];
 
         const reader = new FileReader();
-        reader.onload = function() {
+        reader.onload = async function() {
             const dataUrl = reader.result;
             if (!dataUrl) {
                 if (window.Win && window.Win.notify) {
@@ -502,31 +444,37 @@
                 return;
             }
             const name = 'recording_' + Date.now() + '.' + ext;
-            ensureSharedFiles(function() {
-                window.SharedFiles.add({
-                    id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
-                    name: name,
-                    size: blob.size,
-                    type: type,
-                    data: dataUrl,
-                    date: new Date().toISOString(),
-                    extension: ext
-                }).then(function(ok) {
-                    if (ok) {
-                        if (window.Win && window.Win.notify) {
-                            window.Win.notify('Запись сохранена в Файлы', { type: 'success' });
-                        }
-                    } else {
-                        if (window.Win && window.Win.notify) {
-                            window.Win.notify('Не удалось сохранить', { type: 'error' });
-                        }
-                    }
-                }).catch(function() {
-                    if (window.Win && window.Win.notify) {
-                        window.Win.notify('Ошибка сохранения', { type: 'error' });
-                    }
-                });
+
+            await waitForSharedFiles();
+
+            if (!window.SharedFiles) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Хранилище недоступно', { type: 'error' });
+                }
+                return;
+            }
+
+            const ok = await window.SharedFiles.add({
+                id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
+                name: name,
+                size: blob.size,
+                type: type,
+                data: dataUrl,
+                date: new Date().toISOString(),
+                extension: ext,
+                parentId: null,
+                isFolder: false
             });
+
+            if (ok) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Запись сохранена в Файлы', { type: 'success' });
+                }
+            } else {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Не удалось сохранить', { type: 'error' });
+                }
+            }
         };
         reader.onerror = function() {
             if (window.Win && window.Win.notify) {
@@ -685,7 +633,6 @@
         app.appendChild(content);
         document.body.appendChild(app);
 
-        // Запуск 3D визуализации
         const visualContainer = document.getElementById('recorderVisual3D');
         if (visualContainer) {
             setTimeout(function() { initThree(visualContainer); }, 50);

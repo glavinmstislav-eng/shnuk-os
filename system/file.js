@@ -44,7 +44,14 @@
     }
 
     // =========================================
-    // ХРАНИЛИЩЕ (всё через SharedFiles)
+    // ПРОВЕРКА: ЕСТЬ ЛИ ФАЙЛ В КОРНЕ
+    // =========================================
+    function hasRootFile() {
+        return allItems.some(f => f.parentId === null && !f.isFolder);
+    }
+
+    // =========================================
+    // ХРАНИЛИЩЕ
     // =========================================
     async function loadAll() {
         if (!window.SharedFiles) return [];
@@ -52,7 +59,6 @@
             if (window.SharedFiles.ready) await window.SharedFiles.ready();
             let arr = window.SharedFiles.get();
             if (!Array.isArray(arr)) arr = [];
-            // Копия, чтобы не мутировать кеш
             arr = arr.slice();
 
             let needMigrate = false;
@@ -147,8 +153,6 @@
         return toDelete.length;
     }
 
-    // Слушатель работает ВСЕГДА, даже если приложение закрыто.
-    // Тогда при открытии мы уже имеем актуальный allItems.
     function bindFilesListener() {
         if (filesListenerBound) return;
         filesListenerBound = true;
@@ -411,8 +415,9 @@
             const existing = document.getElementById('fileApp');
             if (existing) {
                 existing.style.display = 'flex';
-                // Принудительно обновляем содержимое
-                refreshFromStorage();
+                (async function() {
+                    try { await refreshFromStorage(); } catch(e) {}
+                })();
                 return;
             }
         }
@@ -651,7 +656,9 @@
     function createUI() {
         if (document.getElementById('fileApp')) {
             document.getElementById('fileApp').style.display = 'flex';
-            refreshFromStorage();
+            (async function() {
+                try { await refreshFromStorage(); } catch(e) {}
+            })();
             return;
         }
         isOpen = true;
@@ -687,6 +694,7 @@
                     from { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
                     to { opacity: 0; filter: blur(20px); transform: translateY(-10px) scale(0.95); }
                 }
+                @keyframes cooopSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
                 .file-header {
                     display: flex; justify-content: space-between; align-items: center;
@@ -786,6 +794,11 @@
                     -webkit-tap-highlight-color: transparent;
                 }
                 .file-menu-item:hover { background: #f5f5f5; color: #000; }
+                .file-menu-item.disabled {
+                    opacity: 0.4;
+                    cursor: not-allowed;
+                }
+                .file-menu-item.disabled:hover { background: none; color: #333; }
                 .file-menu-item .mi-icon {
                     width: 18px; height: 18px;
                     display: flex; align-items: center; justify-content: center;
@@ -818,6 +831,30 @@
                 .file-breadcrumb-item:hover { color: #cc0000; }
                 .file-breadcrumb-item.current { color: #cc0000; font-weight: 600; cursor: default; }
                 .file-breadcrumb-sep { color: #ccc; }
+
+                .file-root-warning {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 12px 16px;
+                    background: #fff5f5;
+                    border-bottom: 2px solid #ffcccc;
+                    font-size: 12px;
+                    color: #cc0000;
+                    line-height: 1.4;
+                    flex-shrink: 0;
+                }
+                .file-root-warning .warn-icon {
+                    width: 20px; height: 20px;
+                    flex-shrink: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .file-root-warning .warn-icon svg {
+                    width: 100%; height: 100%;
+                    stroke: #cc0000;
+                }
 
                 .file-content {
                     flex: 1; overflow-y: auto;
@@ -1141,6 +1178,8 @@
                     .file-menu-btn svg { width: 18px; height: 18px; }
                     .file-menu-dropdown { top: 56px; right: 10px; min-width: 220px; }
                     .file-breadcrumbs { padding: 8px 12px; font-size: 11px; }
+                    .file-root-warning { padding: 10px 12px; font-size: 11px; gap: 8px; }
+                    .file-root-warning .warn-icon { width: 16px; height: 16px; }
                     .file-content { padding: 12px 16px; }
                     .file-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; }
                     .file-item { padding: 10px 8px; }
@@ -1192,6 +1231,21 @@
         breadcrumbs.className = 'file-breadcrumbs';
         breadcrumbs.id = 'fileBreadcrumbs';
 
+        const rootWarning = document.createElement('div');
+        rootWarning.className = 'file-root-warning';
+        rootWarning.id = 'fileRootWarning';
+        rootWarning.style.display = 'none';
+        rootWarning.innerHTML = `
+            <span class="warn-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </span>
+            <span>Сначала загрузите хотя бы один файл в корневую папку — без этого создавать папки нельзя.</span>
+        `;
+
         const content = document.createElement('div');
         content.className = 'file-content';
         content.id = 'fileContent';
@@ -1229,6 +1283,7 @@
 
         app.appendChild(header);
         app.appendChild(breadcrumbs);
+        app.appendChild(rootWarning);
         app.appendChild(content);
         app.appendChild(preview);
         app.appendChild(editor);
@@ -1265,6 +1320,11 @@
         document.addEventListener('keydown', onKeyDown);
 
         (async function() {
+            try {
+                if (window.SharedFiles && window.SharedFiles.ready) {
+                    await window.SharedFiles.ready();
+                }
+            } catch(e) {}
             try { await refreshFromStorage(); } catch(e) {}
             renderFiles();
             updateStorageInfo();
@@ -1289,6 +1349,8 @@
     function openMenu() {
         if (isMenuOpen) return;
         isMenuOpen = true;
+
+        const canCreateFolder = hasRootFile();
 
         menuDropdown = document.createElement('div');
         menuDropdown.className = 'file-menu-dropdown';
@@ -1320,7 +1382,8 @@
             {
                 id: 'new-folder',
                 label: 'Создать папку',
-                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>'
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
+                disabled: !canCreateFolder
             }
         ];
 
@@ -1332,12 +1395,19 @@
                 return;
             }
             const btn = document.createElement('button');
-            btn.className = 'file-menu-item';
+            btn.className = 'file-menu-item' + (item.disabled ? ' disabled' : '');
             btn.innerHTML = `
                 <span class="mi-icon">${item.icon}</span>
                 <span>${item.label}</span>
             `;
             btn.addEventListener('click', function() {
+                if (item.disabled) {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Сначала загрузите файл в корень', { type: 'error', duration: 3000 });
+                    }
+                    closeMenu();
+                    return;
+                }
                 closeMenu();
                 handleMenuAction(item.id);
             });
@@ -1372,6 +1442,14 @@
     // СОЗДАНИЕ / ПЕРЕИМЕНОВАНИЕ
     // =========================================
     async function createFolderPrompt() {
+        // Двойная проверка — на случай, если меню открыли до обновления
+        if (!hasRootFile()) {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Сначала загрузите файл в корень', { type: 'error', duration: 3000 });
+            }
+            return;
+        }
+
         let name = 'Новая папка';
         if (window.Win && window.Win.prompt) {
             const res = await window.Win.prompt('Название папки', 'Новая папка', { title: 'Создать папку', okText: 'Создать' });
@@ -1575,12 +1653,23 @@
         });
     }
 
+    function updateRootWarning() {
+        const el = document.getElementById('fileRootWarning');
+        if (!el) return;
+        if (hasRootFile()) {
+            el.style.display = 'none';
+        } else {
+            el.style.display = 'flex';
+        }
+    }
+
     function renderFiles() {
         const content = document.getElementById('fileContent');
         const fileCount = document.getElementById('fileCount');
         if (!content) return;
 
         renderBreadcrumbs();
+        updateRootWarning();
 
         const children = getChildren(currentFolderId);
         const sorted = sortItems(children);
@@ -1592,7 +1681,7 @@
                 <div class="empty-folder">
                     <span class="icon">📂</span>
                     Папка пуста
-                    <div style="font-size:13px;color:#bbb;margin-top:8px;">Откройте меню → «Загрузить файл» или «Создать папку»</div>
+                    <div style="font-size:13px;color:#bbb;margin-top:8px;">Откройте меню → «Загрузить файл»</div>
                 </div>
             `;
             return;
@@ -2075,13 +2164,6 @@
         document.body.appendChild(overlay);
         requestAnimationFrame(function() { overlay.style.opacity = '1'; });
 
-        if (!document.getElementById('cooopPublishStyles')) {
-            const st = document.createElement('style');
-            st.id = 'cooopPublishStyles';
-            st.textContent = '@keyframes cooopSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }';
-            document.head.appendChild(st);
-        }
-
         function setStatus(text, kind) {
             const el = document.getElementById('cooopStatus');
             if (!el) return;
@@ -2155,9 +2237,11 @@
 
         const statusEl = document.getElementById('cooopStatus');
         if (statusEl) {
-            statusEl.style.color = '#4CAF50';
-            statusEl.innerHTML = '<div style="margin-bottom:8px;">Ссылка скопирована:</div>' +
-                '<div style="word-break:break-all;font-size:11px;color:#333;">' + escapeHtml(url) + '</div>';
+            statusEl.style.color = '#333';
+            statusEl.style.background = '#f5f5f5';
+            statusEl.style.padding = '10px';
+            statusEl.style.borderRadius = '4px';
+            statusEl.innerHTML = '<div style="word-break:break-all;font-size:11px;color:#333;">' + escapeHtml(url) + '</div>';
         }
         showCloseBtn();
     }

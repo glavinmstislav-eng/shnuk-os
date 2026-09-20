@@ -1,4 +1,4 @@
-// cooop.js — Shnuk Cooop
+// cooop.js — Shnuk Cooop (шаринг файлов)
 
 (function() {
     'use strict';
@@ -73,7 +73,6 @@
             await setDoc(doc(window.firebaseDb, SHARES_COLLECTION, id), {
                 id: id,
                 ownerUid: user.uid,
-                ownerEmail: user.email,
                 name: fileData.name || 'file',
                 type: fileData.type || 'application/octet-stream',
                 size: fileData.size || 0,
@@ -83,7 +82,7 @@
             });
 
             const url = buildShareUrl(id);
-            log('Ссылка создана:', id, url);
+            log('Файл опубликован:', id);
             return url;
         } catch(e) {
             err('shareFile:', e);
@@ -185,7 +184,7 @@
             card.innerHTML = `
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:14px;font-weight:600;margin-bottom:4px;word-break:break-all;">${escapeHtml(s.name)}</div>
-                    <div style="font-size:11px;color:#888;">${sizeStr} • ${escapeHtml(s.extension || '')} • одноразовая</div>
+                    <div style="font-size:11px;color:#888;">${sizeStr} • ${escapeHtml(s.extension || '')}</div>
                     <input type="text" readonly value="${escapeHtml(url)}" style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #e0e0e0;font-family:'ST-SimpleSquare',monospace;font-size:11px;background:#fff;color:#333;box-sizing:border-box;" />
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
@@ -298,7 +297,7 @@
         content.className = 'cooop-content';
         content.innerHTML = `
             <div class="cooop-title">Опубликованные файлы</div>
-            <div class="cooop-desc">Файлы, которыми вы поделились. Каждая ссылка одноразовая: после первого скачивания файл удаляется с сервера.</div>
+            <div class="cooop-desc">Файлы, которыми вы поделились. Ссылку можно отправить любому — он скачает файл через CooopShare.</div>
             <div class="cooop-list" id="cooopSharesList">
                 <div style="text-align:center;color:#888;padding:40px 20px;font-size:14px;">Загрузка...</div>
             </div>

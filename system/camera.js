@@ -81,7 +81,21 @@
         videoEl.style.transformOrigin = 'center center';
     }
 
-    function capture() {
+    async function waitForSharedFiles() {
+        if (window.SharedFiles && window.SharedFiles.ready) {
+            try { await window.SharedFiles.ready(); } catch(e) {}
+        }
+        let tries = 0;
+        while (!window.SharedFiles && tries < 50) {
+            tries++;
+            await new Promise(function(r) { setTimeout(r, 100); });
+        }
+        if (window.SharedFiles && window.SharedFiles.ready) {
+            try { await window.SharedFiles.ready(); } catch(e) {}
+        }
+    }
+
+    async function capture() {
         if (!videoEl || !videoEl.videoWidth) {
             if (window.Win && window.Win.notify) window.Win.notify('Камера не готова', { type: 'error' });
             return;
@@ -105,28 +119,30 @@
             const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             flashEffect();
 
+            await waitForSharedFiles();
+
             if (!window.SharedFiles) {
                 if (window.Win && window.Win.notify) window.Win.notify('Хранилище недоступно', { type: 'error' });
                 return;
             }
 
-            window.SharedFiles.add({
+            const ok = await window.SharedFiles.add({
                 id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
                 name: 'photo_' + Date.now() + '.jpg',
                 size: Math.round(dataUrl.length * 0.75),
                 type: 'image/jpeg',
                 data: dataUrl,
                 date: new Date().toISOString(),
-                extension: 'jpg'
-            }).then(function(ok) {
-                if (ok) {
-                    if (window.Win && window.Win.notify) window.Win.notify('Сохранено в Файлы', { type: 'success' });
-                } else {
-                    if (window.Win && window.Win.notify) window.Win.notify('Не удалось сохранить', { type: 'error' });
-                }
-            }).catch(function() {
-                if (window.Win && window.Win.notify) window.Win.notify('Ошибка сохранения', { type: 'error' });
+                extension: 'jpg',
+                parentId: null,
+                isFolder: false
             });
+
+            if (ok) {
+                if (window.Win && window.Win.notify) window.Win.notify('Сохранено в Файлы', { type: 'success' });
+            } else {
+                if (window.Win && window.Win.notify) window.Win.notify('Не удалось сохранить', { type: 'error' });
+            }
         } catch(e) {
             if (window.Win && window.Win.notify) window.Win.notify('Ошибка снимка: ' + e.message, { type: 'error' });
         }
