@@ -43,15 +43,13 @@
         try { console.warn.apply(console, ['[Files]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
     }
 
-    // =========================================
-    // ХРАНИЛИЩЕ
-    // =========================================
     async function loadAll() {
         if (!window.SharedFiles) return [];
         try {
             if (window.SharedFiles.ready) await window.SharedFiles.ready();
             let arr = window.SharedFiles.get();
             if (!Array.isArray(arr)) arr = [];
+            arr = arr.slice();
 
             let needMigrate = false;
             arr.forEach(f => {
@@ -145,23 +143,23 @@
         return toDelete.length;
     }
 
+    // Слушатель работает ВСЕГДА, даже когда приложение закрыто
     function bindFilesListener() {
         if (filesListenerBound) return;
         filesListenerBound = true;
         window.addEventListener('shnuk:files-changed', function() {
-            if (!isOpen) return;
+            if (!window.SharedFiles) return;
             const src = window.SharedFiles.get();
             allItems = Array.isArray(src) ? src.slice() : [];
-            renderFiles();
-            updateStorageInfo();
+            if (isOpen) {
+                renderFiles();
+                updateStorageInfo();
+            }
         });
     }
 
     bindFilesListener();
 
-    // =========================================
-    // ИНФОРМАЦИЯ О ХРАНИЛИЩЕ
-    // =========================================
     function formatBytes(bytes) {
         if (!bytes || bytes === 0) return '0 B';
         const k = 1024;
@@ -217,9 +215,6 @@
         el.textContent = 'Занято ' + formatBytes(usage);
     }
 
-    // =========================================
-    // JSZip
-    // =========================================
     function loadJSZip() {
         if (typeof JSZip !== 'undefined') return Promise.resolve(true);
         if (jszipPromise) return jszipPromise;
@@ -233,9 +228,6 @@
         return jszipPromise;
     }
 
-    // =========================================
-    // УТИЛИТЫ
-    // =========================================
     function getExt(file) {
         if (!file || !file.name) return '';
         const idx = file.name.lastIndexOf('.');
@@ -268,7 +260,6 @@
         return '📎';
     }
 
-    // Устойчивое декодирование текста
     function decodeTextFromData(data) {
         if (!data) return '';
         try {
@@ -345,9 +336,6 @@
         }
     }
 
-    // =========================================
-    // НАВИГАЦИЯ
-    // =========================================
     function getCurrentFolder() {
         if (!currentFolderId) return null;
         return allItems.find(f => f.id === currentFolderId) || null;
@@ -398,13 +386,14 @@
         return arr;
     }
 
-    // =========================================
-    // ОТКРЫТИЕ / ЗАКРЫТИЕ
-    // =========================================
     function openFiles() {
         if (isOpen) {
             const existing = document.getElementById('fileApp');
-            if (existing) { existing.style.display = 'flex'; return; }
+            if (existing) {
+                existing.style.display = 'flex';
+                refreshFromStorage();
+                return;
+            }
         }
         createUI();
     }
@@ -435,9 +424,6 @@
         if (el && el.parentNode) el.parentNode.removeChild(el);
     }
 
-    // =========================================
-    // THREE.JS
-    // =========================================
     function closeThreeViewer() {
         if (threeAnimationId) {
             cancelAnimationFrame(threeAnimationId);
@@ -635,12 +621,10 @@
         if (threeObject) { threeObject.rotation.x = 0; threeObject.rotation.y = 0; }
     }
 
-    // =========================================
-    // UI
-    // =========================================
     function createUI() {
         if (document.getElementById('fileApp')) {
             document.getElementById('fileApp').style.display = 'flex';
+            refreshFromStorage();
             return;
         }
         isOpen = true;
@@ -1258,9 +1242,6 @@
         }, 5000);
     }
 
-    // =========================================
-    // МЕНЮ
-    // =========================================
     let menuDropdown = null;
     let isMenuOpen = false;
 
@@ -1351,9 +1332,6 @@
         else if (id === 'new-folder') createFolderPrompt();
     }
 
-    // =========================================
-    // СОЗДАНИЕ / ПЕРЕИМЕНОВАНИЕ
-    // =========================================
     async function createFolderPrompt() {
         let name = 'Новая папка';
         if (window.Win && window.Win.prompt) {
@@ -1417,9 +1395,6 @@
         }
     }
 
-    // =========================================
-    // ЗАГРУЗКА
-    // =========================================
     function requestFullscreenSafe() {
         if (document.fullscreenElement || document.webkitFullscreenElement) return;
         const el = document.documentElement;
@@ -1444,7 +1419,6 @@
         setTimeout(() => input.remove(), 1000);
     }
 
-    // ВАЖНО: не пушим файл вручную после SharedFiles.add
     function saveFiles(fileList) {
         const arr = Array.from(fileList);
         if (arr.length === 0) return;
@@ -1495,9 +1469,6 @@
         processNext();
     }
 
-    // =========================================
-    // УДАЛЕНИЕ
-    // =========================================
     async function deleteItemById(id) {
         const item = allItems.find(f => f.id === id);
         if (!item) return;
@@ -1519,9 +1490,6 @@
         if (previewData && previewData.file.id === id) closePreview();
     }
 
-    // =========================================
-    // РЕНДЕР
-    // =========================================
     function renderBreadcrumbs() {
         const el = document.getElementById('fileBreadcrumbs');
         if (!el) return;
@@ -1643,9 +1611,6 @@
         content.appendChild(grid);
     }
 
-    // =========================================
-    // ОТКРЫТИЕ
-    // =========================================
     function openFile(file) {
         const ext = getExt(file);
         if (SUPPORTED.images.indexOf(ext) !== -1) { openPreview(file, 'image'); return; }
@@ -1753,9 +1718,6 @@
         openPreview(next, type);
     }
 
-    // =========================================
-    // РЕДАКТОР
-    // =========================================
     function openEditor(fileId) {
         const file = allItems.find(f => f.id === fileId);
         if (!file) return;
@@ -1822,9 +1784,6 @@
         }
     }
 
-    // =========================================
-    // ZIP
-    // =========================================
     function safeName(name) {
         return (name || 'item').replace(/[\\/:*?"<>|]/g, '_');
     }
@@ -1943,9 +1902,6 @@
         }
     }
 
-    // =========================================
-    // ДЕЙСТВИЯ С ФАЙЛОМ
-    // =========================================
     function setWallpaperFromFile(fileId) {
         const file = allItems.find(f => f.id === fileId);
         if (!file) { alert('Файл не найден'); return; }

@@ -52,6 +52,8 @@
             if (window.SharedFiles.ready) await window.SharedFiles.ready();
             let arr = window.SharedFiles.get();
             if (!Array.isArray(arr)) arr = [];
+            // Копия, чтобы не мутировать кеш
+            arr = arr.slice();
 
             let needMigrate = false;
             arr.forEach(f => {
@@ -145,16 +147,19 @@
         return toDelete.length;
     }
 
+    // Слушатель работает ВСЕГДА, даже если приложение закрыто.
+    // Тогда при открытии мы уже имеем актуальный allItems.
     function bindFilesListener() {
         if (filesListenerBound) return;
         filesListenerBound = true;
         window.addEventListener('shnuk:files-changed', function() {
-            if (!isOpen) return;
-            // Берём актуальный массив и делаем копию, чтобы не мутировать кеш
+            if (!window.SharedFiles) return;
             const src = window.SharedFiles.get();
             allItems = Array.isArray(src) ? src.slice() : [];
-            renderFiles();
-            updateStorageInfo();
+            if (isOpen) {
+                renderFiles();
+                updateStorageInfo();
+            }
         });
     }
 
@@ -269,11 +274,9 @@
         return '📎';
     }
 
-    // Устойчивое декодирование текста из data URL или plain строки
     function decodeTextFromData(data) {
         if (!data) return '';
         try {
-            // Не data URL — возвращаем как есть
             if (data.indexOf('data:') !== 0) return data;
 
             const commaIdx = data.indexOf(',');
@@ -285,20 +288,17 @@
 
             let text = '';
             if (isBase64) {
-                // base64 → бинарные байты → UTF-8 строка
                 const binary = atob(body);
                 const bytes = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
                 try {
                     text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
                 } catch(e) {
-                    // Fallback — построчно
                     let s = '';
                     for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
                     text = s;
                 }
             } else {
-                // data URL с urlencoded
                 try {
                     text = decodeURIComponent(body);
                 } catch(e) {
@@ -409,7 +409,12 @@
     function openFiles() {
         if (isOpen) {
             const existing = document.getElementById('fileApp');
-            if (existing) { existing.style.display = 'flex'; return; }
+            if (existing) {
+                existing.style.display = 'flex';
+                // Принудительно обновляем содержимое
+                refreshFromStorage();
+                return;
+            }
         }
         createUI();
     }
@@ -646,6 +651,7 @@
     function createUI() {
         if (document.getElementById('fileApp')) {
             document.getElementById('fileApp').style.display = 'flex';
+            refreshFromStorage();
             return;
         }
         isOpen = true;
@@ -1455,7 +1461,6 @@
         setTimeout(() => input.remove(), 1000);
     }
 
-    // ВАЖНО: не пушим файл вручную после SharedFiles.add, иначе дубликат
     function saveFiles(fileList) {
         const arr = Array.from(fileList);
         if (arr.length === 0) return;
@@ -1466,7 +1471,6 @@
 
         function processNext() {
             if (index >= arr.length) {
-                // Слушатель shnuk:files-changed сам обновит allItems и UI
                 if (window.Win && window.Win.notify && savedCount > 0) {
                     window.Win.notify('Загружено файлов: ' + savedCount, { type: 'success' });
                 }
