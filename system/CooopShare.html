@@ -78,6 +78,25 @@
             border: 2px solid #e0e0e0;
             background: #f8f8f8; object-fit: contain;
         }
+        .progress-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: #f0f0f0;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #cc0000;
+            transition: width 0.2s ease;
+        }
+        .progress-text {
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            margin-bottom: 16px;
+        }
         .footer {
             margin-top: auto; text-align: center;
             font-size: 11px; color: #bbb; padding-top: 40px;
@@ -101,6 +120,7 @@
         'use strict';
 
         const SHARES_COLLECTION = 'cooop_shares';
+        const CHUNKS_SUBCOLLECTION = 'chunks';
 
         function escapeHtml(str) {
             if (!str) return '';
@@ -145,6 +165,14 @@
                 '<div class="' + cls + '">' + escapeHtml(message) + '</div>';
         }
 
+        function showProgress(current, total) {
+            const pct = total > 0 ? Math.floor((current / total) * 100) : 0;
+            const el = document.getElementById('progressBar');
+            const txt = document.getElementById('progressText');
+            if (el) el.style.width = pct + '%';
+            if (txt) txt.textContent = 'Загрузка: ' + current + ' / ' + total + ' (' + pct + '%)';
+        }
+
         async function load() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
@@ -172,12 +200,12 @@
                 }
 
                 const data = snap.data();
-                if (!data || !data.data) {
+                if (!data || !data.chunkCount) {
                     showStatus('Файл повреждён', 'error');
                     return;
                 }
 
-                render(data, ref);
+                render(data, ref, id);
             } catch(e) {
                 console.warn('[CooopShare]', e);
                 let msg = 'Ошибка загрузки';
@@ -188,57 +216,103 @@
             }
         }
 
-        function render(data, ref) {
+        function render(data, ref, id) {
             const isImage = /^image\//.test(data.type || '') ||
                 ['jpg','jpeg','png','gif','bmp','webp','svg','ico'].indexOf((data.extension || '').toLowerCase()) !== -1;
 
-            let preview = '';
-            if (isImage && data.data && data.data.indexOf('data:') === 0) {
-                preview = '<img src="' + data.data + '" class="preview-image" alt="' + escapeHtml(data.name) + '" />';
-            } else {
-                preview = '<div class="file-icon">' + escapeHtml(getFileIcon(data.extension, data.type)) + '</div>';
-            }
+            let preview = '<div class="file-icon">' + escapeHtml(getFileIcon(data.extension, data.type)) + '</div>';
 
             document.getElementById('content').innerHTML = `
                 <div class="card">
                     ${preview}
                     <div class="file-name">${escapeHtml(data.name || 'Файл')}</div>
-                    <div class="file-meta">${formatSize(data.size || 0)}${data.extension ? ' • ' + escapeHtml(data.extension.toUpperCase()) : ''}</div>
+                    <div class="file-meta">${formatSize(data.size || 0)}${data.extension ? ' • ' + escapeHtml(data.extension.toUpperCase()) : ''} • ${data.chunkCount} частей</div>
+                    <div class="progress-bar-wrap" id="progressWrap" style="display:none;">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="progress-text" id="progressText" style="display:none;"></div>
                     <button class="btn" id="downloadBtn">Скачать файл</button>
                 </div>
             `;
 
             const btn = document.getElementById('downloadBtn');
-            btn.addEventListener('click', function() {
+            btn.addEventListener('click', async function() {
                 btn.disabled = true;
-                btn.textContent = 'Скачивание...';
+                btn.textContent = 'Загрузка частей...';
+
+                const progressWrap = document.getElementById('progressWrap');
+                const progressText = document.getElementById('progressText');
+                if (progressWrap) progressWrap.style.display = 'block';
+                if (progressText) progressText.style.display = 'block';
 
                 try {
+                    const { collection, getDocs, doc: docFn } = window.firebaseSDK;
+
+                    // Читаем все чанки
+                    const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
+                    const snap = await getDocs(chunksRef);
+
+                    const chunkCount = data.chunkCount;
+                    const chunks = new Array(chunkCount);
+                    let received = 0;
+
+                    snap.forEach(function(d) {
+                        const c = d.data();
+                        if (c && typeof c.index === 'number' && c.data) {
+                            chunks[c.index] = c.data;
+                            received++;
+                        }
+                    });
+
+                    if (received !== chunkCount) {
+                        btn.disabled = false;
+                        btn.textContent = 'Скачать файл';
+                        showStatus('Не все части найдены: ' + received + ' / ' + chunkCount, 'error');
+                        return;
+                    }
+
+                    showProgress(received, chunkCount);
+                    const fullData = chunks.join('');
+
+                    // Скачиваем
+                    btn.textContent = 'Сохранение...';
                     const a = document.createElement('a');
-                    a.href = data.data;
+                    a.href = fullData;
                     a.download = data.name || 'file';
                     document.body.appendChild(a);
                     a.click();
                     setTimeout(function() {
                         if (a.parentNode) a.parentNode.removeChild(a);
                     }, 200);
+
+                    // Через 800 мс удаляем чанки и родительский документ
+                    setTimeout(async function() {
+                        try {
+                            const { deleteDoc } = window.firebaseSDK;
+
+                            // Удаляем все чанки
+                            const deletions = [];
+                            snap.forEach(function(d) {
+                                deletions.push(deleteDoc(d.ref));
+                            });
+                            await Promise.allSettled(deletions);
+
+                            // Удаляем родительский документ
+                            await deleteDoc(ref);
+
+                            showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
+                        } catch(e) {
+                            console.warn('[CooopShare] delete failed:', e);
+                            showStatus('Файл скачан, но не удалось удалить с сервера.', 'error');
+                        }
+                    }, 800);
+
                 } catch(e) {
+                    console.warn('[CooopShare] download error:', e);
                     btn.disabled = false;
                     btn.textContent = 'Скачать файл';
-                    alert('Не удалось скачать файл');
-                    return;
+                    showStatus('Ошибка загрузки: ' + (e.message || ''), 'error');
                 }
-
-                // Через 800 мс удаляем документ из Firestore
-                setTimeout(function() {
-                    const { deleteDoc } = window.firebaseSDK;
-                    deleteDoc(ref).then(function() {
-                        showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
-                    }).catch(function(e) {
-                        console.warn('[CooopShare] delete failed:', e);
-                        showStatus('Файл скачан, но не удалось удалить с сервера.', 'error');
-                    });
-                }, 800);
             });
         }
 

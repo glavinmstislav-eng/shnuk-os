@@ -1,10 +1,18 @@
-// cooop.js — Shnuk Cooop (шаринг файлов)
+// cooop.js — Shnuk Cooop (шаринг файлов с чанками)
 
 (function() {
     'use strict';
 
     const SHARES_COLLECTION = 'cooop_shares';
+    const CHUNKS_SUBCOLLECTION = 'chunks';
     const SHARE_PAGE = 'CooopShare.html';
+
+    // Firestore: 1 МиБ на документ. base64 раздувает в 1.33x.
+    // Берём 700 000 символов base64 на чанк (~525 КБ исходника),
+    // чтобы с запасом уложиться.
+    const CHUNK_SIZE = 700000;
+    // Максимум 50 МБ исходника = ~67 МБ base64 = ~96 чанков.
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
     let isOpen = false;
     let shares = [];
@@ -20,7 +28,7 @@
     function randomId() {
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         let out = '';
-        for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+        for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
         return out;
     }
 
@@ -52,10 +60,14 @@
         if (e.code === 'unauthenticated') return 'Сессия истекла. Войдите заново.';
         if (e.code === 'not-found') return 'Файл не найден.';
         if (e.code === 'unavailable') return 'Нет соединения с Firestore.';
+        if (e.code === 'resource-exhausted') return 'Превышен лимит Firestore. Попробуйте позже.';
         return (e.code ? e.code + ': ' : '') + (e.message || '');
     }
 
-    async function shareFile(fileData) {
+    // =========================================
+    // ПУБЛИКАЦИЯ С ЧАНКАМИ
+    // =========================================
+    async function shareFile(fileData, onProgress) {
         const user = await ensureAuth();
         if (!user) {
             if (window.Win && window.Win.notify) window.Win.notify('Войдите в Firebase', { type: 'error' });
@@ -66,35 +78,103 @@
             return null;
         }
 
-        const { doc, setDoc, serverTimestamp } = window.firebaseSDK;
+        const data = fileData.data || '';
+        const dataLen = data.length;
+        if (dataLen === 0) {
+            if (window.Win && window.Win.notify) window.Win.notify('Пустые данные файла', { type: 'error' });
+            return null;
+        }
+
+        // Проверка исходного размера
+        const realSize = fileData.size || Math.round(dataLen * 0.75);
+        if (realSize > MAX_FILE_SIZE) {
+            const mb = (realSize / (1024 * 1024)).toFixed(1);
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Файл слишком большой: ' + mb + ' МБ. Лимит 50 МБ.', { type: 'error', duration: 5000 });
+            }
+            return null;
+        }
+
+        const { doc, setDoc, collection, serverTimestamp } = window.firebaseSDK;
         const id = randomId();
 
         try {
+            // Разбиваем base64 на чанки
+            const chunkCount = Math.ceil(dataLen / CHUNK_SIZE);
+
+            // 1. Создаём родительский документ
             await setDoc(doc(window.firebaseDb, SHARES_COLLECTION, id), {
                 id: id,
                 ownerUid: user.uid,
                 name: fileData.name || 'file',
                 type: fileData.type || 'application/octet-stream',
-                size: fileData.size || 0,
+                size: realSize,
                 extension: fileData.extension || '',
-                data: fileData.data,
+                chunkCount: chunkCount,
                 createdAt: serverTimestamp()
             });
 
+            if (onProgress) onProgress(0, chunkCount);
+
+            // 2. Пишем чанки последовательно
+            for (let i = 0; i < chunkCount; i++) {
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, dataLen);
+                const chunkData = data.substring(start, end);
+
+                const chunkRef = doc(
+                    collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION),
+                    String(i)
+                );
+                await setDoc(chunkRef, {
+                    index: i,
+                    data: chunkData
+                });
+
+                if (onProgress) onProgress(i + 1, chunkCount);
+            }
+
             const url = buildShareUrl(id);
-            log('Файл опубликован:', id);
+            log('Файл опубликован чанками:', id, 'чанков:', chunkCount);
             return url;
         } catch(e) {
             err('shareFile:', e);
+            // Если что-то пошло не так — пытаемся почистить
+            try {
+                const { doc, deleteDoc, collection, getDocs } = window.firebaseSDK;
+                const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
+                const snap = await getDocs(chunksRef);
+                const deletions = [];
+                snap.forEach(function(d) {
+                    deletions.push(deleteDoc(d.ref));
+                });
+                await Promise.allSettled(deletions);
+                await deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, id));
+            } catch(cleanupErr) {
+                err('cleanup after error:', cleanupErr);
+            }
             if (window.Win && window.Win.notify) window.Win.notify('Ошибка: ' + friendlyError(e), { type: 'error' });
             return null;
         }
     }
 
+    // =========================================
+    // УДАЛЕНИЕ (с чанками)
+    // =========================================
     async function deleteShare(id) {
         if (!window.firebaseDb || !window.firebaseSDK) return false;
-        const { doc, deleteDoc } = window.firebaseSDK;
+        const { doc, deleteDoc, collection, getDocs } = window.firebaseSDK;
         try {
+            // Удаляем все чанки
+            const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
+            const snap = await getDocs(chunksRef);
+            const deletions = [];
+            snap.forEach(function(d) {
+                deletions.push(deleteDoc(d.ref));
+            });
+            await Promise.allSettled(deletions);
+
+            // Удаляем родительский документ
             await deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, id));
             return true;
         } catch(e) {
@@ -103,6 +183,9 @@
         }
     }
 
+    // =========================================
+    // UI
+    // =========================================
     function openCooop() {
         if (isOpen) {
             const ex = document.getElementById('cooopApp');
@@ -297,7 +380,7 @@
         content.className = 'cooop-content';
         content.innerHTML = `
             <div class="cooop-title">Опубликованные файлы</div>
-            <div class="cooop-desc">Файлы, которыми вы поделились. Ссылку можно отправить любому — он скачает файл через CooopShare.</div>
+            <div class="cooop-desc">Файлы до 50 МБ. Ссылку можно отправить любому — он скачает файл через CooopShare.</div>
             <div class="cooop-list" id="cooopSharesList">
                 <div style="text-align:center;color:#888;padding:40px 20px;font-size:14px;">Загрузка...</div>
             </div>
@@ -316,7 +399,9 @@
         destroy: destroy,
         open: openCooop,
         shareFile: shareFile,
-        deleteShare: deleteShare
+        deleteShare: deleteShare,
+        CHUNK_SIZE: CHUNK_SIZE,
+        MAX_FILE_SIZE: MAX_FILE_SIZE
     };
     window.cooopInit = function() { openCooop(); };
 

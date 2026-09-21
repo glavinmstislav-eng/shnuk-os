@@ -1442,7 +1442,6 @@
     // СОЗДАНИЕ / ПЕРЕИМЕНОВАНИЕ
     // =========================================
     async function createFolderPrompt() {
-        // Двойная проверка — на случай, если меню открыли до обновления
         if (!hasRootFile()) {
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Сначала загрузите файл в корень', { type: 'error', duration: 3000 });
@@ -2089,14 +2088,15 @@
         const file = allItems.find(f => f.id === fileId);
         if (!file) { alert('Файл не найден'); return; }
 
-        const MAX_BYTES = 950000;
+        const MAX_BYTES = 50 * 1024 * 1024;
         const dataLen = file.data ? file.data.length : 0;
-        if (dataLen > MAX_BYTES) {
-            const mb = ((file.size || dataLen * 0.75) / (1024 * 1024)).toFixed(2);
+        const realSize = file.size || Math.round(dataLen * 0.75);
+        if (realSize > MAX_BYTES) {
+            const mb = (realSize / (1024 * 1024)).toFixed(2);
             if (window.Win && window.Win.notify) {
-                window.Win.notify('Файл слишком большой: ' + mb + ' МБ. Лимит ~700 КБ.', { type: 'error', duration: 5000 });
+                window.Win.notify('Файл слишком большой: ' + mb + ' МБ. Лимит 50 МБ.', { type: 'error', duration: 5000 });
             } else {
-                alert('Файл слишком большой: ' + mb + ' МБ. Лимит ~700 КБ.');
+                alert('Файл слишком большой: ' + mb + ' МБ. Лимит 50 МБ.');
             }
             return;
         }
@@ -2124,7 +2124,7 @@
         const panel = document.createElement('div');
         panel.style.cssText = `
             background: #ffffff;
-            width: 320px;
+            width: 340px;
             max-width: calc(100% - 32px);
             padding: 28px 24px;
             box-sizing: border-box;
@@ -2143,10 +2143,14 @@
             <div id="cooopTitle" style="font-size:17px;font-weight:600;color:#1a1a1a;margin-bottom:8px;">
                 Публикация файла...
             </div>
-            <div id="cooopStatus" style="font-size:13px;color:#888;line-height:1.5;word-break:break-word;">
+            <div id="cooopStatus" style="font-size:13px;color:#888;line-height:1.5;word-break:break-word;margin-bottom:12px;">
                 ${escapeHtml(file.name)}
             </div>
-            <div id="cooopActions" style="margin-top:20px;display:none;">
+            <div id="cooopProgressWrap" style="display:none;width:100%;height:6px;background:#f0f0f0;margin-bottom:8px;overflow:hidden;">
+                <div id="cooopProgressBar" style="width:0%;height:100%;background:#cc0000;transition:width 0.2s ease;"></div>
+            </div>
+            <div id="cooopProgressText" style="display:none;font-size:12px;color:#888;margin-bottom:12px;"></div>
+            <div id="cooopActions" style="margin-top:8px;display:none;">
                 <button id="cooopCloseModalBtn" style="
                     padding: 10px 24px;
                     border: 2px solid #cc0000;
@@ -2188,6 +2192,16 @@
                 if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
             }, 250);
         }
+        function showProgress(current, total) {
+            const wrap = document.getElementById('cooopProgressWrap');
+            const bar = document.getElementById('cooopProgressBar');
+            const txt = document.getElementById('cooopProgressText');
+            if (wrap) wrap.style.display = 'block';
+            if (txt) txt.style.display = 'block';
+            const pct = total > 0 ? Math.floor((current / total) * 100) : 0;
+            if (bar) bar.style.width = pct + '%';
+            if (txt) txt.textContent = 'Часть ' + current + ' из ' + total;
+        }
 
         document.getElementById('cooopCloseModalBtn').addEventListener('click', closeOverlay);
 
@@ -2202,7 +2216,7 @@
                 size: file.size,
                 extension: file.extension,
                 data: file.data
-            });
+            }, showProgress);
         } catch(e) {
             failed = true;
             stopSpinner();

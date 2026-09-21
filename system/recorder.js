@@ -311,8 +311,24 @@
         return '';
     }
 
+    async function waitForSharedFiles() {
+        let tries = 0;
+        while (!window.SharedFiles && tries < 50) {
+            tries++;
+            await new Promise(function(r) { setTimeout(r, 100); });
+        }
+        if (window.SharedFiles && window.SharedFiles.ready) {
+            try { await window.SharedFiles.ready(); } catch(e) {}
+        }
+    }
+
     async function startRecording() {
         if (isRecording) return;
+
+        // Дожидаемся готовности хранилища ДО начала записи,
+        // чтобы saveRecording не терял файл
+        await waitForSharedFiles();
+
         try {
             if (!stream) {
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -331,7 +347,9 @@
 
             pendingMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
 
+            // ВАЖНО: очищаем chunks ДО старта, чтобы старые не попали в новую запись
             chunks = [];
+
             mediaRecorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) chunks.push(e.data);
             };
@@ -407,22 +425,13 @@
         return 'webm';
     }
 
-    async function waitForSharedFiles() {
-        if (window.SharedFiles && window.SharedFiles.ready) {
-            try { await window.SharedFiles.ready(); } catch(e) {}
-        }
-        let tries = 0;
-        while (!window.SharedFiles && tries < 50) {
-            tries++;
-            await new Promise(function(r) { setTimeout(r, 100); });
-        }
-        if (window.SharedFiles && window.SharedFiles.ready) {
-            try { await window.SharedFiles.ready(); } catch(e) {}
-        }
-    }
-
     async function saveRecording() {
-        if (chunks.length === 0) {
+        // Сохраняем текущие куски локально и сразу очищаем глобальный массив,
+        // чтобы следующая запись началась с чистого листа
+        const localChunks = chunks.slice();
+        chunks = [];
+
+        if (localChunks.length === 0) {
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Нет данных для сохранения', { type: 'error' });
             }
@@ -431,8 +440,7 @@
 
         const type = pendingMimeType || 'audio/webm';
         const ext = extFromMime(type);
-        const blob = new Blob(chunks, { type: type });
-        chunks = [];
+        const blob = new Blob(localChunks, { type: type });
 
         const reader = new FileReader();
         reader.onload = async function() {
@@ -447,7 +455,7 @@
 
             await waitForSharedFiles();
 
-            if (!window.SharedFiles) {
+            if (!window.SharedFiles || typeof window.SharedFiles.add !== 'function') {
                 if (window.Win && window.Win.notify) {
                     window.Win.notify('Хранилище недоступно', { type: 'error' });
                 }
