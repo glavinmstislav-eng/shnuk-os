@@ -758,7 +758,7 @@
                 }
                 .settings-dropdown button.active {
                     background: var(--accent);
-                    color: #ffffff;
+                    color: var(--text-on-accent);
                     border-color: var(--accent);
                 }
 
@@ -841,7 +841,7 @@
                     padding: 12px 24px;
                     border: 2px solid var(--accent);
                     background: var(--accent);
-                    color: #ffffff;
+                    color: var(--text-on-accent);
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
@@ -912,7 +912,7 @@
                 }
                 .action-card button {
                     padding: 10px 24px; border: 2px solid var(--accent);
-                    background: var(--accent); color: #ffffff;
+                    background: var(--accent); color: var(--text-on-accent);
                     cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px; font-weight: 600;
                     transition: all 0.2s;
@@ -921,7 +921,7 @@
                     background: var(--accent-dark); transform: scale(1.02);
                 }
                 .action-card button.danger {
-                    background: var(--accent); border-color: var(--accent); color: #ffffff;
+                    background: var(--accent); border-color: var(--accent); color: var(--text-on-accent);
                 }
                 .action-card button.danger:hover {
                     background: var(--accent-dark); border-color: var(--accent-dark);
@@ -987,7 +987,7 @@
                     padding: 10px 24px;
                     border: 2px solid var(--accent);
                     background: var(--accent);
-                    color: #ffffff;
+                    color: var(--text-on-accent);
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
@@ -1001,7 +1001,7 @@
                 }
                 .security-btn.danger:hover {
                     background: var(--accent);
-                    color: #ffffff;
+                    color: var(--text-on-accent);
                 }
 
                 .security-section {

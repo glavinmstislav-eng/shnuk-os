@@ -270,9 +270,9 @@
                     <input type="text" readonly value="${escapeHtml(url)}" style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid var(--border-color);font-family:'ST-SimpleSquare',monospace;font-size:11px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;" />
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-                    <button data-action="copy" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Скопировать</button>
-                    <button data-action="open" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:none;color:var(--text-primary);border:2px solid var(--border-color);cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Открыть</button>
-                    <button data-action="delete" data-id="${escapeHtml(s.id)}" style="padding:6px 12px;background:none;color:var(--accent);border:2px solid var(--accent);cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Удалить</button>
+                    <button data-action="copy" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:var(--accent);color:var(--text-on-accent);border:none;cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Скопировать</button>
+                    <button data-action="open" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:var(--bg-primary);color:var(--text-primary);border:2px solid var(--border-color);cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Открыть</button>
+                    <button data-action="delete" data-id="${escapeHtml(s.id)}" style="padding:6px 12px;background:var(--bg-primary);color:var(--accent);border:2px solid var(--accent);cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Удалить</button>
                 </div>
             `;
             list.appendChild(card);
@@ -355,14 +355,58 @@
             style.id = 'cooopStyles';
             style.textContent = `
                 @keyframes cooopFadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .cooop-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:var(--header-bg); border-bottom:2px solid var(--border-color); flex-shrink:0; color:var(--header-text); }
-                .cooop-header h1 { font-size:20px; font-weight:600; margin:0; }
-                .cooop-header-actions button { background:none; border:2px solid var(--accent); color:var(--accent); font-size:18px; padding:4px 12px; cursor:pointer; font-family:'ST-SimpleSquare',monospace; }
-                .cooop-header-actions button:hover { background:var(--accent); color:#fff; }
-                .cooop-content { flex:1; overflow-y:auto; padding:24px; }
-                .cooop-title { max-width:640px; margin:0 auto 16px; font-size:15px; font-weight:600; color:var(--text-primary); }
-                .cooop-desc { max-width:640px; margin:0 auto 24px; font-size:13px; color:var(--text-muted); line-height:1.5; }
-                .cooop-list { max-width:640px; margin:0 auto; }
+                .cooop-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px 20px;
+                    background: var(--header-bg);
+                    border-bottom: 2px solid var(--border-color);
+                    flex-shrink: 0;
+                    color: var(--header-text);
+                }
+                .cooop-header h1 {
+                    font-size: 20px;
+                    font-weight: 600;
+                    margin: 0;
+                }
+                .cooop-header-actions button {
+                    background: var(--bg-primary);
+                    border: 2px solid var(--accent);
+                    color: var(--accent);
+                    font-size: 18px;
+                    padding: 4px 12px;
+                    cursor: pointer;
+                    font-family: 'ST-SimpleSquare', monospace;
+                    transition: all 0.2s ease;
+                }
+                .cooop-header-actions button:hover {
+                    background: var(--accent);
+                    color: var(--text-on-accent);
+                }
+                .cooop-content {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 24px;
+                }
+                .cooop-title {
+                    max-width: 640px;
+                    margin: 0 auto 16px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+                .cooop-desc {
+                    max-width: 640px;
+                    margin: 0 auto 24px;
+                    font-size: 13px;
+                    color: var(--text-muted);
+                    line-height: 1.5;
+                }
+                .cooop-list {
+                    max-width: 640px;
+                    margin: 0 auto;
+                }
             `;
             document.head.appendChild(style);
         }
