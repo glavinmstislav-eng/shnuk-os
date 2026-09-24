@@ -7,7 +7,63 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Shnuk OS</title>
     <style>
-        :root { --livebar-h: 44px; }
+        :root {
+            --livebar-h: 44px;
+            --accent: #cc0000;
+            --accent-dark: #990000;
+            --text-on-accent: #ffffff;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --bg-tertiary: #f0f0f0;
+            --bg-hover: #fff5f5;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --text-muted: #888888;
+            --border-color: #e0e0e0;
+            --header-bg: #f5f5f5;
+            --header-text: #1a1a1a;
+            --livebar-bg: #ffffff;
+            --livebar-text: #1a1a1a;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+        }
+
+        [data-theme="evening"] {
+            --accent: #cc0000;
+            --accent-dark: #990000;
+            --text-on-accent: #ffffff;
+            --bg-primary: #2a2a2a;
+            --bg-secondary: #333333;
+            --bg-tertiary: #3a3a3a;
+            --bg-hover: #3a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --text-muted: #999999;
+            --border-color: #444444;
+            --header-bg: #333333;
+            --header-text: #ffffff;
+            --livebar-bg: #2a2a2a;
+            --livebar-text: #ffffff;
+            --panel-bg: rgba(42, 42, 42, 0.9);
+        }
+
+        [data-theme="warm-night"] {
+            --accent: #ffe066;
+            --accent-dark: #e6c94d;
+            --text-on-accent: #000000;
+            --bg-primary: #000000;
+            --bg-secondary: #0a0a0a;
+            --bg-tertiary: #111111;
+            --bg-hover: #1a1a00;
+            --text-primary: #ffffff;
+            --text-secondary: #dddddd;
+            --text-muted: #aaaaaa;
+            --border-color: #333333;
+            --header-bg: #ffe066;
+            --header-text: #000000;
+            --livebar-bg: #000000;
+            --livebar-text: #ffffff;
+            --panel-bg: rgba(0, 0, 0, 0.9);
+        }
 
         @font-face {
             font-family: 'ST-SimpleSquare';
@@ -34,9 +90,11 @@
         html, body {
             width: 100%; height: 100%;
             font-family: 'ST-SimpleSquare', monospace, sans-serif;
-            touch-action: none; overflow: hidden; background: #1a1a1a;
+            touch-action: none; overflow: hidden;
+            background: var(--bg-primary);
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
+            transition: background 0.4s ease, color 0.4s ease;
         }
 
         #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
@@ -49,21 +107,13 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-            transition: background-image 0.5s ease, filter 0.5s ease, transform 0.5s ease;
+            transition: background-image 0.5s ease, filter 0.5s ease, transform 0.5s ease, background-color 0.4s ease;
             z-index: 0;
             overflow: hidden;
+            background-color: var(--bg-primary);
         }
-        .app-background.white-bg { background: #ffffff !important; transform: none !important; }
+        .app-background.white-bg { background: var(--bg-primary) !important; transform: none !important; }
         .app-background.blurred { filter: blur(30px); transform: scale(1.15); }
-
-        #liveWallpaperCanvas {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 1;
-            pointer-events: none;
-            overflow: hidden;
-        }
 
         .top-panel {
             position: absolute;
@@ -81,7 +131,7 @@
             touch-action: none;
         }
         .top-panel.swiped-down { transform: translateY(100%); opacity: 0; pointer-events: none; }
-        .top-panel.editing { background: rgba(255, 255, 255, 0.95); }
+        .top-panel.editing { background: var(--panel-bg); }
 
         .top-panel .edit-controls {
             position: absolute;
@@ -92,18 +142,18 @@
             width: 44px; height: 44px;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; touch-action: manipulation;
-            background: #ffffff; border: none;
+            background: var(--bg-primary); border: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s ease, background 0.2s ease, filter 0.2s ease;
             font-family: 'ST-SimpleSquare', monospace;
-            font-size: 20px; color: #1a1a1a;
+            font-size: 20px; color: var(--text-primary);
             -webkit-tap-highlight-color: transparent;
         }
         .top-panel .edit-controls button:hover { transform: scale(1.08); }
         .top-panel .edit-controls button:active { filter: blur(1px); transform: scale(0.95); }
-        .top-panel .edit-controls button.active { background: #cc0000; color: #ffffff; }
-        .top-panel .edit-controls button.pencil-btn svg { width: 56%; height: 56%; display: block; }
-        .top-panel .edit-controls button.pencil-btn.active svg path { stroke: #ffffff !important; }
+        .top-panel .edit-controls button.active { background: var(--accent); color: var(--text-on-accent); }
+        .top-panel .edit-controls button.pencil-btn svg { width: 56%; height: 56%; display: block; color: var(--text-primary); }
+        .top-panel .edit-controls button.pencil-btn.active svg { color: var(--text-on-accent); }
 
         .button-group {
             display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
@@ -150,20 +200,36 @@
             filter: blur(30px); transform: scale(1.05);
             transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
                         filter 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-                        transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-            background: rgba(255, 255, 255, 0.85);
+                        transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                        background 0.4s ease;
+            background: var(--panel-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
         }
         .bottom-panel.visible { opacity: 1; pointer-events: all; filter: blur(0); transform: scale(1); }
         .bottom-panel .close-apps {
             position: absolute; top: 12px; right: 20px;
-            background: transparent; border: none;
-            font-size: 28px; color: #333333; cursor: pointer;
-            font-family: 'ST-SimpleSquare', monospace; z-index: 10;
+            background: var(--bg-primary);
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: var(--accent);
+            cursor: pointer;
+            font-family: 'ST-SimpleSquare', monospace;
+            z-index: 10;
             -webkit-tap-highlight-color: transparent;
+            transition: all 0.2s ease;
         }
-        .bottom-panel h2 { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 24px; letter-spacing: -0.3px; }
+        .bottom-panel .close-apps:hover {
+            background: var(--accent);
+            color: var(--text-on-accent);
+        }
+        .bottom-panel h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 24px; letter-spacing: -0.3px; }
 
         .icon-grid {
             display: grid; grid-template-columns: repeat(4, 1fr);
@@ -172,9 +238,9 @@
 
         .icon-item {
             aspect-ratio: 1 / 1;
-            background: rgba(240, 240, 240, 0.85);
+            background: var(--bg-secondary);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            transition: transform 0.2s ease; cursor: pointer;
+            transition: transform 0.2s ease, background 0.4s ease; cursor: pointer;
             padding: 18px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
             border: none; outline: none;
@@ -186,14 +252,14 @@
         .icon-item:active { transform: scale(0.92); filter: blur(0.5px); }
         .icon-item img { width: 55%; height: 55%; object-fit: contain; }
         .icon-item .icon-label {
-            font-size: 9px; color: #333; margin-top: 4px;
+            font-size: 9px; color: var(--text-primary); margin-top: 4px;
             text-align: center; line-height: 1.2;
             font-family: 'ST-SimpleSquare', monospace;
         }
         .icon-item .icon-add-btn {
             position: absolute; bottom: -8px; right: -8px;
             width: 28px; height: 28px; background: #4CAF50;
-            color: #ffffff; border: 2px solid #ffffff;
+            color: #ffffff; border: 2px solid var(--bg-primary);
             border-radius: 50%; font-size: 18px; line-height: 24px;
             text-align: center; cursor: pointer; display: none;
             font-family: 'ST-SimpleSquare', monospace;
@@ -202,8 +268,8 @@
         .bottom-panel.editing .icon-item .icon-add-btn { display: block; }
         .icon-item .icon-remove-btn {
             position: absolute; top: -6px; right: -6px;
-            width: 22px; height: 22px; background: #cc0000;
-            color: #ffffff; border: 2px solid #ffffff;
+            width: 22px; height: 22px; background: var(--accent);
+            color: var(--text-on-accent); border: 2px solid var(--bg-primary);
             border-radius: 50%; font-size: 14px; line-height: 18px;
             text-align: center; cursor: pointer; display: none;
             font-family: 'ST-SimpleSquare', monospace;
@@ -212,7 +278,7 @@
         .bottom-panel.editing .icon-item .icon-remove-btn { display: block; }
         .icon-item.in-desktop .icon-add-btn { display: none !important; }
         .icon-item.in-desktop .icon-remove-btn { display: block !important; }
-        .icon-item .icon-default { font-size: 28px; line-height: 1; }
+        .icon-item .icon-default { font-size: 28px; line-height: 1; color: var(--text-primary); }
         .icon-item.html-app::after {
             content: 'HTML'; position: absolute; top: 2px; left: 2px;
             font-size: 7px; background: #4488ff; color: #fff;
@@ -222,12 +288,12 @@
 
         .loader {
             display: flex; align-items: center; justify-content: center;
-            gap: 8px; padding: 20px; color: #888; font-size: 14px;
+            gap: 8px; padding: 20px; color: var(--text-muted); font-size: 14px;
             grid-column: 1 / -1;
         }
         .loader .spinner {
             width: 20px; height: 20px;
-            border: 3px solid #e0e0e0; border-top: 3px solid #cc0000;
+            border: 3px solid var(--border-color); border-top: 3px solid var(--accent);
             border-radius: 50%; animation: spin 0.8s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -235,23 +301,24 @@
         .html-app-window {
             position: fixed; top: 0; left: 0;
             width: 100%; height: 100%;
-            z-index: 100001; background: #ffffff;
+            z-index: 100001; background: var(--bg-primary);
             display: flex; flex-direction: column;
             padding-top: var(--livebar-h, 44px);
             box-sizing: border-box;
         }
-        .html-app-window iframe { flex: 1; width: 100%; border: none; background: #ffffff; }
+        .html-app-window iframe { flex: 1; width: 100%; border: none; background: var(--bg-primary); }
         .html-app-close-btn {
             position: fixed; top: calc(var(--livebar-h, 44px) + 16px); right: 16px;
             width: 44px; height: 44px;
-            background: #cc0000; color: #ffffff; border: none;
+            background: var(--accent); color: var(--text-on-accent); border: none;
             font-size: 22px; cursor: pointer; z-index: 100002;
             font-family: 'ST-SimpleSquare', monospace;
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 4px 20px rgba(204,0,0,0.4);
             -webkit-tap-highlight-color: transparent;
+            transition: all 0.2s ease;
         }
-        .html-app-close-btn:hover { background: #990000; transform: scale(1.1); }
+        .html-app-close-btn:hover { background: var(--accent-dark); transform: scale(1.1); }
 
         @media (max-width: 500px) {
             .btn { width: 64px; height: 64px; }
@@ -278,9 +345,9 @@
             <div class="edit-controls" id="editControls">
                 <button class="pencil-btn" id="pencilIcon">
                     <svg viewBox="0 0 24 24" fill="none">
-                        <path d="M16.5 3.5L20.5 7.5L7.5 20.5L3 21L3.5 16.5L16.5 3.5Z" stroke="#2c3e50" stroke-width="1.8" stroke-linejoin="round"/>
-                        <path d="M13.5 6.5L17.5 10.5" stroke="#2c3e50" stroke-width="1.8" stroke-linecap="round"/>
-                        <path d="M4 20L8 18" stroke="#2c3e50" stroke-width="1.8" stroke-linecap="round"/>
+                        <path d="M16.5 3.5L20.5 7.5L7.5 20.5L3 21L3.5 16.5L16.5 3.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                        <path d="M13.5 6.5L17.5 10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        <path d="M4 20L8 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                     </svg>
                 </button>
             </div>
@@ -364,12 +431,12 @@
                 'file-storage.js',
                 'onboarding.js',
                 'live-bar.js',
-                'live-wallpapers.js',
                 'windows.js',
                 'security.js',
-                'app-scanner2.js',
+                'app-scanner.js',
                 'store.js',
-                'settings.js'
+                'settings.js',
+                'cooop.js'
             ];
 
             for (let i = 0; i < scripts.length; i++) {
@@ -388,7 +455,6 @@
             }
             if (window.Auth) window.Auth.init();
 
-            // Анонимный вход вместо экрана авторизации
             if (window.Auth && window.Auth.ensureAnonymous) {
                 try {
                     await window.Auth.ensureAnonymous();
@@ -445,6 +511,7 @@
         let appsOrderSnapshot = null;
         const DESKTOP_KEY = 'shnuk_desktop_apps';
         const INSTALLED_KEY = 'shnuk_installed_apps';
+        const THEME_KEY = 'shnuk_theme';
         const DEFAULT_DESKTOP = ['settings', 'time', 'camera', 'game'];
 
         function isFullscreen() {
@@ -499,9 +566,20 @@
             });
         }
 
+        function applyTheme(themeId) {
+            const theme = themeId || 'day';
+            if (theme === 'day') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+        }
+
         function applyWallpaperFromStorage() {
             let url = null;
+            let themeId = 'day';
             try { url = localStorage.getItem('app_wallpaper'); } catch(e) {}
+            try { themeId = localStorage.getItem(THEME_KEY) || 'day'; } catch(e) {}
             if (!url) {
                 url = 'wall1.png';
                 try {
@@ -510,19 +588,26 @@
                     localStorage.setItem('shnuk_wallpaper_name', 'Яркий день');
                 } catch(e) {}
             }
+            applyTheme(themeId);
             appBackground.dataset.staticWallpaper = url;
             appBackground.style.backgroundImage = 'url(\'' + url + '\')';
-
-            if (window.LiveWallpapers && window.LiveWallpapers.getCurrent() && window.LiveWallpapers.getCurrent() !== 'none') {
-                appBackground.style.backgroundImage = 'none';
-            }
         }
 
         window.addEventListener('shnuk:wallpaper-changed', function() {
             applyWallpaperFromStorage();
         });
+        window.addEventListener('shnuk:theme-changed', function() {
+            let themeId = 'day';
+            try { themeId = localStorage.getItem(THEME_KEY) || 'day'; } catch(e) {}
+            applyTheme(themeId);
+        });
         window.addEventListener('storage', function(e) {
             if (e.key === 'app_wallpaper') applyWallpaperFromStorage();
+            if (e.key === THEME_KEY) {
+                let themeId = 'day';
+                try { themeId = localStorage.getItem(THEME_KEY) || 'day'; } catch(e) {}
+                applyTheme(themeId);
+            }
         });
 
         function getAppData(appId) { return allApps.find(a => a.id === appId); }
@@ -711,7 +796,7 @@
         function renderDesktop() {
             buttonGroup.innerHTML = '';
             if (desktopApps.length === 0) {
-                buttonGroup.innerHTML = '<div style="color:#888;font-size:14px;text-align:center;width:100%;padding:20px;">Нет приложений</div>';
+                buttonGroup.innerHTML = '<div style="color:var(--text-muted);font-size:14px;text-align:center;width:100%;padding:20px;">Нет приложений</div>';
                 return;
             }
             desktopApps.forEach(function(appId, index) {
@@ -729,7 +814,7 @@
                     btn.appendChild(img);
                 } else {
                     const fallback = document.createElement('span');
-                    fallback.style.cssText = 'font-size:32px;color:#ffffff;font-weight:bold;z-index:1;';
+                    fallback.style.cssText = 'font-size:32px;color:var(--text-primary);font-weight:bold;z-index:1;';
                     fallback.textContent = getAppName(appId).charAt(0);
                     btn.appendChild(fallback);
                 }
@@ -747,7 +832,7 @@
         function renderAllApps() {
             iconGrid.innerHTML = '';
             if (allApps.length === 0) {
-                iconGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888;">Нет приложений</div>';
+                iconGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);">Нет приложений</div>';
                 return;
             }
             const sortedApps = appsOrderSnapshot ? applyOrderSnapshot(allApps) : allApps;
@@ -972,11 +1057,6 @@
         window.addEventListener('shnuk:files-changed', function() {
             try { renderDesktop(); } catch(e) {}
         });
-
-        // Живые обои
-        if (window.LiveWallpapers) {
-            setTimeout(function() { window.LiveWallpapers.restore(); }, 300);
-        }
 
         loadApps();
         setTimeout(ensureFullscreen, 500);

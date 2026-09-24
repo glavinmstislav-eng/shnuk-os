@@ -101,6 +101,16 @@
             margin-top: auto; text-align: center;
             font-size: 11px; color: #bbb; padding-top: 40px;
         }
+        .keep-badge {
+            display: inline-block;
+            font-size: 10px;
+            background: #4CAF50;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -121,6 +131,9 @@
 
         const SHARES_COLLECTION = 'cooop_shares';
         const CHUNKS_SUBCOLLECTION = 'chunks';
+        const KEEP_FLAG = 'cooop_keep_after_download';
+
+        let isDownloaded = false;
 
         function escapeHtml(str) {
             if (!str) return '';
@@ -139,13 +152,13 @@
 
         function getFileIcon(extension, type) {
             const ext = (extension || '').toLowerCase();
-            if (['jpg','jpeg','png','gif','bmp','webp','svg','ico'].indexOf(ext) !== -1) return '🖼';
-            if (['mp4','webm','ogg','mov','avi','mkv'].indexOf(ext) !== -1) return '🎬';
-            if (['mp3','wav','ogg','flac','aac','m4a'].indexOf(ext) !== -1) return '🎵';
-            if (['txt','json','xml','html','css','js','md'].indexOf(ext) !== -1) return '📄';
-            if (['obj','fbx','gltf','glb','stl','3ds','ply'].indexOf(ext) !== -1) return '📐';
+            if (['jpg','jpeg','png','gif','bmp','webp','svg','ico'].indexOf(ext) !== -1) return 'IMG';
+            if (['mp4','webm','ogg','mov','avi','mkv'].indexOf(ext) !== -1) return 'VID';
+            if (['mp3','wav','ogg','flac','aac','m4a'].indexOf(ext) !== -1) return 'AUD';
+            if (['txt','json','xml','html','css','js','md'].indexOf(ext) !== -1) return 'TXT';
+            if (['obj','fbx','gltf','glb','stl','3ds','ply'].indexOf(ext) !== -1) return '3D';
             if (ext) return ext.charAt(0).toUpperCase();
-            return '📎';
+            return 'FILE';
         }
 
         async function waitForFirebase() {
@@ -217,15 +230,12 @@
         }
 
         function render(data, ref, id) {
-            const isImage = /^image\//.test(data.type || '') ||
-                ['jpg','jpeg','png','gif','bmp','webp','svg','ico'].indexOf((data.extension || '').toLowerCase()) !== -1;
-
-            let preview = '<div class="file-icon">' + escapeHtml(getFileIcon(data.extension, data.type)) + '</div>';
+            const keep = !!data.keepAfterDownload;
 
             document.getElementById('content').innerHTML = `
                 <div class="card">
-                    ${preview}
-                    <div class="file-name">${escapeHtml(data.name || 'Файл')}</div>
+                    <div class="file-icon">${escapeHtml(getFileIcon(data.extension, data.type))}</div>
+                    <div class="file-name">${escapeHtml(data.name || 'Файл')}${keep ? '<span class="keep-badge">ПОСТОЯННО</span>' : ''}</div>
                     <div class="file-meta">${formatSize(data.size || 0)}${data.extension ? ' • ' + escapeHtml(data.extension.toUpperCase()) : ''} • ${data.chunkCount} частей</div>
                     <div class="progress-bar-wrap" id="progressWrap" style="display:none;">
                         <div class="progress-bar" id="progressBar"></div>
@@ -237,6 +247,9 @@
 
             const btn = document.getElementById('downloadBtn');
             btn.addEventListener('click', async function() {
+                if (isDownloaded) return;
+                isDownloaded = true;
+
                 btn.disabled = true;
                 btn.textContent = 'Загрузка частей...';
 
@@ -246,9 +259,8 @@
                 if (progressText) progressText.style.display = 'block';
 
                 try {
-                    const { collection, getDocs, doc: docFn } = window.firebaseSDK;
+                    const { collection, getDocs, deleteDoc, doc: docFn } = window.firebaseSDK;
 
-                    // Читаем все чанки
                     const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
                     const snap = await getDocs(chunksRef);
 
@@ -267,14 +279,34 @@
                     if (received !== chunkCount) {
                         btn.disabled = false;
                         btn.textContent = 'Скачать файл';
+                        isDownloaded = false;
                         showStatus('Не все части найдены: ' + received + ' / ' + chunkCount, 'error');
                         return;
                     }
 
                     showProgress(received, chunkCount);
+
                     const fullData = chunks.join('');
 
-                    // Скачиваем
+                    // Определяем, нужно ли удалять после скачивания
+                    let keepFlag = keep;
+                    if (!keepFlag) {
+                        try { keepFlag = localStorage.getItem(KEEP_FLAG) === 'true'; } catch(e) {}
+                    }
+
+                    if (!keepFlag) {
+                        try {
+                            const deletions = [];
+                            snap.forEach(function(d) {
+                                deletions.push(deleteDoc(d.ref));
+                            });
+                            await Promise.allSettled(deletions);
+                            await deleteDoc(ref);
+                        } catch(e) {
+                            console.warn('[CooopShare] delete error:', e);
+                        }
+                    }
+
                     btn.textContent = 'Сохранение...';
                     const a = document.createElement('a');
                     a.href = fullData;
@@ -285,32 +317,17 @@
                         if (a.parentNode) a.parentNode.removeChild(a);
                     }, 200);
 
-                    // Через 800 мс удаляем чанки и родительский документ
-                    setTimeout(async function() {
-                        try {
-                            const { deleteDoc } = window.firebaseSDK;
-
-                            // Удаляем все чанки
-                            const deletions = [];
-                            snap.forEach(function(d) {
-                                deletions.push(deleteDoc(d.ref));
-                            });
-                            await Promise.allSettled(deletions);
-
-                            // Удаляем родительский документ
-                            await deleteDoc(ref);
-
-                            showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
-                        } catch(e) {
-                            console.warn('[CooopShare] delete failed:', e);
-                            showStatus('Файл скачан, но не удалось удалить с сервера.', 'error');
-                        }
-                    }, 800);
+                    if (keepFlag) {
+                        showStatus('Файл скачан. Ссылка остаётся действительной.', 'success');
+                    } else {
+                        showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
+                    }
 
                 } catch(e) {
                     console.warn('[CooopShare] download error:', e);
                     btn.disabled = false;
                     btn.textContent = 'Скачать файл';
+                    isDownloaded = false;
                     showStatus('Ошибка загрузки: ' + (e.message || ''), 'error');
                 }
             });

@@ -227,8 +227,8 @@
                     justify-content: space-between;
                     align-items: center;
                     padding: 12px 16px;
-                    background: #111;
-                    border-bottom: 2px solid #222;
+                    background: #111111;
+                    border-bottom: 2px solid #222222;
                     flex-shrink: 0;
                     gap: 8px;
                 }
@@ -245,8 +245,8 @@
                 }
                 .camera-pro-toggle {
                     background: none;
-                    border: 2px solid #666;
-                    color: #aaa;
+                    border: 2px solid #666666;
+                    color: #aaaaaa;
                     font-size: 12px;
                     padding: 6px 14px;
                     cursor: pointer;
@@ -256,18 +256,18 @@
                     -webkit-tap-highlight-color: transparent;
                 }
                 .camera-pro-toggle:hover {
-                    border-color: #cc0000;
-                    color: #cc0000;
+                    border-color: var(--accent);
+                    color: var(--accent);
                 }
                 .camera-pro-toggle.active {
-                    background: #cc0000;
-                    border-color: #cc0000;
+                    background: var(--accent);
+                    border-color: var(--accent);
                     color: #ffffff;
                 }
                 .camera-close-header {
                     background: none;
-                    border: 2px solid #cc0000;
-                    color: #cc0000;
+                    border: 2px solid var(--accent);
+                    color: var(--accent);
                     font-size: 18px;
                     padding: 2px 10px;
                     cursor: pointer;
@@ -275,7 +275,7 @@
                     transition: all 0.2s;
                 }
                 .camera-close-header:hover {
-                    background: #cc0000;
+                    background: var(--accent);
                     color: #ffffff;
                 }
 
@@ -303,8 +303,8 @@
                 }
 
                 .camera-pro-panel {
-                    background: #111;
-                    border-top: 2px solid #222;
+                    background: #111111;
+                    border-top: 2px solid #222222;
                     padding: 0 16px;
                     flex-shrink: 0;
                     max-height: 0;
@@ -327,7 +327,7 @@
                 }
                 .camera-pro-header-title {
                     font-size: 11px;
-                    color: #666;
+                    color: #666666;
                     text-transform: uppercase;
                     letter-spacing: 1.5px;
                     font-weight: 600;
@@ -345,7 +345,7 @@
                     -webkit-tap-highlight-color: transparent;
                 }
                 .camera-pro-reset:hover {
-                    color: #cc0000;
+                    color: var(--accent);
                 }
 
                 .camera-row {
@@ -365,7 +365,7 @@
                 }
                 .camera-row input[type="range"] {
                     flex: 1;
-                    accent-color: #cc0000;
+                    accent-color: var(--accent);
                     height: 4px;
                 }
                 .camera-row .val {
@@ -384,9 +384,9 @@
                 }
                 .camera-zoom-btn {
                     padding: 6px 14px;
-                    background: #222;
-                    border: 2px solid #333;
-                    color: #fff;
+                    background: #222222;
+                    border: 2px solid #333333;
+                    color: #ffffff;
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 12px;
@@ -394,16 +394,16 @@
                     -webkit-tap-highlight-color: transparent;
                 }
                 .camera-zoom-btn:hover {
-                    border-color: #cc0000;
+                    border-color: var(--accent);
                 }
                 .camera-zoom-btn.active {
-                    background: #cc0000;
-                    border-color: #cc0000;
+                    background: var(--accent);
+                    border-color: var(--accent);
                 }
 
                 .camera-controls {
-                    background: #111;
-                    border-top: 2px solid #222;
+                    background: #111111;
+                    border-top: 2px solid #222222;
                     padding: 14px 16px 18px;
                     flex-shrink: 0;
                 }

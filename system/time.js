@@ -19,16 +19,44 @@
     let currentMode = 'analog';
     let currentPanel = 'main';
 
-    // Three.js
     let threeScene = null;
     let threeCamera = null;
     let threeRenderer = null;
     let threeEarth = null;
     let threeClouds = null;
-    let threeGrid = null;
     let threeAnimationId = null;
     let threeReady = false;
     let threeLoading = false;
+    let threeContainer = null;
+
+    function getThemeColors() {
+        try {
+            const style = getComputedStyle(document.documentElement);
+            const bg = style.getPropertyValue('--bg-primary').trim() || '#ffffff';
+            const text = style.getPropertyValue('--text-primary').trim() || '#1a1a1a';
+            const muted = style.getPropertyValue('--text-muted').trim() || '#888888';
+            const accent = style.getPropertyValue('--accent').trim() || '#cc0000';
+            const onAccent = style.getPropertyValue('--text-on-accent').trim() || '#ffffff';
+            return { bg, text, muted, accent, onAccent };
+        } catch(e) {
+            return { bg: '#ffffff', text: '#1a1a1a', muted: '#888888', accent: '#cc0000', onAccent: '#ffffff' };
+        }
+    }
+
+    function isDarkTheme() {
+        try {
+            const theme = localStorage.getItem('shnuk_theme') || 'day';
+            return theme === 'evening' || theme === 'warm-night';
+        } catch(e) { return false; }
+    }
+
+    function hexToInt(hex) {
+        if (!hex) return 0x000000;
+        hex = String(hex).replace('#', '').trim();
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const n = parseInt(hex, 16);
+        return isNaN(n) ? 0x000000 : n;
+    }
 
     function pushLiveBar() {
         if (!window.LiveBar) return;
@@ -88,9 +116,6 @@
         if (window.LiveBar) window.LiveBar.clear();
     }
 
-    // =========================================
-    // THREE.JS — контурная Земля с облаками
-    // =========================================
     function closeThree() {
         if (threeAnimationId) {
             cancelAnimationFrame(threeAnimationId);
@@ -104,16 +129,28 @@
             threeRenderer = null;
         }
         window.removeEventListener('resize', onThreeResize);
+        if (threeEarth) {
+            if (threeEarth.material) {
+                if (threeEarth.material.map) threeEarth.material.map.dispose();
+                threeEarth.material.dispose();
+            }
+            threeEarth = null;
+        }
+        if (threeClouds) {
+            if (threeClouds.material) {
+                if (threeClouds.material.map) threeClouds.material.map.dispose();
+                threeClouds.material.dispose();
+            }
+            threeClouds = null;
+        }
         threeScene = null;
         threeCamera = null;
-        threeEarth = null;
-        threeClouds = null;
-        threeGrid = null;
         threeReady = false;
         threeLoading = false;
     }
 
     function initThree(container) {
+        threeContainer = container;
         if (typeof THREE === 'undefined') {
             if (threeLoading) return;
             threeLoading = true;
@@ -127,12 +164,11 @@
         initThreeScene(container);
     }
 
-    // Сетка параллелей и меридианов
-    function drawGraticule(ctx, w, h) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    function drawGraticule(ctx, w, h, outlineColor) {
+        ctx.strokeStyle = outlineColor;
+        ctx.globalAlpha = 0.08;
         ctx.lineWidth = 0.8;
 
-        // Меридианы через каждые 15 градусов
         for (let lon = -180; lon <= 180; lon += 15) {
             const x = (lon + 180) / 360 * w;
             ctx.beginPath();
@@ -141,7 +177,6 @@
             ctx.stroke();
         }
 
-        // Параллели через каждые 15 градусов, кроме полюсов
         for (let lat = -75; lat <= 75; lat += 15) {
             const y = (90 - lat) / 180 * h;
             ctx.beginPath();
@@ -150,8 +185,7 @@
             ctx.stroke();
         }
 
-        // Экватор — чуть заметнее
-        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+        ctx.globalAlpha = 0.18;
         ctx.lineWidth = 1.2;
         const eqY = h / 2;
         ctx.beginPath();
@@ -159,25 +193,25 @@
         ctx.lineTo(w, eqY);
         ctx.stroke();
 
-        // Нулевой меридиан
         ctx.beginPath();
         ctx.moveTo(w / 2, 0);
         ctx.lineTo(w / 2, h);
         ctx.stroke();
+
+        ctx.globalAlpha = 1;
     }
 
-    // Основная текстура: контуры континентов
     function createOutlineTexture() {
+        const outlineColor = isDarkTheme() ? '#ffffff' : '#000000';
+
         const canvas = document.createElement('canvas');
         canvas.width = 4096;
         canvas.height = 2048;
         const ctx = canvas.getContext('2d');
 
-        // Прозрачный фон
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Тонкая сетка
-        drawGraticule(ctx, canvas.width, canvas.height);
+        drawGraticule(ctx, canvas.width, canvas.height, outlineColor);
 
         function lonLatToXY(lon, lat) {
             return [
@@ -195,7 +229,7 @@
                 else ctx.lineTo(xy[0], xy[1]);
             }
             ctx.closePath();
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = outlineColor;
             ctx.lineWidth = lineWidth || 2.5;
             ctx.lineJoin = 'round';
             ctx.lineCap = 'round';
@@ -210,14 +244,13 @@
                 if (i === 0) ctx.moveTo(xy[0], xy[1]);
                 else ctx.lineTo(xy[0], xy[1]);
             }
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = outlineColor;
             ctx.lineWidth = lineWidth || 2.5;
             ctx.lineJoin = 'round';
             ctx.lineCap = 'round';
             ctx.stroke();
         }
 
-        // ----- АФРИКА (детально) -----
         outline([
             [-17, 15], [-16, 18], [-16, 21], [-17, 24], [-15, 26], [-13, 28],
             [-11, 29], [-9, 30], [-6, 33], [-2, 35], [1, 36], [5, 37],
@@ -235,8 +268,6 @@
             [1, 5], [-2, 5], [-5, 5], [-8, 4], [-11, 4], [-14, 7], [-16, 10]
         ], 3);
 
-        // ----- ЕВРАЗИЯ (детально) -----
-        // Европа + север Азии
         outline([
             [-10, 36], [-9, 38], [-9, 41], [-9, 43], [-8, 44], [-6, 45],
             [-4, 46], [-2, 47], [-1, 48], [1, 49], [2, 51], [4, 52],
@@ -259,7 +290,6 @@
             [-6, 39], [-8, 38]
         ], 3);
 
-        // Индия (детально)
         outline([
             [68, 24], [71, 24], [74, 25], [77, 26], [80, 26], [83, 25],
             [86, 24], [88, 23], [90, 22], [92, 21], [94, 21], [95, 20],
@@ -270,7 +300,6 @@
             [65, 22], [66, 23]
         ], 2.5);
 
-        // Юго-Восточная Азия / Индонезия
         outline([
             [95, 10], [97, 8], [99, 7], [101, 6], [103, 4], [105, 2],
             [107, 1], [109, 0], [111, -1], [113, -3], [115, -4], [117, -5],
@@ -284,7 +313,6 @@
             [100, 10], [98, 10]
         ], 2.5);
 
-        // Австралия (детально)
         outline([
             [113, -22], [113, -20], [114, -18], [116, -17], [118, -16],
             [120, -15], [122, -14], [124, -14], [126, -13], [128, -13],
@@ -298,7 +326,6 @@
             [115, -32], [114, -30], [113, -28], [113, -26]
         ], 3);
 
-        // Северная Америка (детально)
         outline([
             [-168, 65], [-166, 67], [-164, 68], [-162, 69], [-160, 70],
             [-158, 70], [-156, 71], [-154, 71], [-152, 71], [-150, 70],
@@ -327,7 +354,6 @@
             [-164, 63], [-166, 64]
         ], 3);
 
-        // Центральная Америка
         outline([
             [-92, 15], [-90, 15], [-88, 16], [-86, 16], [-84, 15],
             [-82, 14], [-80, 12], [-79, 10], [-78, 8], [-77, 8],
@@ -335,7 +361,6 @@
             [-88, 13], [-90, 14]
         ], 2);
 
-        // Южная Америка (детально)
         outline([
             [-78, 8], [-77, 9], [-76, 10], [-75, 10], [-74, 11],
             [-73, 11], [-72, 11], [-71, 11], [-70, 12], [-68, 12],
@@ -367,7 +392,6 @@
             [-156, 86], [-158, 88], [-160, 90]
         ], 3);
 
-        // Гренландия
         outline([
             [-52, 60], [-54, 62], [-56, 64], [-58, 66], [-58, 68],
             [-56, 70], [-54, 72], [-50, 74], [-46, 76], [-42, 78],
@@ -376,7 +400,6 @@
             [-38, 70], [-42, 68], [-46, 66], [-50, 64], [-52, 62]
         ], 2.5);
 
-        // Антарктида — волнистая линия
         const antPts = [];
         for (let lon = -180; lon <= 180; lon += 5) {
             const wobble = Math.sin(lon * 0.15) * 6 + Math.sin(lon * 0.4) * 3;
@@ -384,9 +407,6 @@
         }
         outlineOpen(antPts, 2.5);
 
-        // ----- ОСТРОВА -----
-
-        // Мадагаскар
         outline([
             [43, -12], [44, -14], [45, -16], [46, -18], [47, -20],
             [48, -22], [49, -24], [50, -26], [49, -28], [48, -30],
@@ -395,7 +415,6 @@
             [42, -18], [42, -16], [42, -14], [43, -12]
         ], 2);
 
-        // Великобритания
         outline([
             [-5, 50], [-6, 51], [-6, 52], [-5, 53], [-4, 54],
             [-3, 55], [-2, 56], [-1, 57], [0, 58], [-1, 59],
@@ -403,20 +422,17 @@
             [-7, 54], [-7, 53], [-8, 52], [-7, 51], [-6, 50]
         ], 2);
 
-        // Ирландия
         outline([
             [-10, 51], [-10, 52], [-10, 53], [-9, 54], [-8, 55],
             [-7, 55], [-6, 54], [-6, 53], [-7, 52], [-8, 51]
         ], 1.8);
 
-        // Исландия
         outline([
             [-24, 64], [-23, 65], [-22, 66], [-20, 66], [-18, 66],
             [-16, 66], [-14, 66], [-13, 65], [-15, 64], [-17, 63],
             [-19, 63], [-21, 63], [-23, 64]
         ], 2);
 
-        // Япония (Хонсю, Кюсю, Хоккайдо, Сикоку)
         outline([
             [129, 32], [130, 33], [131, 34], [133, 35], [135, 36],
             [136, 37], [138, 38], [140, 40], [141, 41], [141, 42],
@@ -425,7 +441,6 @@
             [129, 33]
         ], 2);
 
-        // Филиппины
         outline([
             [120, 18], [121, 17], [122, 16], [123, 15], [124, 13],
             [125, 12], [126, 11], [126, 10], [125, 9], [124, 8],
@@ -435,46 +450,30 @@
             [117, 14], [118, 14], [119, 15], [120, 16]
         ], 2);
 
-        // Новая Зеландия
         outline([
             [166, -46], [167, -45], [168, -44], [170, -43], [172, -42],
             [174, -41], [175, -40], [176, -39], [177, -38], [178, -37],
             [177, -36], [176, -37], [175, -38], [173, -39], [171, -40],
             [169, -41], [167, -42], [166, -43], [165, -44], [166, -45]
         ], 1.8);
+
         outline([
             [168, -47], [170, -46], [172, -45], [174, -44], [173, -45],
             [171, -46], [169, -47], [167, -47]
         ], 1.8);
 
-        // Куба
         outline([
             [-85, 22], [-83, 23], [-81, 23], [-79, 23], [-77, 22],
             [-75, 21], [-74, 20], [-76, 20], [-78, 20], [-80, 21],
             [-82, 21], [-84, 21]
         ], 1.5);
 
-        // Шри-Ланка
-        outline([
-            [80, 9], [81, 9], [82, 8], [82, 7], [81, 6],
-            [80, 7], [80, 8]
-        ], 1.5);
-
-        // Тайвань
-        outline([
-            [120, 25], [121, 24], [122, 23], [121, 22], [120, 23]
-        ], 1.3);
-
-        // Исландия, Кипр, Крит, Сардиния, Корсика, Сицилия — мелкие
-        // Кипр
+        outline([[80, 9], [81, 9], [82, 8], [82, 7], [81, 6], [80, 7], [80, 8]], 1.5);
+        outline([[120, 25], [121, 24], [122, 23], [121, 22], [120, 23]], 1.3);
         outline([[32, 35], [33, 35], [34, 35], [33, 34], [32, 35]], 1.3);
-        // Крит
         outline([[24, 36], [25, 35], [26, 35], [27, 35], [26, 36], [25, 36]], 1.3);
-        // Сардиния
         outline([[9, 39], [10, 39], [10, 40], [10, 41], [9, 41], [9, 40]], 1.3);
-        // Корсика
         outline([[9, 42], [10, 42], [10, 43], [9, 43], [8, 42]], 1.3);
-        // Сицилия
         outline([[13, 37], [14, 37], [15, 37], [15, 38], [14, 38], [13, 38]], 1.3);
 
         const texture = new THREE.CanvasTexture(canvas);
@@ -482,8 +481,10 @@
         return texture;
     }
 
-    // Облака — завитки и штрихи на прозрачном фоне
     function createCloudsTexture() {
+        const outlineColor = isDarkTheme() ? '#ffffff' : '#000000';
+        const rgbMatch = outlineColor === '#ffffff' ? '255,255,255' : '0,0,0';
+
         const canvas = document.createElement('canvas');
         canvas.width = 2048;
         canvas.height = 1024;
@@ -491,7 +492,6 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Крупные спиральные завитки облаков
         function spiral(cx, cy, size, turns, lineWidth) {
             ctx.beginPath();
             const steps = 200;
@@ -504,13 +504,12 @@
                 if (i === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
-            ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+            ctx.strokeStyle = 'rgba(' + rgbMatch + ',0.35)';
             ctx.lineWidth = lineWidth || 1.5;
             ctx.lineCap = 'round';
             ctx.stroke();
         }
 
-        // Разбрасываем спирали и облака
         for (let i = 0; i < 60; i++) {
             const cx = Math.random() * canvas.width;
             const cy = 50 + Math.random() * (canvas.height - 100);
@@ -519,7 +518,6 @@
             spiral(cx, cy, size, turns, 1 + Math.random() * 1.5);
         }
 
-        // Мелкие штрихи — как росчерки
         for (let i = 0; i < 400; i++) {
             const x = Math.random() * canvas.width;
             const y = 50 + Math.random() * (canvas.height - 100);
@@ -528,21 +526,19 @@
             ctx.beginPath();
             ctx.moveTo(x, y);
             ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
-            ctx.strokeStyle = 'rgba(0,0,0,' + (0.1 + Math.random() * 0.25).toFixed(2) + ')';
+            ctx.strokeStyle = 'rgba(' + rgbMatch + ',' + (0.1 + Math.random() * 0.25).toFixed(2) + ')';
             ctx.lineWidth = 0.8 + Math.random() * 1.2;
             ctx.lineCap = 'round';
             ctx.stroke();
         }
 
-        // Точечные уплотнения в тропических зонах
         for (let i = 0; i < 300; i++) {
-            // Тропические широты — ближе к экватору
             const lat = -30 + Math.random() * 60;
             const lon = -180 + Math.random() * 360;
             const x = (lon + 180) / 360 * canvas.width;
             const y = (90 - lat) / 180 * canvas.height;
             const r = 1 + Math.random() * 3;
-            ctx.fillStyle = 'rgba(0,0,0,' + (0.15 + Math.random() * 0.25).toFixed(2) + ')';
+            ctx.fillStyle = 'rgba(' + rgbMatch + ',' + (0.15 + Math.random() * 0.25).toFixed(2) + ')';
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.fill();
@@ -557,11 +553,14 @@
         try {
             closeThree();
 
+            const colors = getThemeColors();
+            const bgInt = hexToInt(colors.bg);
+
             const width = container.clientWidth || window.innerWidth;
             const height = container.clientHeight || window.innerHeight;
 
             threeScene = new THREE.Scene();
-            threeScene.background = new THREE.Color(0xffffff);
+            threeScene.background = new THREE.Color(bgInt);
 
             threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
             threeCamera.position.set(0, 0, 3.2);
@@ -570,13 +569,12 @@
             threeRenderer = new THREE.WebGLRenderer({ antialias: true });
             threeRenderer.setSize(width, height);
             threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            threeRenderer.setClearColor(0xffffff, 1);
+            threeRenderer.setClearColor(bgInt, 1);
             container.appendChild(threeRenderer.domElement);
 
             const ambient = new THREE.AmbientLight(0xffffff, 1);
             threeScene.add(ambient);
 
-            // Земля — контуры континентов
             const earthGeo = new THREE.SphereGeometry(1, 96, 96);
             const earthMat = new THREE.MeshBasicMaterial({
                 map: createOutlineTexture(),
@@ -588,7 +586,6 @@
             threeEarth.rotation.z = 0.41;
             threeScene.add(threeEarth);
 
-            // Облака — на чуть большем радиусе
             const cloudGeo = new THREE.SphereGeometry(1.006, 96, 96);
             const cloudMat = new THREE.MeshBasicMaterial({
                 map: createCloudsTexture(),
@@ -620,6 +617,11 @@
         }
     }
 
+    function refreshThreeTheme() {
+        if (!threeReady || !threeContainer) return;
+        initThreeScene(threeContainer);
+    }
+
     function onThreeResize() {
         if (!threeRenderer || !threeCamera) return;
         const container = document.getElementById('timeBg3D');
@@ -631,9 +633,6 @@
         threeRenderer.setSize(width, height);
     }
 
-    // =========================================
-    // UI
-    // =========================================
     function createUI() {
         if (document.getElementById('timeApp')) {
             document.getElementById('timeApp').style.display = 'flex';
@@ -649,15 +648,16 @@
             left: 0;
             width: 100%;
             height: calc(100% - var(--livebar-h, 44px));
-            background: #ffffff;
+            background: var(--bg-primary);
             z-index: 99999;
             display: flex;
             flex-direction: column;
             font-family: 'ST-SimpleSquare', monospace;
-            color: #1a1a1a;
+            color: var(--text-primary);
             opacity: 0;
             animation: timeFadeIn 0.3s ease forwards;
             overflow: hidden;
+            transition: background 0.4s ease, color 0.4s ease;
         `;
 
         if (!document.getElementById('timeStyles')) {
@@ -681,13 +681,13 @@
                     width: 100%; height: 100%;
                     z-index: 0;
                     pointer-events: none;
-                    background: #ffffff;
+                    background: var(--bg-primary);
                 }
                 .time-bg-3d canvas {
                     display: block;
                     width: 100% !important;
                     height: 100% !important;
-                    background: #ffffff;
+                    background: var(--bg-primary);
                 }
 
                 .time-header {
@@ -696,18 +696,16 @@
                     justify-content: space-between;
                     align-items: center;
                     padding: 16px 20px;
-                    background: rgba(255,255,255,0.85);
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
-                    border-bottom: 2px solid #f0f0f0;
+                    background: var(--header-bg);
+                    border-bottom: 2px solid var(--border-color);
                     flex-shrink: 0;
                     z-index: 10;
+                    color: var(--header-text);
                 }
                 .time-header h1 {
                     font-size: 18px;
                     font-weight: 600;
                     margin: 0;
-                    color: #1a1a1a;
                     letter-spacing: 0.5px;
                 }
                 .time-header-actions {
@@ -718,29 +716,29 @@
                 .time-menu-btn {
                     width: 40px;
                     height: 40px;
-                    background: #ffffff;
-                    border: 2px solid #e0e0e0;
+                    background: var(--bg-primary);
+                    border: 2px solid var(--border-color);
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    color: #1a1a1a;
+                    color: var(--text-primary);
                     transition: all 0.2s ease;
                     padding: 0;
                     -webkit-tap-highlight-color: transparent;
                 }
                 .time-menu-btn:hover {
-                    border-color: #cc0000;
-                    background: #fff5f5;
+                    border-color: var(--accent);
+                    background: var(--bg-hover);
                 }
                 .time-menu-btn:active { transform: scale(0.94); }
                 .time-menu-btn svg { display: block; width: 22px; height: 22px; }
                 .time-close-btn {
                     width: 40px;
                     height: 40px;
-                    background: #ffffff;
-                    border: 2px solid #cc0000;
-                    color: #cc0000;
+                    background: var(--accent);
+                    border: 2px solid var(--accent);
+                    color: var(--text-on-accent);
                     cursor: pointer;
                     font-size: 18px;
                     display: flex;
@@ -752,8 +750,9 @@
                     padding: 0;
                 }
                 .time-close-btn:hover {
-                    background: #cc0000;
-                    color: #ffffff;
+                    background: var(--accent-dark);
+                    border-color: var(--accent-dark);
+                    color: var(--text-on-accent);
                 }
                 .time-close-btn:active { transform: scale(0.94); }
 
@@ -761,8 +760,8 @@
                     position: absolute;
                     top: 68px;
                     right: 20px;
-                    background: #ffffff;
-                    border: 2px solid #f0f0f0;
+                    background: var(--bg-primary);
+                    border: 2px solid var(--border-color);
                     min-width: 220px;
                     z-index: 100;
                     box-shadow: 0 20px 60px rgba(0,0,0,0.15);
@@ -776,7 +775,7 @@
                     font-size: 10px;
                     text-transform: uppercase;
                     letter-spacing: 1px;
-                    color: #aaa;
+                    color: var(--text-muted);
                     padding: 10px 14px 6px;
                     font-weight: 600;
                 }
@@ -788,7 +787,7 @@
                     padding: 11px 14px;
                     background: none;
                     border: none;
-                    color: #333;
+                    color: var(--text-primary);
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
                     text-align: left;
@@ -797,15 +796,16 @@
                     -webkit-tap-highlight-color: transparent;
                 }
                 .time-menu-item:hover {
-                    background: #f5f5f5;
-                    color: #000;
+                    background: var(--bg-secondary);
+                    color: var(--text-primary);
                 }
                 .time-menu-item.active {
-                    background: #fff5f5;
-                    color: #cc0000;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
                 }
                 .time-menu-item.active:hover {
-                    background: #ffe5e5;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
                 }
                 .time-menu-item .mi-icon {
                     width: 18px;
@@ -854,7 +854,7 @@
                 .digital-time {
                     font-size: 72px;
                     font-weight: 700;
-                    color: #1a1a1a;
+                    color: var(--text-primary);
                     letter-spacing: 6px;
                     text-align: center;
                     padding: 20px 0;
@@ -862,7 +862,7 @@
                 }
                 .digital-time .seconds {
                     font-size: 36px;
-                    color: #888;
+                    color: var(--text-muted);
                     letter-spacing: 2px;
                 }
                 .digital-time .blink {
@@ -870,7 +870,7 @@
                 }
                 .date-display {
                     font-size: 15px;
-                    color: #888;
+                    color: var(--text-muted);
                     letter-spacing: 2px;
                     margin-top: 12px;
                     text-align: center;
@@ -892,7 +892,7 @@
                     text-align: center;
                     letter-spacing: 4px;
                     padding: 16px 0;
-                    color: #1a1a1a;
+                    color: var(--text-primary);
                 }
                 .timer-controls {
                     display: flex;
@@ -903,9 +903,9 @@
                 }
                 .timer-controls button {
                     padding: 12px 26px;
-                    border: 2px solid #e0e0e0;
-                    background: #ffffff;
-                    color: #1a1a1a;
+                    border: 2px solid var(--border-color);
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
@@ -913,24 +913,25 @@
                     min-width: 90px;
                 }
                 .timer-controls button:hover {
-                    background: #f5f5f5;
-                    border-color: #cc0000;
+                    background: var(--bg-secondary);
+                    border-color: var(--accent);
                 }
                 .timer-controls button.primary {
-                    background: #cc0000;
-                    color: #ffffff;
-                    border-color: #cc0000;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
+                    border-color: var(--accent);
                 }
                 .timer-controls button.primary:hover {
-                    background: #990000;
+                    background: var(--accent-dark);
                 }
                 .timer-controls button.danger {
-                    border-color: #cc0000;
-                    color: #cc0000;
+                    border-color: var(--accent);
+                    color: var(--accent);
+                    background: var(--bg-primary);
                 }
                 .timer-controls button.danger:hover {
-                    background: #cc0000;
-                    color: #ffffff;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
                 }
                 .timer-input {
                     display: flex;
@@ -942,9 +943,9 @@
                 .timer-input input {
                     width: 64px;
                     padding: 10px;
-                    border: 2px solid #e0e0e0;
-                    background: #ffffff;
-                    color: #1a1a1a;
+                    border: 2px solid var(--border-color);
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
                     font-size: 20px;
                     text-align: center;
                     font-family: 'ST-SimpleSquare', monospace;
@@ -952,11 +953,11 @@
                     transition: border-color 0.2s;
                 }
                 .timer-input input:focus {
-                    border-color: #cc0000;
+                    border-color: var(--accent);
                 }
                 .timer-input span {
                     font-size: 18px;
-                    color: #888;
+                    color: var(--text-muted);
                 }
 
                 .alarm-section {
@@ -967,24 +968,24 @@
                     justify-content: space-between;
                     align-items: center;
                     padding: 14px 0;
-                    border-bottom: 1px solid #f0f0f0;
+                    border-bottom: 1px solid var(--border-color);
                 }
                 .alarm-row:last-child { border-bottom: none; }
                 .alarm-label {
                     font-size: 13px;
-                    color: #888;
+                    color: var(--text-muted);
                     letter-spacing: 0.5px;
                 }
                 .alarm-time {
                     font-size: 26px;
                     font-weight: 600;
-                    color: #1a1a1a;
+                    color: var(--text-primary);
                     letter-spacing: 2px;
                 }
                 .alarm-toggle {
                     width: 48px;
                     height: 28px;
-                    background: #e0e0e0;
+                    background: var(--border-color);
                     border: none;
                     border-radius: 14px;
                     cursor: pointer;
@@ -992,13 +993,13 @@
                     transition: background 0.3s;
                     padding: 0;
                 }
-                .alarm-toggle.active { background: #cc0000; }
+                .alarm-toggle.active { background: var(--accent); }
                 .alarm-toggle::after {
                     content: '';
                     position: absolute;
                     top: 2px; left: 2px;
                     width: 24px; height: 24px;
-                    background: #ffffff;
+                    background: var(--bg-primary);
                     border-radius: 50%;
                     transition: transform 0.3s;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -1016,9 +1017,9 @@
                 .alarm-set input {
                     width: 56px;
                     padding: 10px;
-                    border: 2px solid #e0e0e0;
-                    background: #ffffff;
-                    color: #1a1a1a;
+                    border: 2px solid var(--border-color);
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
                     font-size: 18px;
                     text-align: center;
                     font-family: 'ST-SimpleSquare', monospace;
@@ -1026,29 +1027,29 @@
                     transition: border-color 0.2s;
                 }
                 .alarm-set input:focus {
-                    border-color: #cc0000;
+                    border-color: var(--accent);
                 }
                 .alarm-set span {
                     font-size: 18px;
-                    color: #888;
+                    color: var(--text-muted);
                 }
                 .alarm-set button {
                     padding: 12px 24px;
-                    border: 2px solid #cc0000;
-                    background: #cc0000;
-                    color: #ffffff;
+                    border: 2px solid var(--accent);
+                    background: var(--accent);
+                    color: var(--text-on-accent);
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
                     transition: background 0.2s;
                 }
                 .alarm-set button:hover {
-                    background: #990000;
+                    background: var(--accent-dark);
                 }
                 .alarm-status {
                     margin-top: 16px;
                     font-size: 13px;
-                    color: #888;
+                    color: var(--text-muted);
                     text-align: center;
                 }
 
@@ -1069,7 +1070,6 @@
             document.head.appendChild(style);
         }
 
-        // Заголовок
         const header = document.createElement('div');
         header.className = 'time-header';
         header.innerHTML = `
@@ -1086,16 +1086,13 @@
             </div>
         `;
 
-        // Фон с 3D
         const bg3d = document.createElement('div');
         bg3d.className = 'time-bg-3d';
         bg3d.id = 'timeBg3D';
 
-        // Контент
         const content = document.createElement('div');
         content.className = 'time-content';
 
-        // Clock container
         const clockContainer = document.createElement('div');
         clockContainer.className = 'clock-container';
         clockContainer.id = 'clockContainer';
@@ -1110,7 +1107,6 @@
         `;
         content.appendChild(clockContainer);
 
-        // Панель таймера
         const timerPanel = document.createElement('div');
         timerPanel.className = 'time-panel';
         timerPanel.id = 'panelTimer';
@@ -1130,7 +1126,6 @@
         `;
         content.appendChild(timerPanel);
 
-        // Панель секундомера
         const stopwatchPanel = document.createElement('div');
         stopwatchPanel.className = 'time-panel';
         stopwatchPanel.id = 'panelStopwatch';
@@ -1144,7 +1139,6 @@
         `;
         content.appendChild(stopwatchPanel);
 
-        // Панель будильника
         const alarmPanel = document.createElement('div');
         alarmPanel.className = 'time-panel';
         alarmPanel.id = 'panelAlarm';
@@ -1174,10 +1168,8 @@
         app.appendChild(content);
         document.body.appendChild(app);
 
-        // Запуск 3D
         initThree(bg3d);
 
-        // Канвас часов
         const canvas = document.getElementById('clockCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -1190,14 +1182,16 @@
             const cx = w / 2, cy = h / 2;
             const radius = Math.min(w, h) / 2 - 20;
 
+            const colors = getThemeColors();
+
             ctx.clearRect(0, 0, w, h);
 
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = colors.bg;
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.fill();
 
-            ctx.strokeStyle = '#1a1a1a';
+            ctx.strokeStyle = colors.text;
             ctx.lineWidth = 2.5;
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -1208,7 +1202,7 @@
                 const isH = i % 5 === 0;
                 const inner = isH ? radius - 20 : radius - 10;
                 const outer = radius - 4;
-                ctx.strokeStyle = isH ? '#1a1a1a' : '#bbbbbb';
+                ctx.strokeStyle = isH ? colors.text : colors.muted;
                 ctx.lineWidth = isH ? 2.5 : 1;
                 ctx.beginPath();
                 ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
@@ -1216,7 +1210,7 @@
                 ctx.stroke();
             }
 
-            ctx.fillStyle = '#1a1a1a';
+            ctx.fillStyle = colors.text;
             ctx.font = 'bold 18px ST-SimpleSquare, monospace';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -1226,7 +1220,7 @@
             }
 
             const ha = (hours + minutes / 60) / 12 * Math.PI * 2 - Math.PI / 2;
-            ctx.strokeStyle = '#1a1a1a';
+            ctx.strokeStyle = colors.text;
             ctx.lineWidth = 5;
             ctx.lineCap = 'round';
             ctx.beginPath();
@@ -1235,7 +1229,7 @@
             ctx.stroke();
 
             const ma = (minutes / 60) * Math.PI * 2 - Math.PI / 2;
-            ctx.strokeStyle = '#333333';
+            ctx.strokeStyle = colors.text;
             ctx.lineWidth = 3.5;
             ctx.beginPath();
             ctx.moveTo(cx, cy);
@@ -1243,18 +1237,18 @@
             ctx.stroke();
 
             const sa = (seconds / 60) * Math.PI * 2 - Math.PI / 2;
-            ctx.strokeStyle = '#cc0000';
+            ctx.strokeStyle = colors.accent;
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(cx, cy);
             ctx.lineTo(cx + Math.cos(sa) * (radius * 0.78), cy + Math.sin(sa) * (radius * 0.78));
             ctx.stroke();
 
-            ctx.fillStyle = '#cc0000';
+            ctx.fillStyle = colors.accent;
             ctx.beginPath();
             ctx.arc(cx, cy, 6, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = colors.bg;
             ctx.beginPath();
             ctx.arc(cx, cy, 3, 0, Math.PI * 2);
             ctx.fill();
@@ -1391,7 +1385,6 @@
 
         document.getElementById('timeCloseBtn').addEventListener('click', closeTime);
 
-        // Таймер
         function updateTimerDisplay() {
             const m = Math.floor(timerSeconds / 60);
             const s = timerSeconds % 60;
@@ -1524,7 +1517,7 @@
         function triggerAlarm() {
             if (alarmTimeout) return;
             document.getElementById('alarmStatus').textContent = 'Будильник сработал';
-            document.getElementById('alarmStatus').style.color = '#cc0000';
+            document.getElementById('alarmStatus').style.color = 'var(--accent)';
             try {
                 const ac = new (window.AudioContext || window.webkitAudioContext)();
                 const osc = ac.createOscillator();
@@ -1542,7 +1535,7 @@
                 alarmActive = false;
                 alarmTime = null;
                 document.getElementById('alarmStatus').textContent = 'Будильник выключен';
-                document.getElementById('alarmStatus').style.color = '#888';
+                document.getElementById('alarmStatus').style.color = 'var(--text-muted)';
                 document.getElementById('alarmToggle').classList.remove('active');
                 document.getElementById('alarmTimeDisplay').textContent = '--:--';
                 document.getElementById('alarmSetBtn').textContent = 'Установить';
@@ -1563,6 +1556,11 @@
         document.addEventListener('keydown', onKeyDown);
         switchMode('analog');
         switchPanel('main');
+
+        window.addEventListener('shnuk:theme-changed', function() {
+            if (currentMode === 'analog') drawClock();
+            refreshThreeTheme();
+        });
     }
 
     function onKeyDown(e) {

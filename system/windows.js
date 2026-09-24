@@ -46,14 +46,14 @@
         const win = document.createElement('div');
         win.className = 'win-window';
         win.style.cssText = `
-            background: #ffffff;
+            background: var(--bg-primary, #ffffff);
+            color: var(--text-primary, #1a1a1a);
             width: ${width};
             max-width: 100%;
             max-height: 90vh;
             display: flex;
             flex-direction: column;
             font-family: 'ST-SimpleSquare', monospace;
-            color: #1a1a1a;
             opacity: 0;
             filter: blur(20px);
             transform: translate(-50%, -50%) scale(0.9);
@@ -70,13 +70,14 @@
             justify-content: space-between;
             align-items: center;
             padding: 14px 18px;
-            background: #f5f5f5;
-            border-bottom: 2px solid #1a1a1a;
+            background: var(--header-bg, #f5f5f5);
+            color: var(--header-text, #1a1a1a);
+            border-bottom: 2px solid var(--border-color, #1a1a1a);
             flex-shrink: 0;
         `;
         header.innerHTML = `
             <div style="font-size: 15px; font-weight: 600; letter-spacing: 0.3px;">${title}</div>
-            ${closable ? '<button class="win-close" style="background:none;border:2px solid #cc0000;color:#cc0000;font-size:14px;padding:2px 10px;cursor:pointer;font-family:inherit;transition:all 0.2s;line-height:1;">✕</button>' : ''}
+            ${closable ? '<button class="win-close" style="background:none;border:2px solid var(--accent, #cc0000);color:var(--accent, #cc0000);font-size:14px;padding:2px 10px;cursor:pointer;font-family:inherit;transition:all 0.2s;line-height:1;">✕</button>' : ''}
         `;
         win.appendChild(header);
 
@@ -87,7 +88,7 @@
             overflow-y: auto;
             font-size: 14px;
             line-height: 1.5;
-            color: #333;
+            color: var(--text-secondary, #333);
         `;
 
         if (type === 'prompt') {
@@ -101,17 +102,17 @@
             input.style.cssText = `
                 width: 100%;
                 padding: 12px 14px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid var(--border-color, #e0e0e0);
                 font-family: 'ST-SimpleSquare', monospace;
                 font-size: 14px;
                 outline: none;
                 box-sizing: border-box;
-                background: #fff;
-                color: #1a1a1a;
+                background: var(--bg-primary, #fff);
+                color: var(--text-primary, #1a1a1a);
                 transition: border-color 0.2s;
             `;
-            input.addEventListener('focus', () => { input.style.borderColor = '#cc0000'; });
-            input.addEventListener('blur', () => { input.style.borderColor = '#e0e0e0'; });
+            input.addEventListener('focus', () => { input.style.borderColor = 'var(--accent, #cc0000)'; });
+            input.addEventListener('blur', () => { input.style.borderColor = 'var(--border-color, #e0e0e0)'; });
             content.appendChild(input);
             win._input = input;
         } else if (type === 'custom') {
@@ -133,8 +134,8 @@
                 gap: 10px;
                 justify-content: flex-end;
                 padding: 14px 18px;
-                border-top: 2px solid #f0f0f0;
-                background: #fafafa;
+                border-top: 2px solid var(--border-color, #f0f0f0);
+                background: var(--bg-secondary, #fafafa);
                 flex-shrink: 0;
                 flex-wrap: wrap;
             `;
@@ -146,19 +147,19 @@
                 const isDanger = btn.danger === true;
                 const isSecondary = btn.secondary === true;
                 
-                let bg = '#ffffff';
-                let color = '#1a1a1a';
-                let borderColor = '#e0e0e0';
+                let bg = 'var(--bg-primary, #ffffff)';
+                let color = 'var(--text-primary, #1a1a1a)';
+                let borderColor = 'var(--border-color, #e0e0e0)';
 
                 if (isPrimary && !isDanger && !isSecondary) {
-                    bg = '#cc0000';
+                    bg = 'var(--accent, #cc0000)';
                     color = '#ffffff';
-                    borderColor = '#cc0000';
+                    borderColor = 'var(--accent, #cc0000)';
                 }
                 if (isDanger) {
-                    bg = '#cc0000';
+                    bg = 'var(--accent, #cc0000)';
                     color = '#ffffff';
-                    borderColor = '#cc0000';
+                    borderColor = 'var(--accent, #cc0000)';
                 }
 
                 button.style.cssText = `
@@ -175,9 +176,9 @@
                 `;
 
                 button.addEventListener('mouseenter', () => {
-                    if (isPrimary && !isDanger && !isSecondary) button.style.background = '#990000';
-                    else if (isDanger) button.style.background = '#8b0000';
-                    else if (isSecondary) button.style.background = '#f0f0f0';
+                    if (isPrimary && !isDanger && !isSecondary) button.style.background = 'var(--accent-dark, #990000)';
+                    else if (isDanger) button.style.background = 'var(--accent-dark, #8b0000)';
+                    else if (isSecondary) button.style.background = 'var(--bg-tertiary, #f0f0f0)';
                 });
                 button.addEventListener('mouseleave', () => {
                     button.style.background = bg;
@@ -223,12 +224,12 @@
                 closeWindow(win, false, null, win._input ? win._input.value : null);
             });
             closeBtn.addEventListener('mouseenter', () => {
-                closeBtn.style.background = '#cc0000';
+                closeBtn.style.background = 'var(--accent, #cc0000)';
                 closeBtn.style.color = '#ffffff';
             });
             closeBtn.addEventListener('mouseleave', () => {
                 closeBtn.style.background = 'none';
-                closeBtn.style.color = '#cc0000';
+                closeBtn.style.color = 'var(--accent, #cc0000)';
             });
         }
 
@@ -390,9 +391,9 @@
         const type = options.type || 'info';
 
         const colors = {
-            info: '#1a1a1a',
+            info: 'var(--text-primary, #1a1a1a)',
             success: '#4CAF50',
-            error: '#cc0000',
+            error: 'var(--accent, #cc0000)',
             warning: '#ff9800'
         };
 

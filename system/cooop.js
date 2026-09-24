@@ -6,12 +6,9 @@
     const SHARES_COLLECTION = 'cooop_shares';
     const CHUNKS_SUBCOLLECTION = 'chunks';
     const SHARE_PAGE = 'CooopShare.html';
+    const KEEP_FLAG = 'cooop_keep_after_download';
 
-    // Firestore: 1 МиБ на документ. base64 раздувает в 1.33x.
-    // Берём 700 000 символов base64 на чанк (~525 КБ исходника),
-    // чтобы с запасом уложиться.
     const CHUNK_SIZE = 700000;
-    // Максимум 50 МБ исходника = ~67 МБ base64 = ~96 чанков.
     const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
     let isOpen = false;
@@ -28,7 +25,8 @@
     function randomId() {
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         let out = '';
-        for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+        for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+        out += '_' + Date.now().toString(36);
         return out;
     }
 
@@ -64,9 +62,31 @@
         return (e.code ? e.code + ': ' : '') + (e.message || '');
     }
 
-    // =========================================
-    // ПУБЛИКАЦИЯ С ЧАНКАМИ
-    // =========================================
+    function isKeepEnabled() {
+        try { return localStorage.getItem(KEEP_FLAG) === 'true'; } catch(e) { return false; }
+    }
+
+    async function purgeShare(id) {
+        if (!window.firebaseDb || !window.firebaseSDK) return;
+        const { doc, deleteDoc, collection, getDocs } = window.firebaseSDK;
+        try {
+            const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
+            const snap = await getDocs(chunksRef);
+            const deletions = [];
+            snap.forEach(function(d) {
+                deletions.push(deleteDoc(d.ref));
+            });
+            await Promise.allSettled(deletions);
+        } catch(e) {
+            err('purgeShare chunks:', e);
+        }
+        try {
+            await deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, id));
+        } catch(e) {
+            err('purgeShare parent:', e);
+        }
+    }
+
     async function shareFile(fileData, onProgress) {
         const user = await ensureAuth();
         if (!user) {
@@ -85,7 +105,6 @@
             return null;
         }
 
-        // Проверка исходного размера
         const realSize = fileData.size || Math.round(dataLen * 0.75);
         if (realSize > MAX_FILE_SIZE) {
             const mb = (realSize / (1024 * 1024)).toFixed(1);
@@ -99,10 +118,10 @@
         const id = randomId();
 
         try {
-            // Разбиваем base64 на чанки
+            await purgeShare(id);
+
             const chunkCount = Math.ceil(dataLen / CHUNK_SIZE);
 
-            // 1. Создаём родительский документ
             await setDoc(doc(window.firebaseDb, SHARES_COLLECTION, id), {
                 id: id,
                 ownerUid: user.uid,
@@ -111,12 +130,12 @@
                 size: realSize,
                 extension: fileData.extension || '',
                 chunkCount: chunkCount,
+                keepAfterDownload: isKeepEnabled(),
                 createdAt: serverTimestamp()
             });
 
             if (onProgress) onProgress(0, chunkCount);
 
-            // 2. Пишем чанки последовательно
             for (let i = 0; i < chunkCount; i++) {
                 const start = i * CHUNK_SIZE;
                 const end = Math.min(start + CHUNK_SIZE, dataLen);
@@ -139,33 +158,16 @@
             return url;
         } catch(e) {
             err('shareFile:', e);
-            // Если что-то пошло не так — пытаемся почистить
-            try {
-                const { doc, deleteDoc, collection, getDocs } = window.firebaseSDK;
-                const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
-                const snap = await getDocs(chunksRef);
-                const deletions = [];
-                snap.forEach(function(d) {
-                    deletions.push(deleteDoc(d.ref));
-                });
-                await Promise.allSettled(deletions);
-                await deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, id));
-            } catch(cleanupErr) {
-                err('cleanup after error:', cleanupErr);
-            }
+            try { await purgeShare(id); } catch(cleanupErr) {}
             if (window.Win && window.Win.notify) window.Win.notify('Ошибка: ' + friendlyError(e), { type: 'error' });
             return null;
         }
     }
 
-    // =========================================
-    // УДАЛЕНИЕ (с чанками)
-    // =========================================
     async function deleteShare(id) {
         if (!window.firebaseDb || !window.firebaseSDK) return false;
         const { doc, deleteDoc, collection, getDocs } = window.firebaseSDK;
         try {
-            // Удаляем все чанки
             const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
             const snap = await getDocs(chunksRef);
             const deletions = [];
@@ -174,7 +176,6 @@
             });
             await Promise.allSettled(deletions);
 
-            // Удаляем родительский документ
             await deleteDoc(doc(window.firebaseDb, SHARES_COLLECTION, id));
             return true;
         } catch(e) {
@@ -183,9 +184,6 @@
         }
     }
 
-    // =========================================
-    // UI
-    // =========================================
     function openCooop() {
         if (isOpen) {
             const ex = document.getElementById('cooopApp');
@@ -254,7 +252,7 @@
         if (!list) return;
 
         if (shares.length === 0) {
-            list.innerHTML = '<div style="text-align:center;color:#888;padding:40px 20px;font-size:14px;">Пока нет опубликованных файлов</div>';
+            list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;font-size:14px;">Пока нет опубликованных файлов</div>';
             return;
         }
 
@@ -262,18 +260,19 @@
         shares.forEach(function(s) {
             const url = buildShareUrl(s.id);
             const sizeStr = formatSize(s.size);
+            const keepLabel = s.keepAfterDownload ? ' • Сохраняется' : '';
             const card = document.createElement('div');
-            card.style.cssText = 'background:#f8f8f8;border:2px solid #e0e0e0;padding:16px;margin-bottom:12px;display:flex;gap:12px;align-items:center;';
+            card.style.cssText = 'background:var(--bg-secondary);border:2px solid var(--border-color);padding:16px;margin-bottom:12px;display:flex;gap:12px;align-items:center;';
             card.innerHTML = `
                 <div style="flex:1;min-width:0;">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:4px;word-break:break-all;">${escapeHtml(s.name)}</div>
-                    <div style="font-size:11px;color:#888;">${sizeStr} • ${escapeHtml(s.extension || '')}</div>
-                    <input type="text" readonly value="${escapeHtml(url)}" style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #e0e0e0;font-family:'ST-SimpleSquare',monospace;font-size:11px;background:#fff;color:#333;box-sizing:border-box;" />
+                    <div style="font-size:14px;font-weight:600;margin-bottom:4px;word-break:break-all;color:var(--text-primary);">${escapeHtml(s.name)}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${sizeStr} • ${escapeHtml(s.extension || '')}${keepLabel}</div>
+                    <input type="text" readonly value="${escapeHtml(url)}" style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid var(--border-color);font-family:'ST-SimpleSquare',monospace;font-size:11px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;" />
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-                    <button data-action="copy" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:#cc0000;color:#fff;border:none;cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Скопировать</button>
-                    <button data-action="open" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:none;color:#333;border:2px solid #e0e0e0;cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Открыть</button>
-                    <button data-action="delete" data-id="${escapeHtml(s.id)}" style="padding:6px 12px;background:none;color:#cc0000;border:2px solid #cc0000;cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Удалить</button>
+                    <button data-action="copy" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Скопировать</button>
+                    <button data-action="open" data-url="${escapeHtml(url)}" style="padding:6px 12px;background:none;color:var(--text-primary);border:2px solid var(--border-color);cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Открыть</button>
+                    <button data-action="delete" data-id="${escapeHtml(s.id)}" style="padding:6px 12px;background:none;color:var(--accent);border:2px solid var(--accent);cursor:pointer;font-family:'ST-SimpleSquare',monospace;font-size:11px;">Удалить</button>
                 </div>
             `;
             list.appendChild(card);
@@ -340,14 +339,15 @@
             left: 0;
             width: 100%;
             height: calc(100% - var(--livebar-h, 44px));
-            background: #ffffff;
+            background: var(--bg-primary);
             z-index: 99999;
             display: flex;
             flex-direction: column;
             font-family: 'ST-SimpleSquare', monospace;
-            color: #1a1a1a;
+            color: var(--text-primary);
             opacity: 0;
             animation: cooopFadeIn 0.3s ease forwards;
+            transition: background 0.4s ease, color 0.4s ease;
         `;
 
         if (!document.getElementById('cooopStyles')) {
@@ -355,13 +355,13 @@
             style.id = 'cooopStyles';
             style.textContent = `
                 @keyframes cooopFadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .cooop-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#f5f5f5; border-bottom:2px solid #e0e0e0; flex-shrink:0; }
+                .cooop-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:var(--header-bg); border-bottom:2px solid var(--border-color); flex-shrink:0; color:var(--header-text); }
                 .cooop-header h1 { font-size:20px; font-weight:600; margin:0; }
-                .cooop-header-actions button { background:none; border:2px solid #cc0000; color:#cc0000; font-size:18px; padding:4px 12px; cursor:pointer; font-family:'ST-SimpleSquare',monospace; }
-                .cooop-header-actions button:hover { background:#cc0000; color:#fff; }
+                .cooop-header-actions button { background:none; border:2px solid var(--accent); color:var(--accent); font-size:18px; padding:4px 12px; cursor:pointer; font-family:'ST-SimpleSquare',monospace; }
+                .cooop-header-actions button:hover { background:var(--accent); color:#fff; }
                 .cooop-content { flex:1; overflow-y:auto; padding:24px; }
-                .cooop-title { max-width:640px; margin:0 auto 16px; font-size:15px; font-weight:600; color:#333; }
-                .cooop-desc { max-width:640px; margin:0 auto 24px; font-size:13px; color:#888; line-height:1.5; }
+                .cooop-title { max-width:640px; margin:0 auto 16px; font-size:15px; font-weight:600; color:var(--text-primary); }
+                .cooop-desc { max-width:640px; margin:0 auto 24px; font-size:13px; color:var(--text-muted); line-height:1.5; }
                 .cooop-list { max-width:640px; margin:0 auto; }
             `;
             document.head.appendChild(style);
@@ -382,7 +382,7 @@
             <div class="cooop-title">Опубликованные файлы</div>
             <div class="cooop-desc">Файлы до 50 МБ. Ссылку можно отправить любому — он скачает файл через CooopShare.</div>
             <div class="cooop-list" id="cooopSharesList">
-                <div style="text-align:center;color:#888;padding:40px 20px;font-size:14px;">Загрузка...</div>
+                <div style="text-align:center;color:var(--text-muted);padding:40px 20px;font-size:14px;">Загрузка...</div>
             </div>
         `;
 
@@ -400,6 +400,8 @@
         open: openCooop,
         shareFile: shareFile,
         deleteShare: deleteShare,
+        purgeShare: purgeShare,
+        isKeepEnabled: isKeepEnabled,
         CHUNK_SIZE: CHUNK_SIZE,
         MAX_FILE_SIZE: MAX_FILE_SIZE
     };

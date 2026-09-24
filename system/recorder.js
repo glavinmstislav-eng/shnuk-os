@@ -152,6 +152,20 @@
         initThreeScene(container);
     }
 
+    function getAccentColor() {
+        const style = getComputedStyle(document.documentElement);
+        return style.getPropertyValue('--accent').trim() || '#cc0000';
+    }
+
+    function hexToInt(hex) {
+        if (!hex) return 0xcc0000;
+        hex = hex.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(c => c + c).join('');
+        }
+        return parseInt(hex, 16);
+    }
+
     function initThreeScene(container) {
         try {
             closeThree();
@@ -183,17 +197,19 @@
             const barWidth = 0.08;
             const baseHeight = 0.06;
 
+            const accentInt = hexToInt(getAccentColor());
+
             threeBars = [];
             for (let i = 0; i < COUNT; i++) {
                 const angle = (i / COUNT) * Math.PI * 2;
 
                 const geo = new THREE.BoxGeometry(barWidth, baseHeight, barWidth);
                 const mat = new THREE.MeshStandardMaterial({
-                    color: 0xcc0000,
+                    color: accentInt,
                     roughness: 0.4,
                     metalness: 0.3,
-                    emissive: 0x550000,
-                    emissiveIntensity: 0.4
+                    emissive: accentInt,
+                    emissiveIntensity: 0.2
                 });
                 const mesh = new THREE.Mesh(geo, mat);
 
@@ -208,7 +224,7 @@
 
             const ringGeo = new THREE.RingGeometry(1.2, 1.6, 64);
             const ringMat = new THREE.MeshBasicMaterial({
-                color: 0xcc0000,
+                color: accentInt,
                 transparent: true,
                 opacity: 0.15,
                 side: THREE.DoubleSide
@@ -245,7 +261,7 @@
                     bar.position.z = Math.sin((i / threeBars.length) * Math.PI * 2) * (1.4 + sway);
 
                     if (bar.material) {
-                        bar.material.emissiveIntensity = 0.3 + lvl * 0.9;
+                        bar.material.emissiveIntensity = 0.2 + lvl * 0.9;
                     }
                 }
 
@@ -261,6 +277,17 @@
         } catch(e) {
             console.warn('[Recorder] Three init error:', e);
         }
+    }
+
+    function updateThreeAccentColor() {
+        if (!threeBars || threeBars.length === 0) return;
+        const accentInt = hexToInt(getAccentColor());
+        threeBars.forEach(bar => {
+            if (bar.material) {
+                bar.material.color.setHex(accentInt);
+                bar.material.emissive.setHex(accentInt);
+            }
+        });
     }
 
     function onThreeResize() {
@@ -325,8 +352,6 @@
     async function startRecording() {
         if (isRecording) return;
 
-        // Дожидаемся готовности хранилища ДО начала записи,
-        // чтобы saveRecording не терял файл
         await waitForSharedFiles();
 
         try {
@@ -347,7 +372,6 @@
 
             pendingMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
 
-            // ВАЖНО: очищаем chunks ДО старта, чтобы старые не попали в новую запись
             chunks = [];
 
             mediaRecorder.ondataavailable = function(e) {
@@ -426,8 +450,6 @@
     }
 
     async function saveRecording() {
-        // Сохраняем текущие куски локально и сразу очищаем глобальный массив,
-        // чтобы следующая запись началась с чистого листа
         const localChunks = chunks.slice();
         chunks = [];
 
@@ -502,7 +524,7 @@
 
         if (isRecording) {
             btn.textContent = 'СТОП';
-            btn.style.background = '#cc0000';
+            btn.style.background = 'var(--accent)';
             if (status) status.textContent = isPaused ? 'Пауза' : 'Идёт запись';
             if (pauseBtn) {
                 pauseBtn.style.display = 'inline-block';
@@ -532,14 +554,15 @@
             left: 0;
             width: 100%;
             height: calc(100% - var(--livebar-h, 44px));
-            background: #ffffff;
+            background: var(--bg-primary);
             z-index: 99999;
             display: flex;
             flex-direction: column;
             font-family: 'ST-SimpleSquare', monospace;
-            color: #1a1a1a;
+            color: var(--text-primary);
             opacity: 0;
             animation: recorderFadeIn 0.3s ease forwards;
+            transition: background 0.4s ease, color 0.4s ease;
         `;
 
         if (!document.getElementById('recorderStyles')) {
@@ -547,11 +570,30 @@
             style.id = 'recorderStyles';
             style.textContent = `
                 @keyframes recorderFadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .recorder-header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#f5f5f5; border-bottom:2px solid #e0e0e0; flex-shrink:0; }
+                .recorder-header {
+                    display:flex; justify-content:space-between; align-items:center;
+                    padding:16px 24px;
+                    background:var(--header-bg);
+                    border-bottom:2px solid var(--border-color);
+                    flex-shrink:0;
+                    color:var(--header-text);
+                }
                 .recorder-header h1 { font-size:20px; font-weight:600; margin:0; }
-                .recorder-header-actions button { background:none; border:2px solid #cc0000; color:#cc0000; font-size:18px; padding:4px 12px; cursor:pointer; font-family:'ST-SimpleSquare',monospace; }
-                .recorder-header-actions button:hover { background:#cc0000; color:#fff; }
-                .recorder-content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px 24px; }
+                .recorder-header-actions button {
+                    background:none;
+                    border:2px solid var(--accent);
+                    color:var(--accent);
+                    font-size:18px;
+                    padding:4px 12px;
+                    cursor:pointer;
+                    font-family:'ST-SimpleSquare',monospace;
+                }
+                .recorder-header-actions button:hover { background:var(--accent); color:#fff; }
+                .recorder-content {
+                    flex:1; display:flex; flex-direction:column;
+                    align-items:center; justify-content:center;
+                    padding:20px 24px;
+                }
 
                 .recorder-visual-3d {
                     width: 100%;
@@ -572,11 +614,11 @@
 
                 .recorder-timer {
                     font-size: 42px; font-weight: 700; letter-spacing: 3px;
-                    color: #1a1a1a; margin-bottom: 8px;
+                    color: var(--text-primary); margin-bottom: 8px;
                     font-family: 'ST-SimpleSquare', monospace;
                 }
                 .recorder-status {
-                    font-size: 14px; color: #888;
+                    font-size: 14px; color: var(--text-muted);
                     margin-bottom: 20px;
                     min-height: 20px;
                 }
@@ -594,14 +636,14 @@
                 }
                 .recorder-main-btn:active { transform: scale(0.96); }
                 .recorder-pause-btn {
-                    padding: 16px 32px; border: 2px solid #cc0000;
-                    background: none; color: #cc0000;
+                    padding: 16px 32px; border: 2px solid var(--accent);
+                    background: none; color: var(--accent);
                     cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px; font-weight: 600;
                     transition: all 0.2s;
                     display: none;
                 }
-                .recorder-pause-btn:hover { background: #cc0000; color: #fff; }
+                .recorder-pause-btn:hover { background: var(--accent); color: #fff; }
 
                 @media (max-width: 500px) {
                     .recorder-header { padding: 12px 16px; }
@@ -658,6 +700,10 @@
 
         document.addEventListener('keydown', onKeyDown);
         updateUI();
+
+        window.addEventListener('shnuk:theme-changed', function() {
+            updateThreeAccentColor();
+        });
     }
 
     function onKeyDown(e) {

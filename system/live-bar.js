@@ -8,6 +8,7 @@
     const BAR_HEIGHT_ACTIVE = 64;
     const BRIGHTNESS_KEY = 'shnuk_brightness';
     const ANON_KEY = 'shnuk_anon_mode';
+    const THEME_KEY = 'shnuk_theme';
 
     let barEl = null;
     let leftSlot = null;
@@ -42,6 +43,48 @@
         return _origClear.call(this);
     };
 
+    function getTheme() {
+        try { return localStorage.getItem(THEME_KEY) || 'day'; } catch(e) { return 'day'; }
+    }
+
+    function getThemeColors() {
+        const theme = getTheme();
+        if (theme === 'evening') {
+            return {
+                bg: '#2a2a2a',
+                text: '#ffffff',
+                activeBg: 'rgba(30, 30, 30, 0.85)',
+                activeText: '#ffffff'
+            };
+        }
+        if (theme === 'warm-night') {
+            return {
+                bg: '#000000',
+                text: '#ffffff',
+                activeBg: 'rgba(0, 0, 0, 0.85)',
+                activeText: '#ffffff'
+            };
+        }
+        return {
+            bg: '#ffffff',
+            text: '#1a1a1a',
+            activeBg: 'rgba(20, 20, 28, 0.72)',
+            activeText: '#ffffff'
+        };
+    }
+
+    function applyBarColors() {
+        if (!barEl) return;
+        const c = getThemeColors();
+        if (currentActivity) {
+            barEl.style.background = c.activeBg;
+            barEl.style.color = c.activeText;
+        } else {
+            barEl.style.background = c.bg;
+            barEl.style.color = c.text;
+        }
+    }
+
     function ensureOverlay() {
         if (overlayEl) return;
         overlayEl = document.createElement('div');
@@ -64,7 +107,7 @@
     function getBrightness() {
         let v = 100;
         try {
-            const s = _origSetItem ? localStorage.getItem(BRIGHTNESS_KEY) : null;
+            const s = localStorage.getItem(BRIGHTNESS_KEY);
             if (s !== null) v = parseInt(s, 10);
             if (isNaN(v)) v = 100;
         } catch(e) {}
@@ -85,9 +128,7 @@
 
     function ensureAnonMode() {
         try {
-            anonMode = _origSetItem.call(localStorage, ANON_KEY) !== null
-                ? localStorage.getItem(ANON_KEY) === 'true'
-                : false;
+            anonMode = localStorage.getItem(ANON_KEY) === 'true';
         } catch(e) { anonMode = false; }
     }
 
@@ -148,7 +189,6 @@
             top: 0; left: 0;
             width: 100%;
             height: ${BAR_HEIGHT}px;
-            background: #ffffff;
             z-index: 2147483646;
             display: flex;
             align-items: center;
@@ -156,7 +196,6 @@
             padding: 0 20px;
             box-sizing: border-box;
             font-family: 'ST-SimpleSquare', monospace;
-            color: #1a1a1a;
             pointer-events: auto;
             cursor: pointer;
             transition: height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
@@ -203,6 +242,8 @@
         barEl.appendChild(rightSlot);
         document.body.appendChild(barEl);
 
+        applyBarColors();
+
         leftSlot.addEventListener('click', onLeftClick);
         barEl.addEventListener('click', onBarClick);
         startClock();
@@ -236,8 +277,6 @@
         if (!activity) {
             currentActivity = null;
             barEl.style.height = BAR_HEIGHT + 'px';
-            barEl.style.background = '#ffffff';
-            barEl.style.color = '#1a1a1a';
             barEl.style.alignItems = 'center';
             barEl.style.padding = '0 20px';
             leftSlot.style.opacity = '0';
@@ -248,14 +287,13 @@
             rightSlot.style.fontSize = '15px';
             rightSlot.textContent = formatClock();
             rightSlot.style.paddingBottom = '0';
+            applyBarColors();
             setCssVar(BAR_HEIGHT);
             return;
         }
 
         currentActivity = activity;
         barEl.style.height = BAR_HEIGHT_ACTIVE + 'px';
-        barEl.style.background = 'rgba(20, 20, 28, 0.72)';
-        barEl.style.color = '#ffffff';
         barEl.style.alignItems = 'flex-end';
         barEl.style.padding = '0 20px 14px';
         leftSlot.textContent = buildLeftContent(activity);
@@ -266,6 +304,7 @@
         rightSlot.style.fontSize = '20px';
         rightSlot.textContent = formatClock();
         rightSlot.style.paddingBottom = '0';
+        applyBarColors();
         setCssVar(BAR_HEIGHT_ACTIVE);
     }
 
@@ -321,11 +360,11 @@
             transform: translate(-50%, -30px) scale(0.92);
             width: 320px;
             max-width: calc(100% - 32px);
-            background: #ffffff;
+            background: var(--bg-primary, #ffffff);
             padding: 24px 20px 16px;
             box-sizing: border-box;
             font-family: 'ST-SimpleSquare', monospace;
-            color: #1a1a1a;
+            color: var(--text-primary, #1a1a1a);
             z-index: 2147483645;
             opacity: 0;
             pointer-events: none;
@@ -338,13 +377,13 @@
         `;
 
         quickPanel.innerHTML = `
-            <div style="font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;font-weight:600;">Яркость</div>
+            <div style="font-size:13px;color:var(--text-muted, #888);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;font-weight:600;">Яркость</div>
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="4"/>
                     <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
                 </svg>
-                <input type="range" id="quickBrightness" min="0" max="100" value="100" style="flex:1;accent-color:#cc0000;" />
+                <input type="range" id="quickBrightness" min="0" max="100" value="100" style="flex:1;accent-color:var(--accent, #cc0000);" />
             </div>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
                 <button class="quick-btn" id="quickAnon" title="Анонимный режим">
@@ -378,8 +417,8 @@
                 </button>
             </div>
             <div style="text-align:center;margin-top:4px;">
-                <button id="quickClose" style="background:none;border:none;cursor:pointer;padding:8px 16px;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <button id="quickClose" style="background:none;border:none;cursor:pointer;padding:8px 16px;color:var(--text-muted, #888);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"/>
                         <line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
@@ -394,8 +433,8 @@
                 .quick-btn {
                     width: 56px;
                     height: 56px;
-                    background: #ffffff;
-                    border: 2px solid #e0e0e0;
+                    background: var(--bg-primary, #ffffff);
+                    border: 2px solid var(--border-color, #e0e0e0);
                     cursor: pointer;
                     display: flex;
                     align-items: center;
@@ -403,13 +442,13 @@
                     transition: background 0.25s ease, border-color 0.25s ease, transform 0.15s ease, color 0.25s ease;
                     padding: 0;
                     justify-self: center;
-                    color: #333;
+                    color: var(--text-primary, #333);
                 }
-                .quick-btn:hover { background: #f5f5f5; border-color: #cc0000; }
+                .quick-btn:hover { background: var(--bg-secondary, #f5f5f5); border-color: var(--accent, #cc0000); }
                 .quick-btn:active { transform: scale(0.94); }
                 .quick-btn.active {
-                    background: #cc0000;
-                    border-color: #cc0000;
+                    background: var(--accent, #cc0000);
+                    border-color: var(--accent, #cc0000);
                     color: #ffffff;
                 }
             `;
@@ -498,7 +537,7 @@
         quickPanel.style.pointerEvents = 'none';
     }
 
-      function optimizeSystem() {
+    function optimizeSystem() {
         if (window.Time && typeof window.Time.destroy === 'function') window.Time.destroy();
         if (window.FileApp && typeof window.FileApp.destroy === 'function') window.FileApp.destroy();
         if (window.Game && typeof window.Game.destroy === 'function') window.Game.destroy();
@@ -575,5 +614,9 @@
     } else {
         restore();
     }
+
+    window.addEventListener('shnuk:theme-changed', function() {
+        applyBarColors();
+    });
 
 })();

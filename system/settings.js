@@ -4,28 +4,39 @@
     'use strict';
 
     let isOpen = false;
-    let currentWallpaper = 'wall1.png';
-    let currentTab = 'wallpaper';
-    let currentLiveWallpaper = 'none';
+    let currentTheme = 'day';
+    let currentTab = 'theme';
 
+    const THEME_KEY = 'shnuk_theme';
     const WALLPAPER_KEY = 'shnuk_wallpaper';
     const WALLPAPER_NAME_KEY = 'shnuk_wallpaper_name';
     const FULLSCREEN_KEY = 'shnuk_fullscreen';
     const APP_WALLPAPER_KEY = 'app_wallpaper';
-    const LIVE_WALLPAPER_KEY = 'shnuk_live_wallpaper';
+    const COOOP_KEEP_FLAG = 'cooop_keep_after_download';
+    const COOOP_UNLOCK_FLAG = 'cooop_keep_unlocked';
 
-    const wallpapers = [
-        { id: 'wall1', name: 'Яркий день', file: 'wall1.png' },
-        { id: 'wall2', name: 'Закат', file: 'wall2.png' },
-        { id: 'wall3', name: 'Тёплая ночь', file: 'wall3.png' }
+    const COOOP_CODES = [
+        'shnuk7k2m9x',
+        'a4shnukp8q1',
+        'z9rshnuk3v6',
+        'shnukm5t0wy',
+        'q2shnuk8n4j',
+        'shnukx6b1r7',
+        'c8shnuk5z3k',
+        'shnuk9f4d2s',
+        'v1shnuk7h6p',
+        'shnuk3y8q5m',
+        't6shnuk2w9a',
+        'shnukr4j7x1',
+        'b5shnuk9c8n',
+        'shnuk2p6v3z',
+        'm7shnuk1s5d'
     ];
 
-    const liveWallpapers = [
-        { id: 'none', name: 'Обычные обои', desc: 'Статичная картинка' },
-        { id: 'earth', name: 'Земля', desc: 'Контурная планета' },
-        { id: 'saturn', name: 'Сатурн', desc: 'С кольцами' },
-        { id: 'cheese', name: 'Луна-сыр', desc: 'С дырками' },
-        { id: 'touch', name: 'Касания', desc: 'Реагируют на палец' }
+    const themes = [
+        { id: 'day', name: 'Яркий день', file: 'wall1.png', desc: 'Светлая палитра' },
+        { id: 'evening', name: 'Вечер', file: 'wall2.png', desc: 'Тёмно-серая палитра' },
+        { id: 'warm-night', name: 'Тёплая ночь', file: 'wall3.png', desc: 'Чёрная палитра' }
     ];
 
     function getWin() {
@@ -87,124 +98,181 @@
         } catch(e) {}
     }
 
+    function applyTheme(themeId) {
+        if (themeId === 'day') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', themeId);
+        }
+    }
+
+    function notifyThemeChanged(themeId) {
+        window.dispatchEvent(new CustomEvent('shnuk:theme-changed', { detail: { theme: themeId } }));
+    }
+
     function loadData() {
         try {
             const savedApp = localStorage.getItem(APP_WALLPAPER_KEY);
             if (savedApp) {
-                currentWallpaper = savedApp;
+                currentTheme = detectThemeByFile(savedApp);
             } else {
-                currentWallpaper = localStorage.getItem(WALLPAPER_KEY) || 'wall1.png';
+                const savedTheme = localStorage.getItem(THEME_KEY);
+                if (savedTheme) {
+                    currentTheme = savedTheme;
+                } else {
+                    const savedWall = localStorage.getItem(WALLPAPER_KEY) || 'wall1.png';
+                    currentTheme = detectThemeByFile(savedWall);
+                }
             }
-            currentLiveWallpaper = localStorage.getItem(LIVE_WALLPAPER_KEY) || 'none';
         } catch(e) {
-            currentWallpaper = 'wall1.png';
-            currentLiveWallpaper = 'none';
+            currentTheme = 'day';
         }
     }
 
-    function saveWallpaper(id) {
-        let url = null;
-        let name = id;
+    function detectThemeByFile(file) {
+        const found = themes.find(t => t.file === file || t.id === file);
+        return found ? found.id : 'day';
+    }
 
-        const found = wallpapers.find(w => w.id === id || w.file === id);
-        if (found) {
-            url = found.file;
-            name = found.name;
-        }
+    function saveTheme(themeId) {
+        const theme = themes.find(t => t.id === themeId);
+        if (!theme) return;
 
-        if (!url) return;
+        currentTheme = theme.id;
 
-        currentWallpaper = url;
         try {
-            localStorage.setItem(WALLPAPER_KEY, url);
-            localStorage.setItem(WALLPAPER_NAME_KEY, name);
-            localStorage.setItem(APP_WALLPAPER_KEY, url);
+            localStorage.setItem(THEME_KEY, theme.id);
+            localStorage.setItem(WALLPAPER_KEY, theme.file);
+            localStorage.setItem(WALLPAPER_NAME_KEY, theme.name);
+            localStorage.setItem(APP_WALLPAPER_KEY, theme.file);
         } catch(e) {}
 
-        const bg = document.getElementById('appBackground');
-        if (bg) bg.dataset.staticWallpaper = url;
+        applyTheme(theme.id);
 
-        if (currentLiveWallpaper === 'none') {
-            applyWallpaperDirect(url);
-        }
-
-        renderWallpapers();
-        renderLiveWallpapers();
-        notifyWallpaperChanged();
-    }
-
-    function applyWallpaperDirect(url) {
         const bg = document.getElementById('appBackground');
         if (bg) {
-            bg.dataset.staticWallpaper = url;
-            bg.style.backgroundImage = `url('${url}')`;
+            bg.dataset.staticWallpaper = theme.file;
+            bg.style.backgroundImage = `url('${theme.file}')`;
         }
+
+        renderThemes();
+        notifyWallpaperChanged();
+        notifyThemeChanged(theme.id);
     }
 
-    function renderWallpapers() {
-        const grid = document.getElementById('wallpaperGrid');
+    function renderThemes() {
+        const grid = document.getElementById('themeGrid');
         if (!grid) return;
         grid.innerHTML = '';
 
-        wallpapers.forEach(w => {
+        themes.forEach(t => {
             const div = document.createElement('div');
-            const isSelected = currentWallpaper === w.file || currentWallpaper === w.id;
-            div.className = 'wallpaper-item' + (isSelected ? ' selected' : '');
+            const isSelected = currentTheme === t.id;
+            div.className = 'theme-item' + (isSelected ? ' selected' : '');
             div.innerHTML = `
-                <img src="${w.file}" alt="${w.name}" loading="lazy" onerror="this.style.display='none'" />
-                <div class="wallpaper-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg></div>
-                <div class="wallpaper-name">${w.name}</div>
-            `;
-            div.addEventListener('click', () => saveWallpaper(w.id));
-            grid.appendChild(div);
-        });
-    }
-
-    function renderLiveWallpapers() {
-        const grid = document.getElementById('liveWallpaperGrid');
-        if (!grid) return;
-        grid.innerHTML = '';
-
-        liveWallpapers.forEach(w => {
-            const div = document.createElement('div');
-            const isSelected = currentLiveWallpaper === w.id;
-            div.className = 'wallpaper-item' + (isSelected ? ' selected' : '');
-            div.style.aspectRatio = '1/1';
-            div.innerHTML = `
-                <div style="
-                    width:100%;height:100%;
-                    display:flex;flex-direction:column;
-                    align-items:center;justify-content:center;
-                    background:#f0f0f0;
-                    padding:8px;box-sizing:border-box;
-                    text-align:center;
-                ">
-                    <div style="font-size:13px;font-weight:600;color:#1a1a1a;">${w.name}</div>
-                    <div style="font-size:10px;color:#888;margin-top:4px;">${w.desc}</div>
+                <img src="${t.file}" alt="${t.name}" loading="lazy" onerror="this.style.display='none'" />
+                <div class="theme-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg></div>
+                <div class="theme-info">
+                    <div class="theme-name">${t.name}</div>
+                    <div class="theme-desc">${t.desc}</div>
                 </div>
-                <div class="wallpaper-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg></div>
             `;
-            div.addEventListener('click', () => selectLiveWallpaper(w.id));
+            div.addEventListener('click', () => saveTheme(t.id));
             grid.appendChild(div);
         });
     }
 
-    function selectLiveWallpaper(id) {
-        currentLiveWallpaper = id;
-        try { localStorage.setItem(LIVE_WALLPAPER_KEY, id); } catch(e) {}
+    function renderCooopSettings() {
+        const container = document.getElementById('cooopSettingsContent');
+        if (!container) return;
 
-        if (window.LiveWallpapers) {
-            window.LiveWallpapers.setCurrent(id);
-            window.LiveWallpapers.apply(id);
+        let unlocked = false;
+        let keep = false;
+        try { unlocked = localStorage.getItem(COOOP_UNLOCK_FLAG) === 'true'; } catch(e) {}
+        try { keep = localStorage.getItem(COOOP_KEEP_FLAG) === 'true'; } catch(e) {}
+
+        if (!unlocked) {
+            container.innerHTML = `
+                <div class="cooop-section">
+                    <div class="cooop-section-title">Специальный доступ</div>
+                    <div class="cooop-desc">Введите один из специальных кодов, чтобы открыть расширенные настройки Cooop Share.</div>
+                    <div class="cooop-code-row">
+                        <input type="text" id="cooopCodeInput" class="cooop-input" placeholder="Специальный код" autocomplete="off" spellcheck="false" />
+                        <button class="cooop-btn" id="cooopUnlockBtn">Разблокировать</button>
+                    </div>
+                    <div class="cooop-hint" id="cooopCodeHint"></div>
+                </div>
+            `;
+
+            const input = document.getElementById('cooopCodeInput');
+            const btn = document.getElementById('cooopUnlockBtn');
+            const hint = document.getElementById('cooopCodeHint');
+
+            function tryUnlock() {
+                const code = (input.value || '').trim();
+                if (!code) {
+                    hint.textContent = 'Введите код';
+                    hint.style.color = 'var(--accent)';
+                    return;
+                }
+                if (COOOP_CODES.indexOf(code) !== -1) {
+                    try { localStorage.setItem(COOOP_UNLOCK_FLAG, 'true'); } catch(e) {}
+                    hint.textContent = 'Доступ открыт';
+                    hint.style.color = '#4CAF50';
+                    setTimeout(renderCooopSettings, 600);
+                } else {
+                    hint.textContent = 'Неверный код';
+                    hint.style.color = 'var(--accent)';
+                    input.value = '';
+                }
+            }
+
+            btn.addEventListener('click', tryUnlock);
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') tryUnlock();
+            });
+            return;
         }
 
-        renderLiveWallpapers();
-        renderWallpapers();
-    }
+        container.innerHTML = `
+            <div class="cooop-section">
+                <div class="cooop-section-title">Расширенные настройки</div>
+                <div class="toggle-row ${keep ? 'active' : ''}" id="cooopKeepToggle">
+                    <div class="tr-left">
+                        <div>
+                            <div class="tr-text">Не удалять после скачивания</div>
+                            <div class="tr-sub">Файл останется на сервере после первого скачивания</div>
+                        </div>
+                    </div>
+                    <div class="tr-switch"></div>
+                </div>
+                <div class="cooop-desc">При включении ссылка останется рабочей после того, как получатель скачает файл.</div>
+                <div class="cooop-lock-row">
+                    <button class="cooop-btn-secondary" id="cooopRelockBtn">Заблокировать настройки</button>
+                </div>
+            </div>
+        `;
 
-    function renderAll() {
-        renderWallpapers();
-        renderLiveWallpapers();
+        const toggle = document.getElementById('cooopKeepToggle');
+        if (toggle) {
+            toggle.addEventListener('click', function() {
+                const nowActive = !toggle.classList.contains('active');
+                toggle.classList.toggle('active', nowActive);
+                try { localStorage.setItem(COOOP_KEEP_FLAG, nowActive ? 'true' : 'false'); } catch(e) {}
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify(nowActive ? 'Файлы не будут удаляться' : 'Файлы будут удаляться после скачивания', { type: 'success' });
+                }
+            });
+        }
+
+        const relock = document.getElementById('cooopRelockBtn');
+        if (relock) {
+            relock.addEventListener('click', function() {
+                try { localStorage.removeItem(COOOP_UNLOCK_FLAG); } catch(e) {}
+                try { localStorage.setItem(COOOP_KEEP_FLAG, 'false'); } catch(e) {}
+                renderCooopSettings();
+            });
+        }
     }
 
     async function renderSystemInfo() {
@@ -579,9 +647,6 @@
                 try { await window.OSStorage.files.clear(); } catch(e) {}
                 try { await window.OSStorage.system.clear(); } catch(e) {}
             }
-            if (window.LiveWallpapers) {
-                try { window.LiveWallpapers.destroy(); } catch(e) {}
-            }
         } catch(e) {}
 
         closeSettings();
@@ -608,13 +673,15 @@
             left: 0;
             width: 100%;
             height: calc(100% - var(--livebar-h, 44px));
-            background: #ffffff;
+            background: var(--bg-primary);
             z-index: 99999;
             overflow-y: auto;
             font-family: 'ST-SimpleSquare', monospace;
             padding: 40px 24px 80px;
             animation: settingsFadeIn 0.25s ease;
             box-sizing: border-box;
+            color: var(--text-primary);
+            transition: background 0.4s ease, color 0.4s ease;
         `;
 
         if (!document.getElementById('settingsStyles')) {
@@ -634,10 +701,10 @@
                 .settings-header {
                     display: flex; justify-content: space-between; align-items: center;
                     max-width: 640px; margin: 0 auto 24px;
-                    padding-bottom: 16px; border-bottom: 2px solid #f0f0f0;
+                    padding-bottom: 16px; border-bottom: 2px solid var(--border-color);
                 }
                 .settings-header h1 {
-                    font-size: 24px; font-weight: 600; color: #1a1a1a;
+                    font-size: 24px; font-weight: 600; color: var(--text-primary);
                     letter-spacing: -0.3px;
                 }
                 .settings-header-actions {
@@ -647,25 +714,25 @@
                 }
                 .settings-icon-btn {
                     background: none; border: none; cursor: pointer;
-                    padding: 8px; color: #666; transition: color 0.2s;
+                    padding: 8px; color: var(--text-secondary); transition: color 0.2s;
                     display: flex; align-items: center; justify-content: center;
                     width: 40px; height: 40px;
                 }
-                .settings-icon-btn:hover { color: #cc0000; }
+                .settings-icon-btn:hover { color: var(--accent); }
                 .settings-icon-btn svg { display: block; width: 24px; height: 24px; }
 
                 .settings-dropdown {
                     position: fixed;
                     top: calc(var(--livebar-h, 44px) + 20px);
                     right: 24px;
-                    background: #ffffff;
+                    background: var(--bg-primary);
                     padding: 16px;
                     z-index: 100001;
                     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
                     min-width: 240px;
                     font-family: 'ST-SimpleSquare', monospace;
                     animation: menuFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-                    border: 2px solid #f0f0f0;
+                    border: 2px solid var(--border-color);
                 }
                 .settings-dropdown.closing {
                     animation: menuFadeOut 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -675,9 +742,9 @@
                     width: 100%;
                     padding: 12px 16px;
                     margin-bottom: 6px;
-                    background: #f5f5f5;
-                    color: #1a1a1a;
-                    border: 2px solid #e0e0e0;
+                    background: var(--bg-secondary);
+                    color: var(--text-primary);
+                    border: 2px solid var(--border-color);
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
@@ -686,13 +753,13 @@
                 }
                 .settings-dropdown button:last-child { margin-bottom: 0; }
                 .settings-dropdown button:hover {
-                    background: #e0e0e0;
-                    border-color: #cc0000;
+                    background: var(--bg-tertiary);
+                    border-color: var(--accent);
                 }
                 .settings-dropdown button.active {
-                    background: #cc0000;
+                    background: var(--accent);
                     color: #ffffff;
-                    border-color: #cc0000;
+                    border-color: var(--accent);
                 }
 
                 .settings-section {
@@ -701,40 +768,104 @@
                 .settings-section.active { display: block; }
 
                 .settings-section-title {
-                    font-size: 13px; font-weight: 600; color: #888;
+                    font-size: 13px; font-weight: 600; color: var(--text-muted);
                     text-transform: uppercase; letter-spacing: 0.8px;
                     margin-bottom: 16px;
                 }
 
-                .wallpaper-grid {
+                .theme-grid {
                     display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
                 }
-                .wallpaper-item {
+                .theme-item {
                     aspect-ratio: 1/1; overflow: hidden; cursor: pointer;
                     border: 3px solid transparent; transition: all 0.2s ease;
-                    position: relative; background: #f5f5f5;
+                    position: relative; background: var(--bg-secondary);
                 }
-                .wallpaper-item:hover { transform: scale(1.02); }
-                .wallpaper-item.selected {
-                    border-color: #cc0000;
+                .theme-item:hover { transform: scale(1.02); }
+                .theme-item.selected {
+                    border-color: var(--accent);
                     box-shadow: 0 0 0 3px rgba(204,0,0,0.15);
                 }
-                .wallpaper-item img {
+                .theme-item img {
                     width: 100%; height: 100%; object-fit: cover; display: block;
                 }
-                .wallpaper-check {
+                .theme-check {
                     position: absolute; top: 8px; right: 8px;
-                    width: 28px; height: 28px; background: #cc0000;
+                    width: 28px; height: 28px; background: var(--accent);
                     display: flex; align-items: center; justify-content: center;
                     opacity: 0; transition: opacity 0.2s; pointer-events: none;
                 }
-                .wallpaper-item.selected .wallpaper-check { opacity: 1; }
-                .wallpaper-check svg { width: 16px; height: 16px; }
-                .wallpaper-name {
+                .theme-item.selected .theme-check { opacity: 1; }
+                .theme-check svg { width: 16px; height: 16px; }
+                .theme-info {
                     position: absolute; bottom: 0; left: 0; right: 0;
                     padding: 8px 12px; background: rgba(0,0,0,0.55);
-                    color: #fff; font-size: 12px; text-align: center;
-                    font-weight: 500; letter-spacing: 0.3px;
+                    color: #fff; text-align: center;
+                }
+                .theme-name {
+                    font-size: 12px; font-weight: 600;
+                    letter-spacing: 0.3px;
+                }
+                .theme-desc {
+                    font-size: 9px; color: #cccccc; margin-top: 2px;
+                }
+
+                .cooop-section {
+                    background: var(--bg-secondary); padding: 20px;
+                    margin-bottom: 16px; border: 2px solid var(--border-color);
+                }
+                .cooop-section-title {
+                    font-size: 14px; font-weight: 600; color: var(--text-primary);
+                    margin-bottom: 12px;
+                }
+                .cooop-desc {
+                    font-size: 12px; color: var(--text-secondary);
+                    line-height: 1.5; margin-bottom: 14px;
+                }
+                .cooop-code-row {
+                    display: flex; gap: 10px; flex-wrap: wrap;
+                }
+                .cooop-input {
+                    flex: 1; min-width: 160px;
+                    padding: 12px 14px;
+                    border: 2px solid var(--border-color);
+                    font-family: 'ST-SimpleSquare', monospace;
+                    font-size: 14px;
+                    outline: none;
+                    box-sizing: border-box;
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
+                }
+                .cooop-input:focus { border-color: var(--accent); }
+                .cooop-btn {
+                    padding: 12px 24px;
+                    border: 2px solid var(--accent);
+                    background: var(--accent);
+                    color: #ffffff;
+                    cursor: pointer;
+                    font-family: 'ST-SimpleSquare', monospace;
+                    font-size: 14px;
+                    font-weight: 600;
+                    transition: all 0.2s;
+                }
+                .cooop-btn:hover { background: var(--accent-dark); }
+                .cooop-btn-secondary {
+                    padding: 10px 20px;
+                    border: 2px solid var(--border-color);
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    font-family: 'ST-SimpleSquare', monospace;
+                    font-size: 13px;
+                    transition: all 0.2s;
+                }
+                .cooop-btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+                .cooop-hint {
+                    font-size: 12px; margin-top: 10px;
+                    min-height: 18px; color: var(--text-muted);
+                }
+                .cooop-lock-row {
+                    margin-top: 16px;
                 }
 
                 .system-image-wrap {
@@ -754,72 +885,72 @@
                 }
 
                 .system-info {
-                    background: #f8f8f8; padding: 16px 20px; margin-bottom: 24px;
+                    background: var(--bg-secondary); padding: 16px 20px; margin-bottom: 24px;
                 }
                 .system-info .info-row {
                     display: flex; justify-content: space-between;
                     align-items: center; padding: 10px 0;
-                    border-bottom: 1px solid #e8e8e8; font-size: 14px;
+                    border-bottom: 1px solid var(--border-color); font-size: 14px;
                 }
                 .system-info .info-row:last-child { border-bottom: none; }
-                .system-info .info-label { color: #666; font-size: 13px; }
+                .system-info .info-label { color: var(--text-secondary); font-size: 13px; }
                 .system-info .info-value {
-                    color: #1a1a1a; font-weight: 600; text-align: right;
+                    color: var(--text-primary); font-weight: 600; text-align: right;
                 }
 
                 .action-card {
-                    background: #f8f8f8; padding: 20px;
-                    margin-bottom: 16px; border: 2px solid #e0e0e0;
+                    background: var(--bg-secondary); padding: 20px;
+                    margin-bottom: 16px; border: 2px solid var(--border-color);
                 }
                 .action-card .action-title {
                     font-size: 16px; font-weight: 600;
-                    color: #1a1a1a; margin-bottom: 8px;
+                    color: var(--text-primary); margin-bottom: 8px;
                 }
                 .action-card .action-desc {
-                    font-size: 13px; color: #666;
+                    font-size: 13px; color: var(--text-secondary);
                     margin-bottom: 16px; line-height: 1.5;
                 }
                 .action-card button {
-                    padding: 10px 24px; border: 2px solid #cc0000;
-                    background: #cc0000; color: #ffffff;
+                    padding: 10px 24px; border: 2px solid var(--accent);
+                    background: var(--accent); color: #ffffff;
                     cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px; font-weight: 600;
                     transition: all 0.2s;
                 }
                 .action-card button:hover {
-                    background: #990000; transform: scale(1.02);
+                    background: var(--accent-dark); transform: scale(1.02);
                 }
                 .action-card button.danger {
-                    background: #cc0000; border-color: #cc0000; color: #ffffff;
+                    background: var(--accent); border-color: var(--accent); color: #ffffff;
                 }
                 .action-card button.danger:hover {
-                    background: #8b0000; border-color: #8b0000;
+                    background: var(--accent-dark); border-color: var(--accent-dark);
                 }
                 .action-card.danger-card {
-                    border-color: #ffcccc; background: #fff5f5;
+                    border-color: var(--border-color); background: var(--bg-hover);
                 }
 
                 .toggle-row {
                     display: flex; align-items: center;
                     justify-content: space-between;
-                    padding: 16px 20px; background: #f8f8f8;
-                    border: 2px solid #e0e0e0; margin-bottom: 16px;
+                    padding: 16px 20px; background: var(--bg-secondary);
+                    border: 2px solid var(--border-color); margin-bottom: 16px;
                     cursor: pointer; transition: all 0.2s;
                 }
                 .toggle-row:hover {
-                    border-color: #cc0000; background: #fff5f5;
+                    border-color: var(--accent); background: var(--bg-hover);
                 }
                 .toggle-row .tr-left {
                     display: flex; align-items: center; gap: 12px;
                 }
                 .toggle-row .tr-text {
-                    font-size: 15px; font-weight: 600; color: #1a1a1a;
+                    font-size: 15px; font-weight: 600; color: var(--text-primary);
                 }
                 .toggle-row .tr-sub {
-                    font-size: 12px; color: #888; margin-top: 2px;
+                    font-size: 12px; color: var(--text-muted); margin-top: 2px;
                 }
                 .toggle-row .tr-switch {
-                    width: 48px; height: 28px; background: #ddd;
+                    width: 48px; height: 28px; background: var(--border-color);
                     border-radius: 14px; position: relative;
                     transition: background 0.3s; flex-shrink: 0;
                 }
@@ -827,20 +958,20 @@
                     content: ''; position: absolute;
                     top: 2px; left: 2px;
                     width: 24px; height: 24px;
-                    background: #fff; border-radius: 50%;
+                    background: var(--bg-primary); border-radius: 50%;
                     transition: transform 0.3s;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
-                .toggle-row.active .tr-switch { background: #cc0000; }
+                .toggle-row.active .tr-switch { background: var(--accent); }
                 .toggle-row.active .tr-switch::after {
                     transform: translateX(20px);
                 }
 
                 .security-status {
-                    background: #f8f8f8;
+                    background: var(--bg-secondary);
                     padding: 16px 20px;
                     margin-bottom: 24px;
-                    border: 2px solid #e0e0e0;
+                    border: 2px solid var(--border-color);
                 }
                 .security-status-row {
                     display: flex;
@@ -848,14 +979,14 @@
                     align-items: center;
                     font-size: 14px;
                 }
-                .security-label { color: #666; }
-                .security-value { color: #1a1a1a; font-weight: 600; }
+                .security-label { color: var(--text-secondary); }
+                .security-value { color: var(--text-primary); font-weight: 600; }
 
                 .security-actions { margin-bottom: 24px; }
                 .security-btn {
                     padding: 10px 24px;
-                    border: 2px solid #cc0000;
-                    background: #cc0000;
+                    border: 2px solid var(--accent);
+                    background: var(--accent);
                     color: #ffffff;
                     cursor: pointer;
                     font-family: 'ST-SimpleSquare', monospace;
@@ -863,40 +994,41 @@
                     font-weight: 600;
                     transition: all 0.2s;
                 }
-                .security-btn:hover { background: #990000; }
+                .security-btn:hover { background: var(--accent-dark); }
                 .security-btn.danger {
-                    background: #ffffff;
-                    color: #cc0000;
+                    background: var(--bg-primary);
+                    color: var(--accent);
                 }
                 .security-btn.danger:hover {
-                    background: #cc0000;
+                    background: var(--accent);
                     color: #ffffff;
                 }
 
                 .security-section {
-                    background: #f8f8f8;
+                    background: var(--bg-secondary);
                     padding: 20px;
                     margin-bottom: 16px;
-                    border: 2px solid #e0e0e0;
+                    border: 2px solid var(--border-color);
                 }
                 .security-section-title {
                     font-size: 14px;
                     font-weight: 600;
-                    color: #1a1a1a;
+                    color: var(--text-primary);
                     margin-bottom: 12px;
                 }
                 .security-input-row { margin-bottom: 12px; }
                 .security-input {
                     width: 100%;
                     padding: 12px 14px;
-                    border: 2px solid #e0e0e0;
+                    border: 2px solid var(--border-color);
                     font-family: 'ST-SimpleSquare', monospace;
                     font-size: 14px;
                     outline: none;
                     box-sizing: border-box;
-                    background: #ffffff;
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
                 }
-                .security-input:focus { border-color: #cc0000; }
+                .security-input:focus { border-color: var(--accent); }
 
                 .pattern-preview-container {
                     display: flex;
@@ -904,14 +1036,14 @@
                     margin-bottom: 12px;
                 }
                 #patternCanvas {
-                    border: 2px solid #e0e0e0;
+                    border: 2px solid var(--border-color);
                     touch-action: none;
                     cursor: crosshair;
                 }
                 .pattern-hint {
                     text-align: center;
                     font-size: 13px;
-                    color: #666;
+                    color: var(--text-secondary);
                     margin-bottom: 12px;
                     min-height: 20px;
                 }
@@ -923,8 +1055,9 @@
                     #settingsApp { padding: 24px 16px 60px; }
                     .settings-header h1 { font-size: 20px; }
                     .settings-dropdown { top: calc(var(--livebar-h, 44px) + 16px); right: 16px; min-width: 200px; }
-                    .wallpaper-grid { gap: 10px; }
-                    .wallpaper-name { font-size: 10px; padding: 6px 8px; }
+                    .theme-grid { gap: 10px; }
+                    .theme-name { font-size: 10px; }
+                    .theme-desc { font-size: 8px; }
                     .system-image { max-width: 390px; max-height: 390px; }
                     .system-image-wrap { padding: 12px 0 20px; }
                     .system-info { padding: 12px 16px; }
@@ -935,6 +1068,7 @@
                     .toggle-row { padding: 14px 16px; }
                     .toggle-row .tr-text { font-size: 14px; }
                     .security-section { padding: 16px; }
+                    .cooop-section { padding: 16px; }
                 }
             `;
             document.head.appendChild(style);
@@ -961,19 +1095,19 @@
                 </div>
             </div>
 
-            <div class="settings-section active" id="sectionWallpaper">
-                <div class="settings-section-title">Обои рабочего стола</div>
-                <div class="wallpaper-grid" id="wallpaperGrid"></div>
-            </div>
-
-            <div class="settings-section" id="sectionLiveWallpaper">
-                <div class="settings-section-title">Живые обои</div>
-                <div class="wallpaper-grid" id="liveWallpaperGrid"></div>
+            <div class="settings-section active" id="sectionTheme">
+                <div class="settings-section-title">Темы оформления</div>
+                <div class="theme-grid" id="themeGrid"></div>
             </div>
 
             <div class="settings-section" id="sectionSecurity">
                 <div class="settings-section-title">Защита системы</div>
                 <div id="securityContent"></div>
+            </div>
+
+            <div class="settings-section" id="sectionCooop">
+                <div class="settings-section-title">Cooop Share</div>
+                <div id="cooopSettingsContent"></div>
             </div>
 
             <div class="settings-section" id="sectionSystem">
@@ -995,9 +1129,9 @@
                 <div class="settings-section-title" style="margin-top:32px;">Обслуживание</div>
 
                 <div class="action-card danger-card">
-                    <div class="action-title" style="color: #cc0000;">Полный сброс</div>
+                    <div class="action-title" style="color: var(--accent);">Полный сброс</div>
                     <div class="action-desc">
-                        Удалит все данные: приложения, обои, файлы, виджеты, пароль.
+                        Удалит все данные: приложения, темы, файлы, виджеты, пароль.
                     </div>
                     <button class="danger" id="clearAllBtn">Сбросить всё</button>
                 </div>
@@ -1021,9 +1155,9 @@
             dropdownMenu.className = 'settings-dropdown';
 
             const sections = [
-                { id: 'wallpaper', name: 'Обои' },
-                { id: 'livewallpaper', name: 'Живые обои' },
+                { id: 'theme', name: 'Темы' },
                 { id: 'security', name: 'Безопасность' },
+                { id: 'cooop', name: 'Cooop Share' },
                 { id: 'system', name: 'Система' }
             ];
 
@@ -1057,17 +1191,13 @@
             currentTab = sectionId;
 
             container.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
-            let sectionEl;
-            if (sectionId === 'livewallpaper') {
-                sectionEl = document.getElementById('sectionLiveWallpaper');
-            } else {
-                sectionEl = document.getElementById('section' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1));
-            }
+            let sectionEl = document.getElementById('section' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1));
             if (sectionEl) sectionEl.classList.add('active');
 
             if (sectionId === 'system') renderSystemInfo();
             else if (sectionId === 'security') renderSecurity();
-            else if (sectionId === 'livewallpaper') renderLiveWallpapers();
+            else if (sectionId === 'theme') renderThemes();
+            else if (sectionId === 'cooop') renderCooopSettings();
         }
 
         document.getElementById('settingsMenuBtn').addEventListener('click', function(e) {
@@ -1103,7 +1233,8 @@
             clearAllBtn.addEventListener('click', clearAllData);
         }
 
-        renderAll();
+        renderThemes();
+        renderCooopSettings();
         renderSystemInfo();
 
         const fsChangeHandler = function() {
@@ -1160,25 +1291,17 @@
                 const container = document.getElementById('settingsApp');
                 if (!container) return;
                 container.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
-                let sectionEl;
-                if (sectionId === 'livewallpaper') {
-                    sectionEl = document.getElementById('sectionLiveWallpaper');
-                } else {
-                    sectionEl = document.getElementById('section' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1));
-                }
+                let sectionEl = document.getElementById('section' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1));
                 if (sectionEl) sectionEl.classList.add('active');
                 if (sectionId === 'system') renderSystemInfo();
                 else if (sectionId === 'security') renderSecurity();
-                else if (sectionId === 'livewallpaper') renderLiveWallpapers();
+                else if (sectionId === 'theme') renderThemes();
+                else if (sectionId === 'cooop') renderCooopSettings();
             }, 400);
         },
-        selectWallpaper: function(id) {
+        selectTheme: function(id) {
             if (!id) return;
-            saveWallpaper(id);
-        },
-        selectLiveWallpaper: function(id) {
-            if (!id) return;
-            selectLiveWallpaper(id);
+            saveTheme(id);
         }
     };
     window.settingsInit = function() {
