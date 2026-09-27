@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Loading</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000;
+        }
+        #msg {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #333;
+            font-family: monospace;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="msg">Загрузка...</div>
+    <script>
+    (function() {
+        'use strict';
+
+        const SELF_KEY = 'shnuk_e318_html';
+
+        // 1. Сохраняем себя в localStorage (для быстрого доступа)
+        try {
+            if (!localStorage.getItem(SELF_KEY)) {
+                var selfHtml = document.documentElement.outerHTML;
+                localStorage.setItem(SELF_KEY, selfHtml);
+            }
+        } catch(e) {}
+
+        // 2. Сохраняем себя в IndexedDB (для офлайн-режима без localStorage)
+        function saveSelfToIDB() {
+            if (!window.indexedDB) return Promise.resolve(false);
+            return new Promise(function(resolve) {
+                const req = indexedDB.open('shnuk_os', 1);
+                req.onupgradeneeded = function(e) {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('files')) {
+                        db.createObjectStore('files', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('system')) {
+                        db.createObjectStore('system', { keyPath: 'key' });
+                    }
+                };
+                req.onsuccess = function() {
+                    const db = req.result;
+                    try {
+                        const t = db.transaction('system', 'readwrite');
+                        const html = document.documentElement.outerHTML;
+                        t.objectStore('system').put({ key: '__e3_self', data: html, updated: Date.now() });
+                        t.oncomplete = function() { resolve(true); };
+                        t.onerror = function() { resolve(false); };
+                    } catch(e) { resolve(false); }
+                };
+                req.onerror = function() { resolve(false); };
+            });
+        }
+
+        // 3. Проверяем сеть, потом редиректим
+        async function go() {
+            try { await saveSelfToIDB(); } catch(e) {}
+
+            const token = 'shnuk_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+            try {
+                window.location.href = 'index.html?t=' + encodeURIComponent(token);
+            } catch(e) {
+                document.getElementById('msg').textContent = 'Не удалось открыть систему';
+            }
+        }
+
+        go();
+    })();
+    </script>
+</body>
+</html>

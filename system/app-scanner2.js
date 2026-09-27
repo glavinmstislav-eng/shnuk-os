@@ -8,7 +8,7 @@
     const APP_LIST = [
         { id: 'settings', name: 'Настройки', icon: 'settings.png' },
         { id: 'time', name: 'Часы', icon: 'time.png' },
-        { id: 'file', name: 'Файлы', icon: 'file.png' },
+        { id: 'file2', name: 'Файлы', icon: 'file.png' },
         { id: 'camera', name: 'Камера', icon: 'camera.png' },
         { id: 'recorder', name: 'Звукозапись', icon: 'recording.png' },
         { id: 'gamecenter', name: 'Game Center', icon: 'games.png' },
