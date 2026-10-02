@@ -868,7 +868,12 @@
                     to { opacity: 0; filter: blur(20px); transform: translateY(-10px) scale(0.95); }
                 }
 
-                #settingsApp, #settingsApp * {
+                #settingsApp,
+                #settingsApp *,
+                .settings-dropdown,
+                .settings-dropdown *,
+                .theme-apply-overlay,
+                .theme-apply-overlay * {
                     font-family: ${FONT_MAIN} !important;
                 }
 

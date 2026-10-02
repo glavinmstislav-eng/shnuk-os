@@ -65,36 +65,31 @@
             --panel-bg: rgba(0, 0, 0, 0.9);
         }
 
-        /* ============================================
-           ШРИФТЫ
-           ============================================ */
         @font-face {
             font-family: 'ST-SimpleSquare';
-            src: url('./ST-SimpleSquare.ttf') format('truetype');
+            src: url('ST-SimpleSquare.ttf') format('truetype');
             font-weight: 400;
-            font-style: normal;
             font-display: swap;
         }
         @font-face {
             font-family: 'ST-SimpleSquare';
-            src: url('./ST-SimpleSquare.ttf') format('truetype');
+            src: url('ST-SimpleSquare.ttf') format('truetype');
             font-weight: 700;
-            font-style: normal;
             font-display: swap;
         }
         @font-face {
             font-family: 'Sector034';
-            src: url('./sector_034.ttf') format('truetype');
+            src: url('sector_034.ttf') format('truetype');
             font-weight: 400;
             font-style: normal;
-            font-display: swap;
+            font-display: block;
         }
         @font-face {
             font-family: 'Sector034';
-            src: url('./sector_034.ttf') format('truetype');
+            src: url('sector_034.ttf') format('truetype');
             font-weight: 700;
             font-style: normal;
-            font-display: swap;
+            font-display: block;
         }
 
         * {
@@ -547,13 +542,18 @@
         'use strict';
         if (typeof AppScanner === 'undefined') return;
 
-        // Проверка: загрузился ли шрифт Sector034
+        // Проверка шрифта Sector034 — после того, как все шрифты загрузились
         try {
-            if (document.fonts && document.fonts.load) {
-                document.fonts.load("400 16px 'Sector034'").then(function() {
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(function() {
                     var loaded = document.fonts.check("400 16px 'Sector034'");
                     console.log('[Fonts] Sector034 loaded:', loaded);
-                }).catch(function() {});
+                    if (loaded) {
+                        document.documentElement.style.setProperty('--font-main', "'Sector034', monospace");
+                    } else {
+                        console.warn('[Fonts] Sector034 не загрузился, используется fallback');
+                    }
+                });
             }
         } catch(e) {}
 
