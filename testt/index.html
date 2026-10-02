@@ -66,27 +66,15 @@
         }
 
         @font-face {
-            font-family: 'ST-SimpleSquare';
-            src: url('ST-SimpleSquare.ttf') format('truetype');
-            font-weight: 400;
-            font-display: swap;
-        }
-        @font-face {
-            font-family: 'ST-SimpleSquare';
-            src: url('ST-SimpleSquare.ttf') format('truetype');
-            font-weight: 700;
-            font-display: swap;
-        }
-        @font-face {
-            font-family: 'Sector034';
-            src: url('sector_034.ttf') format('truetype');
+            font-family: 'TTPaplane';
+            src: url('TT_Paplane_Trial_Regular.ttf') format('truetype');
             font-weight: 400;
             font-style: normal;
             font-display: block;
         }
         @font-face {
-            font-family: 'Sector034';
-            src: url('sector_034.ttf') format('truetype');
+            font-family: 'TTPaplane';
+            src: url('TT_Paplane_Trial_Regular.ttf') format('truetype');
             font-weight: 700;
             font-style: normal;
             font-display: block;
@@ -103,12 +91,49 @@
 
         html, body {
             width: 100%; height: 100%;
-            font-family: 'ST-SimpleSquare', monospace, sans-serif;
+            font-family: 'TTPaplane', monospace, sans-serif;
+            font-size: 20px;
             touch-action: none; overflow: hidden;
             background: var(--bg-primary);
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
             transition: background 0.4s ease, color 0.4s ease;
+        }
+
+        /* ============================================
+           РАБОЧЕЕ РАЗМЫТИЕ КРАЁВ
+           Отдельные оверлей-элементы в JS, не псевдоэлементы.
+           См. активацию через addScrollFadeBlur().
+           ============================================ */
+        .scroll-fade-host {
+            position: relative;
+        }
+        .scroll-fade-blur {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 80px;
+            pointer-events: none;
+            z-index: 9999;
+            background: var(--bg-primary);
+            opacity: 0.001;
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+            will-change: backdrop-filter;
+            transition: opacity 0.15s ease;
+        }
+        .scroll-fade-blur.top {
+            top: 0;
+            -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+        }
+        .scroll-fade-blur.bottom {
+            bottom: 0;
+            -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+        }
+        .scroll-fade-blur.visible {
+            opacity: 0.999;
         }
 
         #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
@@ -153,14 +178,14 @@
             display: flex; gap: 10px; z-index: 10;
         }
         .top-panel .edit-controls button {
-            width: 44px; height: 44px;
+            width: 52px; height: 52px;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; touch-action: manipulation;
             background: var(--bg-primary); border: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s ease, background 0.2s ease, filter 0.2s ease;
-            font-family: 'ST-SimpleSquare', monospace;
-            font-size: 20px; color: var(--text-primary);
+            font-family: 'TTPaplane', monospace;
+            font-size: 26px; color: var(--text-primary);
             -webkit-tap-highlight-color: transparent;
         }
         .top-panel .edit-controls button:hover { transform: scale(1.08); }
@@ -248,15 +273,15 @@
             background: var(--bg-primary);
             border: 2px solid var(--accent);
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 48px;
+            height: 48px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 26px;
             color: var(--accent);
             cursor: pointer;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
             z-index: 10;
             -webkit-tap-highlight-color: transparent;
             transition: all 0.2s ease;
@@ -265,11 +290,11 @@
             background: var(--accent);
             color: var(--text-on-accent);
         }
-        .bottom-panel h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 24px; letter-spacing: -0.3px; }
+        .bottom-panel h2 { font-size: 26px; font-weight: 700; color: var(--text-primary); margin-bottom: 24px; letter-spacing: -0.3px; }
 
         .icon-grid {
             display: grid; grid-template-columns: repeat(4, 1fr);
-            gap: 20px; max-width: 440px; width: 100%;
+            gap: 20px; max-width: 480px; width: 100%;
             perspective: 800px;
         }
 
@@ -280,7 +305,7 @@
             transition: transform 0.2s ease; cursor: pointer;
             padding: 6px;
             border: none; outline: none;
-            max-width: 80px; max-height: 80px;
+            max-width: 90px; max-height: 90px;
             justify-self: center; width: 100%;
             position: relative;
             -webkit-tap-highlight-color: transparent;
@@ -297,47 +322,47 @@
         }
         .icon-item img { width: 80%; height: 80%; object-fit: contain; }
         .icon-item .icon-label {
-            font-size: 9px; color: var(--text-primary); margin-top: 2px;
+            font-size: 13px; color: var(--text-primary); margin-top: 2px;
             text-align: center; line-height: 1.2;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
         }
         .icon-item .icon-add-btn {
             position: absolute; bottom: 0; right: 0;
-            width: 22px; height: 22px; background: #4CAF50;
+            width: 26px; height: 26px; background: #4CAF50;
             color: #ffffff; border: 2px solid var(--bg-primary);
-            border-radius: 50%; font-size: 14px; line-height: 18px;
+            border-radius: 50%; font-size: 18px; line-height: 22px;
             text-align: center; cursor: pointer; display: none;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
             -webkit-tap-highlight-color: transparent;
         }
         .bottom-panel.editing .icon-item .icon-add-btn { display: block; }
         .icon-item .icon-remove-btn {
             position: absolute; top: 0; right: 0;
-            width: 20px; height: 20px; background: var(--accent);
+            width: 24px; height: 24px; background: var(--accent);
             color: var(--text-on-accent); border: 2px solid var(--bg-primary);
-            border-radius: 50%; font-size: 12px; line-height: 14px;
+            border-radius: 50%; font-size: 15px; line-height: 18px;
             text-align: center; cursor: pointer; display: none;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
             -webkit-tap-highlight-color: transparent;
         }
         .bottom-panel.editing .icon-item .icon-remove-btn { display: block; }
         .icon-item.in-desktop .icon-add-btn { display: none !important; }
         .icon-item.in-desktop .icon-remove-btn { display: block !important; }
-        .icon-item .icon-default { font-size: 32px; line-height: 1; color: var(--text-primary); }
+        .icon-item .icon-default { font-size: 40px; line-height: 1; color: var(--text-primary); }
         .icon-item.html-app::after {
             content: 'HTML'; position: absolute; top: 0; left: 0;
-            font-size: 7px; background: #4488ff; color: #fff;
-            padding: 1px 4px; border-radius: 2px;
-            font-weight: 600; letter-spacing: 0.5px;
+            font-size: 10px; background: #4488ff; color: #fff;
+            padding: 1px 5px; border-radius: 2px;
+            font-weight: 700; letter-spacing: 0.5px;
         }
 
         .loader {
             display: flex; align-items: center; justify-content: center;
-            gap: 8px; padding: 20px; color: var(--text-muted); font-size: 14px;
+            gap: 8px; padding: 20px; color: var(--text-muted); font-size: 18px;
             grid-column: 1 / -1;
         }
         .loader .spinner {
-            width: 20px; height: 20px;
+            width: 24px; height: 24px;
             border: 3px solid var(--border-color); border-top: 3px solid var(--accent);
             border-radius: 50%; animation: spin 0.8s linear infinite;
         }
@@ -354,10 +379,10 @@
         .html-app-window iframe { flex: 1; width: 100%; border: none; background: var(--bg-primary); }
         .html-app-close-btn {
             position: fixed; top: calc(var(--livebar-h, 44px) + 16px); right: 16px;
-            width: 44px; height: 44px;
+            width: 52px; height: 52px;
             background: var(--accent); color: var(--text-on-accent); border: none;
-            font-size: 22px; cursor: pointer; z-index: 100002;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-size: 28px; cursor: pointer; z-index: 100002;
+            font-family: 'TTPaplane', monospace;
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 4px 20px rgba(204,0,0,0.4);
             -webkit-tap-highlight-color: transparent;
@@ -366,16 +391,20 @@
         .html-app-close-btn:hover { background: var(--accent-dark); transform: scale(1.1); }
 
         @media (max-width: 500px) {
-            .btn { width: 64px; height: 64px; }
+            html, body { font-size: 18px; }
+            .btn { width: 70px; height: 70px; }
             .button-group { gap: 16px; }
             .top-panel .edit-controls { top: 16px; right: 16px; }
-            .top-panel .edit-controls button { width: 36px; height: 36px; font-size: 16px; }
+            .top-panel .edit-controls button { width: 42px; height: 42px; font-size: 22px; }
             .bottom-panel { padding: 24px 16px 80px; }
-            .bottom-panel h2 { font-size: 17px; margin-bottom: 18px; }
-            .icon-grid { gap: 14px; max-width: 320px; }
-            .icon-item { padding: 4px; max-width: 64px; max-height: 64px; }
+            .bottom-panel h2 { font-size: 22px; margin-bottom: 18px; }
+            .bottom-panel .close-apps { width: 42px; height: 42px; font-size: 22px; }
+            .icon-grid { gap: 14px; max-width: 360px; }
+            .icon-item { padding: 4px; max-width: 72px; max-height: 72px; }
+            .icon-item .icon-label { font-size: 11px; }
+            .icon-item .icon-default { font-size: 32px; }
             .top-panel { padding: 0 16px 70px 16px; }
-            .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 40px; height: 40px; font-size: 20px; }
+            .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 46px; height: 46px; font-size: 24px; }
         }
     </style>
 
@@ -542,17 +571,53 @@
         'use strict';
         if (typeof AppScanner === 'undefined') return;
 
-        // Проверка шрифта Sector034 — после того, как все шрифты загрузились
+        // ============================================
+        // Настоящее размытие по краям — overlay-элементы
+        // ============================================
+        function activateScrollFade(el) {
+            if (!el) return;
+            if (el.__scrollFadeActive) {
+                if (typeof el.__scrollFadeCheck === 'function') el.__scrollFadeCheck();
+                return;
+            }
+            el.__scrollFadeActive = true;
+            el.classList.add('scroll-fade-host');
+
+            var top = document.createElement('div');
+            top.className = 'scroll-fade-blur top';
+            var bottom = document.createElement('div');
+            bottom.className = 'scroll-fade-blur bottom';
+            el.appendChild(top);
+            el.appendChild(bottom);
+
+            function check() {
+                var need = el.scrollHeight > el.clientHeight + 4;
+                if (!need) {
+                    top.classList.remove('visible');
+                    bottom.classList.remove('visible');
+                    return;
+                }
+                var st = el.scrollTop;
+                var maxScroll = el.scrollHeight - el.clientHeight;
+                if (st > 2) top.classList.add('visible');
+                else top.classList.remove('visible');
+                if (st < maxScroll - 2) bottom.classList.add('visible');
+                else bottom.classList.remove('visible');
+            }
+            el.__scrollFadeCheck = check;
+            check();
+            el.addEventListener('scroll', check, { passive: true });
+            window.addEventListener('resize', check);
+            var mo = new MutationObserver(check);
+            mo.observe(el, { childList: true, subtree: true });
+            el.__scrollFadeObserver = mo;
+        }
+
         try {
             if (document.fonts && document.fonts.ready) {
                 document.fonts.ready.then(function() {
-                    var loaded = document.fonts.check("400 16px 'Sector034'");
-                    console.log('[Fonts] Sector034 loaded:', loaded);
-                    if (loaded) {
-                        document.documentElement.style.setProperty('--font-main', "'Sector034', monospace");
-                    } else {
-                        console.warn('[Fonts] Sector034 не загрузился, используется fallback');
-                    }
+                    var loaded = document.fonts.check("400 16px 'TTPaplane'");
+                    console.log('[Fonts] TTPaplane loaded:', loaded);
                 });
             }
         } catch(e) {}
@@ -578,6 +643,8 @@
         const INSTALLED_KEY = 'shnuk_installed_apps';
         const THEME_KEY = 'shnuk_theme';
         const DEFAULT_DESKTOP = ['camera', 'settings', 'time', 'gamecenter'];
+
+        activateScrollFade(bottomPanel);
 
         const lastOpenIconRects = {};
 
@@ -1341,7 +1408,7 @@
         function renderDesktop() {
             buttonGroup.innerHTML = '';
             if (desktopApps.length === 0) {
-                buttonGroup.innerHTML = '<div style="color:var(--text-muted);font-size:14px;text-align:center;width:100%;padding:20px;">Нет приложений</div>';
+                buttonGroup.innerHTML = '<div style="color:var(--text-muted);font-size:16px;text-align:center;width:100%;padding:20px;">Нет приложений</div>';
                 return;
             }
             desktopApps.forEach(function(appId, index) {
@@ -1363,7 +1430,7 @@
                     wrap3d.appendChild(img);
                 } else {
                     const fallback = document.createElement('span');
-                    fallback.style.cssText = 'font-size:32px;color:var(--text-primary);font-weight:bold;';
+                    fallback.style.cssText = 'font-size:40px;color:var(--text-primary);font-weight:bold;';
                     fallback.textContent = getAppName(appId).charAt(0);
                     wrap3d.appendChild(fallback);
                 }
@@ -1387,7 +1454,7 @@
         function renderAllApps() {
             iconGrid.innerHTML = '';
             if (allApps.length === 0) {
-                iconGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);">Нет приложений</div>';
+                iconGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);font-size:18px;">Нет приложений</div>';
                 return;
             }
             const sortedApps = appsOrderSnapshot ? applyOrderSnapshot(allApps) : allApps;
@@ -1457,6 +1524,7 @@
                 registerTilt(wrap3d);
             });
             bottomPanel.classList.toggle('editing', isEditMode);
+            if (typeof bottomPanel.__scrollFadeCheck === 'function') bottomPanel.__scrollFadeCheck();
         }
 
         function startDrag(e, btn, appId) {
