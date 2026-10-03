@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Cooop Share</title>
+    <style>
+        @font-face {
+            font-family: 'ST-SimpleSquare';
+            src: url('ST-SimpleSquare.ttf') format('truetype');
+            font-weight: 400;
+            font-display: swap;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            width: 100%; min-height: 100%;
+            font-family: 'ST-SimpleSquare', monospace, sans-serif;
+            background: #f5f5f5;
+            color: #1a1a1a;
+        }
+        .page {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 40px 24px 60px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .logo {
+            font-size: 22px; font-weight: 700;
+            color: #cc0000; letter-spacing: 2px;
+            margin-bottom: 32px; text-align: center;
+        }
+        .card {
+            background: #ffffff;
+            border: 2px solid #e0e0e0;
+            padding: 28px 24px;
+            margin-bottom: 20px;
+        }
+        .file-icon {
+            width: 72px; height: 72px;
+            background: #cc0000; color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 34px; font-weight: 700;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+        }
+        .file-name {
+            font-size: 17px; font-weight: 600;
+            text-align: center; word-break: break-all;
+            margin-bottom: 8px; line-height: 1.3;
+        }
+        .file-meta {
+            font-size: 12px; color: #888;
+            text-align: center; margin-bottom: 24px;
+        }
+        .btn {
+            display: block; width: 100%;
+            padding: 16px; border: none;
+            background: #cc0000; color: #fff;
+            cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
+            font-size: 15px; font-weight: 600;
+            letter-spacing: 1px; transition: background 0.2s;
+        }
+        .btn:hover { background: #990000; }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { background: #888; cursor: default; }
+        .status {
+            text-align: center; font-size: 14px;
+            color: #888; padding: 40px 20px;
+        }
+        .status.error { color: #cc0000; }
+        .status.success { color: #4CAF50; }
+        .preview-image {
+            max-width: 100%; max-height: 260px;
+            display: block; margin: 0 auto 20px;
+            border: 2px solid #e0e0e0;
+            background: #f8f8f8; object-fit: contain;
+        }
+        .progress-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: #f0f0f0;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #cc0000;
+            transition: width 0.2s ease;
+        }
+        .progress-text {
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .footer {
+            margin-top: auto; text-align: center;
+            font-size: 11px; color: #bbb; padding-top: 40px;
+        }
+        .keep-badge {
+            display: inline-block;
+            font-size: 10px;
+            background: #4CAF50;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="logo">SHNUK COOOP</div>
+        <div id="content">
+            <div class="status">Загрузка файла...</div>
+        </div>
+        <div class="footer">Работает на Shnuk OS</div>
+    </div>
+
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+
+    <script>
+    (function() {
+        'use strict';
+
+        const SHARES_COLLECTION = 'cooop_shares';
+        const CHUNKS_SUBCOLLECTION = 'chunks';
+        const KEEP_FLAG = 'cooop_keep_after_download';
+
+        let isDownloaded = false;
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+            });
+        }
+
+        function formatSize(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function getFileIcon(extension, type) {
+            const ext = (extension || '').toLowerCase();
+            if (['jpg','jpeg','png','gif','bmp','webp','svg','ico'].indexOf(ext) !== -1) return 'IMG';
+            if (['mp4','webm','ogg','mov','avi','mkv'].indexOf(ext) !== -1) return 'VID';
+            if (['mp3','wav','ogg','flac','aac','m4a'].indexOf(ext) !== -1) return 'AUD';
+            if (['txt','json','xml','html','css','js','md'].indexOf(ext) !== -1) return 'TXT';
+            if (['obj','fbx','gltf','glb','stl','3ds','ply'].indexOf(ext) !== -1) return '3D';
+            if (ext) return ext.charAt(0).toUpperCase();
+            return 'FILE';
+        }
+
+        async function waitForFirebase() {
+            if (window.__firebaseReady) {
+                try { await window.__firebaseReady; } catch(e) {}
+            }
+            if (!window.firebaseDb || !window.firebaseSDK) {
+                await new Promise(function(r) { setTimeout(r, 500); });
+            }
+        }
+
+        function showStatus(message, kind) {
+            const cls = kind === 'error' ? 'status error'
+                      : kind === 'success' ? 'status success'
+                      : 'status';
+            document.getElementById('content').innerHTML =
+                '<div class="' + cls + '">' + escapeHtml(message) + '</div>';
+        }
+
+        function showProgress(current, total) {
+            const pct = total > 0 ? Math.floor((current / total) * 100) : 0;
+            const el = document.getElementById('progressBar');
+            const txt = document.getElementById('progressText');
+            if (el) el.style.width = pct + '%';
+            if (txt) txt.textContent = 'Загрузка: ' + current + ' / ' + total + ' (' + pct + '%)';
+        }
+
+        async function load() {
+            const params = new URLSearchParams(window.location.search);
+            const id = params.get('id');
+            if (!id) {
+                showStatus('Ссылка повреждена: не указан id файла', 'error');
+                return;
+            }
+
+            await waitForFirebase();
+
+            if (!window.firebaseDb || !window.firebaseSDK) {
+                showStatus('Firebase не загружен. Проверьте интернет.', 'error');
+                return;
+            }
+
+            const { doc, getDoc } = window.firebaseSDK;
+
+            try {
+                const ref = doc(window.firebaseDb, SHARES_COLLECTION, id);
+                const snap = await getDoc(ref);
+
+                if (!snap.exists()) {
+                    showStatus('Файл не найден или уже скачан', 'error');
+                    return;
+                }
+
+                const data = snap.data();
+                if (!data || !data.chunkCount) {
+                    showStatus('Файл повреждён', 'error');
+                    return;
+                }
+
+                render(data, ref, id);
+            } catch(e) {
+                console.warn('[CooopShare]', e);
+                let msg = 'Ошибка загрузки';
+                if (e.code === 'permission-denied') msg = 'Нет доступа к файлу';
+                else if (e.code === 'unavailable') msg = 'Нет соединения с сервером';
+                else if (e.message) msg = 'Ошибка: ' + e.message;
+                showStatus(msg, 'error');
+            }
+        }
+
+        function render(data, ref, id) {
+            const keep = !!data.keepAfterDownload;
+
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div class="file-icon">${escapeHtml(getFileIcon(data.extension, data.type))}</div>
+                    <div class="file-name">${escapeHtml(data.name || 'Файл')}${keep ? '<span class="keep-badge">ПОСТОЯННО</span>' : ''}</div>
+                    <div class="file-meta">${formatSize(data.size || 0)}${data.extension ? ' • ' + escapeHtml(data.extension.toUpperCase()) : ''} • ${data.chunkCount} частей</div>
+                    <div class="progress-bar-wrap" id="progressWrap" style="display:none;">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="progress-text" id="progressText" style="display:none;"></div>
+                    <button class="btn" id="downloadBtn">Скачать файл</button>
+                </div>
+            `;
+
+            const btn = document.getElementById('downloadBtn');
+            btn.addEventListener('click', async function() {
+                if (isDownloaded) return;
+                isDownloaded = true;
+
+                btn.disabled = true;
+                btn.textContent = 'Загрузка частей...';
+
+                const progressWrap = document.getElementById('progressWrap');
+                const progressText = document.getElementById('progressText');
+                if (progressWrap) progressWrap.style.display = 'block';
+                if (progressText) progressText.style.display = 'block';
+
+                try {
+                    const { collection, getDocs, deleteDoc, doc: docFn } = window.firebaseSDK;
+
+                    const chunksRef = collection(window.firebaseDb, SHARES_COLLECTION, id, CHUNKS_SUBCOLLECTION);
+                    const snap = await getDocs(chunksRef);
+
+                    const chunkCount = data.chunkCount;
+                    const chunks = new Array(chunkCount);
+                    let received = 0;
+
+                    snap.forEach(function(d) {
+                        const c = d.data();
+                        if (c && typeof c.index === 'number' && c.data) {
+                            chunks[c.index] = c.data;
+                            received++;
+                        }
+                    });
+
+                    if (received !== chunkCount) {
+                        btn.disabled = false;
+                        btn.textContent = 'Скачать файл';
+                        isDownloaded = false;
+                        showStatus('Не все части найдены: ' + received + ' / ' + chunkCount, 'error');
+                        return;
+                    }
+
+                    showProgress(received, chunkCount);
+
+                    const fullData = chunks.join('');
+
+                    // Определяем, нужно ли удалять после скачивания
+                    let keepFlag = keep;
+                    if (!keepFlag) {
+                        try { keepFlag = localStorage.getItem(KEEP_FLAG) === 'true'; } catch(e) {}
+                    }
+
+                    if (!keepFlag) {
+                        try {
+                            const deletions = [];
+                            snap.forEach(function(d) {
+                                deletions.push(deleteDoc(d.ref));
+                            });
+                            await Promise.allSettled(deletions);
+                            await deleteDoc(ref);
+                        } catch(e) {
+                            console.warn('[CooopShare] delete error:', e);
+                        }
+                    }
+
+                    btn.textContent = 'Сохранение...';
+                    const a = document.createElement('a');
+                    a.href = fullData;
+                    a.download = data.name || 'file';
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(function() {
+                        if (a.parentNode) a.parentNode.removeChild(a);
+                    }, 200);
+
+                    if (keepFlag) {
+                        showStatus('Файл скачан. Ссылка остаётся действительной.', 'success');
+                    } else {
+                        showStatus('Файл скачан и удалён с сервера. Ссылка больше не действительна.', 'success');
+                    }
+
+                } catch(e) {
+                    console.warn('[CooopShare] download error:', e);
+                    btn.disabled = false;
+                    btn.textContent = 'Скачать файл';
+                    isDownloaded = false;
+                    showStatus('Ошибка загрузки: ' + (e.message || ''), 'error');
+                }
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', load);
+        } else {
+            load();
+        }
+    })();
+    </script>
+</body>
+</html>
