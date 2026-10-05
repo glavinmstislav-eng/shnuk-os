@@ -10,7 +10,13 @@
 
     const PEERJS_CDNS = [
         'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
-        'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'
+        'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js'
+    ];
+
+    const PEER_SERVERS = [
+        { host: '0.peerjs.com', port: 443, secure: true, path: '/' },
+        { host: 'peerjs.92k.de', port: 443, secure: true, path: '/' }
     ];
 
     const ICE_SERVERS = [
@@ -36,7 +42,7 @@
     const FONT_MAIN = "'TTPaplane', monospace";
 
     let isOpen = false;
-    let mode = 'menu'; // 'menu' | 'host' | 'join' | 'chat'
+    let mode = 'menu';
     let peer = null;
     let peerJsLoaded = false;
     let peerJsLoading = false;
@@ -45,7 +51,7 @@
     let myNickname = '';
     let remoteNickname = '';
     let isConnecting = false;
-    let messages = [];      // { id, from: 'me' | 'them' | 'system', text, time }
+    let messages = [];
 
     function log() {
         try { console.log.apply(console, ['[CooopMsg]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
@@ -73,7 +79,7 @@
         if (typeof Peer !== 'undefined') { peerJsLoaded = true; return true; }
         if (peerJsLoading) {
             let tries = 0;
-            while (peerJsLoading && tries < 100) {
+            while (peerJsLoading && tries < 200) {
                 await new Promise(r => setTimeout(r, 50));
                 tries++;
             }
@@ -115,16 +121,24 @@
         return PEER_PREFIX + code.toUpperCase();
     }
 
-    function createPeerWithId(id) {
+    function tryCreatePeerWithServer(id, server, onStage) {
         return new Promise(function(resolve, reject) {
             let p;
             try {
-                p = new Peer(id, {
+                const opts = {
                     config: { iceServers: ICE_SERVERS },
                     debug: 1
-                });
+                };
+                if (server.host !== '0.peerjs.com') {
+                    opts.host = server.host;
+                    opts.port = server.port;
+                    opts.secure = server.secure;
+                    opts.path = server.path;
+                }
+                if (onStage) onStage('Подключение к ' + server.host + '...');
+                p = new Peer(id, opts);
             } catch(e) {
-                reject(e);
+                reject({ type: 'construct', message: 'Ошибка создания Peer: ' + (e.message || e) });
                 return;
             }
 
@@ -133,8 +147,8 @@
                 if (resolved) return;
                 resolved = true;
                 try { p.destroy(); } catch(e) {}
-                reject({ type: 'timeout', message: 'Тайм-аут подключения к PeerJS' });
-            }, 10000);
+                reject({ type: 'timeout', message: 'Тайм-аут соединения с ' + server.host + ' (20 с)' });
+            }, 20000);
 
             p.on('open', function() {
                 if (resolved) return;
@@ -156,13 +170,32 @@
         });
     }
 
+    async function createPeerWithId(id, onStage) {
+        const errors = [];
+        for (let i = 0; i < PEER_SERVERS.length; i++) {
+            const server = PEER_SERVERS[i];
+            try {
+                if (onStage) onStage('Сервер ' + (i + 1) + '/' + PEER_SERVERS.length + ': ' + server.host);
+                const p = await tryCreatePeerWithServer(id, server, onStage);
+                return p;
+            } catch(e) {
+                err('server failed', server.host, e);
+                errors.push(server.host + ': ' + translatePeerError(e));
+            }
+        }
+        throw new Error('Все сигнальные серверы недоступны. ' + errors.join('; '));
+    }
+
     function translatePeerError(e) {
         if (!e) return 'неизвестная ошибка';
         if (e.type === 'unavailable-id') return 'код уже занят';
-        if (e.type === 'network') return 'нет связи с PeerJS Cloud';
-        if (e.type === 'server-error') return 'ошибка сервера PeerJS';
+        if (e.type === 'network') return 'нет связи с сервером';
+        if (e.type === 'server-error') return 'ошибка сервера';
+        if (e.type === 'socket-error') return 'обрыв WebSocket';
+        if (e.type === 'socket-closed') return 'WebSocket закрыт';
         if (e.type === 'browser-incompatible') return 'браузер не поддерживает WebRTC';
-        if (e.type === 'ssl-unavailable') return 'нужно HTTPS-соединение';
+        if (e.type === 'ssl-unavailable') return 'нужно HTTPS';
+        if (e.type === 'timeout') return e.message || 'тайм-аут';
         if (e.message) return e.message;
         return e.type || 'неизвестная ошибка';
     }
@@ -208,7 +241,6 @@
         if (!isOpen) return;
         if (e.key === 'Escape') {
             if (mode === 'chat') {
-                // Не закрываем сразу в чате — сначала выходим в меню
                 disconnect();
                 switchScreen('menu');
                 return;
@@ -247,16 +279,13 @@
         mode = screen;
         const container = document.getElementById('cooopMsgContent');
         if (!container) return;
+        container.className = 'cm-content' + (screen === 'chat' ? ' chat-mode' : '');
         container.innerHTML = '';
         if (screen === 'menu') renderMenu(container);
         else if (screen === 'host') renderHostScreen(container);
         else if (screen === 'join') renderJoinScreen(container);
         else if (screen === 'chat') renderChatScreen(container);
     }
-
-    // ============================================
-    // МЕНЮ
-    // ============================================
 
     function renderMenu(container) {
         container.innerHTML = `
@@ -315,7 +344,8 @@
             myNickname = this.value.trim().slice(0, 24);
         });
 
-        // Генерируем код сразу
+        setHostStatus('Готовим код...');
+
         startHosting().then(function(code) {
             if (!code) return;
             myCode = code;
@@ -365,7 +395,9 @@
             const id = peerIdFromCode(code);
 
             try {
-                const p = await createPeerWithId(id);
+                const p = await createPeerWithId(id, function(stage) {
+                    setHostStatus(stage);
+                });
                 peer = p;
                 myCode = code;
 
@@ -397,8 +429,14 @@
         conn.on('open', function() {
             log('connection open');
             setHostStatus('Собеседник подключился');
-            // Отправим свой ник
             sendSystem('hello', { nickname: myNickname || 'Собеседник' });
+            // Хост тоже переходит в чат
+            setTimeout(function() {
+                switchScreen('chat');
+                addSystemMessage('Собеседник подключился');
+                updateChatUI();
+                focusChatInput();
+            }, 200);
         });
 
         conn.on('data', function(data) {
@@ -410,7 +448,6 @@
             if (activeConnection === conn) {
                 activeConnection = null;
                 addSystemMessage('Собеседник отключился');
-                setHostStatus('Собеседник отключился');
                 if (mode === 'chat') updateChatUI();
             }
         });
@@ -477,8 +514,7 @@
             setJoinStatus('Подключение к ' + code + '...');
 
             connectToHost(code).then(function() {
-                isConnecting = false;
-                // После успешного подключения переключаемся в чат
+                // после успеха переходим в чат
             }).catch(function(e) {
                 err('connectToHost', e);
                 setJoinStatus('Ошибка: ' + translatePeerError(e));
@@ -516,8 +552,12 @@
             Math.random().toString(36).slice(2, 10) +
             Date.now().toString(36);
 
-        const p = await createPeerWithId(clientId);
+        const p = await createPeerWithId(clientId, function(stage) {
+            setJoinStatus(stage);
+        });
         peer = p;
+
+        setJoinStatus('Поиск комнаты ' + code + '...');
 
         const conn = p.connect(remoteId, { reliable: true, serialization: 'json' });
         activeConnection = conn;
@@ -528,16 +568,14 @@
                 if (resolved) return;
                 resolved = true;
                 try { conn.close(); } catch(e) {}
-                reject({ type: 'timeout', message: 'Отправитель не отвечает' });
+                reject({ type: 'timeout', message: 'Комната не найдена (тайм-аут)' });
             }, 20000);
 
             conn.on('open', function() {
                 if (resolved) return;
                 resolved = true;
                 clearTimeout(timeout);
-                // Отправим свой ник
                 sendSystem('hello', { nickname: myNickname || 'Собеседник' });
-                // Переходим в чат
                 switchScreen('chat');
                 setTimeout(function() {
                     addSystemMessage('Вы подключились к комнате');
@@ -585,7 +623,7 @@
                 <div class="cm-chat-header">
                     <div class="cm-chat-partner">
                         <span class="cm-chat-partner-label">Собеседник:</span>
-                        <span class="cm-chat-partner-name" id="cmPartnerName">—</span>
+                        <span class="cm-chat-partner-name" id="cmPartnerName">${remoteNickname || 'Подключение...'}</span>
                     </div>
                 </div>
                 <div class="cm-chat-messages" id="cmMessages"></div>
@@ -595,11 +633,6 @@
                 </div>
             </div>
         `;
-
-        // Хост после соединения попадает в режим чата
-        if (myCode && !remoteNickname) {
-            document.getElementById('cmPartnerName').textContent = 'Подключение...';
-        }
 
         const input = document.getElementById('cmMessageInput');
         const sendBtn = document.getElementById('cmSendBtn');
@@ -638,7 +671,6 @@
             }
             listEl.appendChild(el);
         });
-        // Скролл вниз
         listEl.scrollTop = listEl.scrollHeight;
 
         const partnerEl = document.getElementById('cmPartnerName');
@@ -833,6 +865,8 @@
                 .cm-content.chat-mode {
                     padding: 0;
                     overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
                 }
 
                 .cm-menu {
@@ -990,6 +1024,7 @@
                     flex-direction: column;
                     height: 100%;
                     width: 100%;
+                    min-height: 0;
                 }
                 .cm-chat-header {
                     padding: 12px 20px;
@@ -1019,6 +1054,7 @@
                     flex-direction: column;
                     gap: 8px;
                     background: var(--bg-primary);
+                    min-height: 0;
                 }
                 .cm-msg {
                     max-width: 80%;
@@ -1155,8 +1191,10 @@
 
     window.CooopMessenger = {
         destroy: destroy,
-        open: openMessenger
+        open: openMessenger,
+        init: openMessenger
     };
+    window['cooop-messengerInit'] = function() { openMessenger(); };
     window.cooopMessengerInit = function() { openMessenger(); };
 
 })();

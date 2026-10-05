@@ -8,10 +8,15 @@
     const PEER_PREFIX = 'shnuk-cooop-';
     const CODE_LENGTH = 8;
 
-    // Два CDN на случай, если один недоступен
     const PEERJS_CDNS = [
         'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
-        'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'
+        'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js'
+    ];
+
+    const PEER_SERVERS = [
+        { host: '0.peerjs.com', port: 443, secure: true, path: '/' },
+        { host: 'peerjs.92k.de', port: 443, secure: true, path: '/' }
     ];
 
     const ICE_SERVERS = [
@@ -34,6 +39,8 @@
         }
     ];
 
+    const FONT_MAIN = "'TTPaplane', monospace";
+
     let isOpen = false;
     let mode = 'menu';
     let peer = null;
@@ -49,8 +56,6 @@
     let sendInProgress = false;
     let isConnecting = false;
 
-    const FONT_MAIN = "'TTPaplane', monospace";
-
     function log() {
         try { console.log.apply(console, ['[Cooop P2P]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
     }
@@ -59,7 +64,7 @@
     }
 
     // ============================================
-    // PEERJS ЗАГРУЗКА (с резервным CDN)
+    // PEERJS ЗАГРУЗКА (несколько CDN)
     // ============================================
 
     function loadFromUrl(url) {
@@ -76,9 +81,8 @@
     async function loadPeerJS() {
         if (typeof Peer !== 'undefined') { peerJsLoaded = true; return true; }
         if (peerJsLoading) {
-            // Ждём окончания
             let tries = 0;
-            while (peerJsLoading && tries < 100) {
+            while (peerJsLoading && tries < 200) {
                 await new Promise(r => setTimeout(r, 50));
                 tries++;
             }
@@ -104,11 +108,10 @@
     }
 
     // ============================================
-    // КОД
+    // КОДЫ
     // ============================================
 
     function generateCode() {
-        // Без похожих символов
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         let out = '';
         for (let i = 0; i < CODE_LENGTH; i++) {
@@ -119,6 +122,94 @@
 
     function peerIdFromCode(code) {
         return PEER_PREFIX + code.toUpperCase();
+    }
+
+    // ============================================
+    // СОЗДАНИЕ PEER С ФОЛБЭКОМ ПО СЕРВЕРАМ
+    // ============================================
+
+    function tryCreatePeerWithServer(id, server, onStage) {
+        return new Promise(function(resolve, reject) {
+            let p;
+            try {
+                const opts = {
+                    config: { iceServers: ICE_SERVERS },
+                    debug: 1
+                };
+                // Если это дефолтный сервер (0.peerjs.com), host/port не указываем
+                if (server.host !== '0.peerjs.com') {
+                    opts.host = server.host;
+                    opts.port = server.port;
+                    opts.secure = server.secure;
+                    opts.path = server.path;
+                }
+
+                if (onStage) onStage('Сервер ' + server.host);
+                p = new Peer(id, opts);
+            } catch(e) {
+                reject({ type: 'construct', message: 'Ошибка создания Peer: ' + (e.message || e) });
+                return;
+            }
+
+            let resolved = false;
+
+            const timeout = setTimeout(function() {
+                if (resolved) return;
+                resolved = true;
+                try { p.destroy(); } catch(e) {}
+                reject({ type: 'timeout', message: 'Тайм-аут соединения с ' + server.host + ' (20 с)' });
+            }, 20000);
+
+            p.on('open', function() {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timeout);
+                resolve(p);
+            });
+
+            p.on('error', function(e) {
+                if (resolved) {
+                    err('post-open error', e);
+                    return;
+                }
+                resolved = true;
+                clearTimeout(timeout);
+                try { p.destroy(); } catch(e2) {}
+                reject(e);
+            });
+        });
+    }
+
+    async function createPeerWithId(id, onStage) {
+        const errors = [];
+
+        for (let i = 0; i < PEER_SERVERS.length; i++) {
+            const server = PEER_SERVERS[i];
+            try {
+                if (onStage) onStage('Пробуем сервер ' + (i + 1) + ' из ' + PEER_SERVERS.length + ': ' + server.host);
+                const p = await tryCreatePeerWithServer(id, server, onStage);
+                return p;
+            } catch(e) {
+                err('server failed', server.host, e);
+                errors.push(server.host + ': ' + translatePeerError(e));
+            }
+        }
+
+        throw new Error('Все сигнальные серверы недоступны. ' + errors.join('; '));
+    }
+
+    function translatePeerError(e) {
+        if (!e) return 'неизвестная ошибка';
+        if (e.type === 'unavailable-id') return 'код уже занят';
+        if (e.type === 'network') return 'нет связи с сервером';
+        if (e.type === 'server-error') return 'ошибка сервера';
+        if (e.type === 'socket-error') return 'обрыв WebSocket';
+        if (e.type === 'socket-closed') return 'WebSocket закрыт';
+        if (e.type === 'browser-incompatible') return 'браузер не поддерживает WebRTC';
+        if (e.type === 'ssl-unavailable') return 'нужно HTTPS';
+        if (e.type === 'timeout') return e.message || 'тайм-аут';
+        if (e.message) return e.message;
+        return e.type || 'неизвестная ошибка';
     }
 
     // ============================================
@@ -280,7 +371,6 @@
             fileSelect.querySelector('.cooop-file-select-icon').textContent = '✓';
             fileSelect.querySelector('.cooop-file-select-text').textContent = 'Файл выбран';
 
-            // Показываем секцию кода сразу, чтобы показать "генерируем..."
             codeSection.style.display = 'block';
             bigCode.textContent = '······';
             setStatus('send', 'Готовим код...');
@@ -293,9 +383,9 @@
             }).catch(function(e) {
                 err('startHosting', e);
                 bigCode.textContent = 'Ошибка';
-                setStatus('send', 'Ошибка: ' + e.message);
+                setStatus('send', 'Ошибка: ' + translatePeerError(e));
                 if (window.Win && window.Win.notify) {
-                    window.Win.notify('Не удалось создать код: ' + e.message, { type: 'error', duration: 5000 });
+                    window.Win.notify('Не удалось создать код: ' + translatePeerError(e), { type: 'error', duration: 5000 });
                 }
             });
         });
@@ -303,17 +393,7 @@
         document.getElementById('cooopCopyCodeBtn').addEventListener('click', function() {
             const code = bigCode.textContent.trim();
             if (!code || code.indexOf('·') !== -1) return;
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(code).catch(function() {});
-            }
-            try {
-                const ta = document.createElement('textarea');
-                ta.value = code;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-            } catch(e) {}
+            copyToClipboard(code);
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Код скопирован', { type: 'success' });
             }
@@ -328,19 +408,19 @@
     async function startHosting() {
         cleanupPeer();
 
-        // 1. Загружаем PeerJS
         const ok = await loadPeerJS();
         if (!ok) {
             throw new Error('Не удалось загрузить PeerJS (проверьте интернет)');
         }
 
-        // 2. Пробуем несколько раз с новым кодом
         for (let attempt = 0; attempt < 5; attempt++) {
             const code = generateCode();
             const id = peerIdFromCode(code);
 
             try {
-                const p = await createPeerWithId(id);
+                const p = await createPeerWithId(id, function(stage) {
+                    setStatus('send', stage);
+                });
                 peer = p;
                 myCode = code;
 
@@ -350,76 +430,19 @@
 
                 peer.on('error', function(e) {
                     err('peer error after open', e);
-                    // Фатальные ошибки после открытия
-                    if (e.type === 'peer-unavailable' || e.type === 'network') {
-                        setStatus('send', 'Ошибка сети: ' + e.type);
+                    if (e.type === 'network' || e.type === 'socket-closed') {
+                        setStatus('send', 'Соединение с сервером потеряно');
                     }
                 });
 
                 return code;
             } catch(e) {
                 err('attempt ' + attempt + ' failed', e);
-                // Если код занят — пробуем ещё, иначе прерываем
-                if (e && e.type === 'unavailable-id') {
-                    continue;
-                }
-                // Прочие ошибки — не повторяем
-                throw new Error(translatePeerError(e));
+                if (e && e.type === 'unavailable-id') continue;
+                throw e;
             }
         }
         throw new Error('Не удалось занять свободный код. Попробуйте позже.');
-    }
-
-    function createPeerWithId(id) {
-        return new Promise(function(resolve, reject) {
-            let p;
-            try {
-                p = new Peer(id, {
-                    config: { iceServers: ICE_SERVERS },
-                    debug: 1
-                });
-            } catch(e) {
-                reject(e);
-                return;
-            }
-
-            let resolved = false;
-            const timeout = setTimeout(function() {
-                if (resolved) return;
-                resolved = true;
-                try { p.destroy(); } catch(e) {}
-                reject({ type: 'timeout', message: 'Тайм-аут подключения к PeerJS' });
-            }, 10000);
-
-            p.on('open', function() {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                resolve(p);
-            });
-
-            p.on('error', function(e) {
-                if (resolved) {
-                    err('post-open error', e);
-                    return;
-                }
-                resolved = true;
-                clearTimeout(timeout);
-                try { p.destroy(); } catch(e2) {}
-                reject(e);
-            });
-        });
-    }
-
-    function translatePeerError(e) {
-        if (!e) return 'неизвестная ошибка';
-        if (e.type === 'unavailable-id') return 'код уже занят';
-        if (e.type === 'network') return 'нет связи с PeerJS Cloud';
-        if (e.type === 'server-error') return 'ошибка сервера PeerJS';
-        if (e.type === 'browser-incompatible') return 'браузер не поддерживает WebRTC';
-        if (e.type === 'ssl-unavailable') return 'нужно HTTPS-соединение';
-        if (e.message) return e.message;
-        return e.type || 'неизвестная ошибка';
     }
 
     function onIncomingConnection(conn) {
@@ -509,7 +532,7 @@
             connectToSender(code).catch(function(e) {
                 err('connectToSender', e);
                 if (window.Win && window.Win.notify) {
-                    window.Win.notify('Ошибка: ' + e.message, { type: 'error', duration: 5000 });
+                    window.Win.notify('Ошибка: ' + translatePeerError(e), { type: 'error', duration: 5000 });
                 }
             }).then(function() {
                 isConnecting = false;
@@ -534,15 +557,16 @@
 
         const remoteId = peerIdFromCode(code);
 
-        // Случайный ID для получателя
         const clientId = PEER_PREFIX + 'client-' +
             Math.random().toString(36).slice(2, 10) +
             Date.now().toString(36);
 
-        const p = await createPeerWithId(clientId);
+        const p = await createPeerWithId(clientId, function(stage) {
+            setStatus('recv', stage);
+        });
         peer = p;
 
-        setStatus('recv', 'Подключение к ' + code + '...');
+        setStatus('recv', 'Поиск комнаты ' + code + '...');
 
         const conn = p.connect(remoteId, {
             reliable: true,
@@ -557,7 +581,7 @@
                 if (resolved) return;
                 resolved = true;
                 try { conn.close(); } catch(e) {}
-                reject(new Error('Отправитель не отвечает. Проверьте код.'));
+                reject(new Error('Отправитель не отвечает (комната не найдена или закрыта).'));
             }, 20000);
 
             conn.on('open', function() {
@@ -588,7 +612,7 @@
                     resolved = true;
                     clearTimeout(timeout);
                     reject(new Error(e && e.type === 'peer-unavailable'
-                        ? 'Код не найден. Проверьте правильность.'
+                        ? 'Комната не найдена. Проверьте код.'
                         : (e.message || 'Ошибка соединения')));
                 }
             });
@@ -810,6 +834,20 @@
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).catch(function() {});
+        }
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch(e) {}
     }
 
     // ============================================
