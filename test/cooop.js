@@ -3,7 +3,7 @@
 (function() {
     'use strict';
 
-    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4 МБ до сжатия
+    const MAX_FILE_SIZE = 4 * 1024 * 1024;
     const FONT_MAIN = "'TTPaplane', monospace";
     const LINK_BASE = location.origin + location.pathname;
 
@@ -12,6 +12,87 @@
 
     function log() {
         try { console.log.apply(console, ['[Cooop]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
+    }
+
+    // ============================================
+    // КОПИРОВАНИЕ (работает на телефоне)
+    // ============================================
+
+    function selectAllInField(field) {
+        if (!field) return;
+        try {
+            field.focus();
+            field.setSelectionRange(0, field.value.length);
+            // Для старых Android
+            if (field.createTextRange) {
+                const r = field.createTextRange();
+                r.collapse(true);
+                r.moveEnd('character', field.value.length);
+                r.moveStart('character', 0);
+                r.select();
+            }
+        } catch(e) {}
+    }
+
+    function tryExecCommandCopy(field) {
+        try {
+            selectAllInField(field);
+            const ok = document.execCommand('copy');
+            // Снимаем выделение
+            if (field.setSelectionRange) {
+                try { field.setSelectionRange(0, 0); } catch(e) {}
+            }
+            return ok;
+        } catch(e) {
+            return false;
+        }
+    }
+
+    function tryNavigatorCopy(text) {
+        return new Promise(function(resolve) {
+            if (!navigator.clipboard || !navigator.clipboard.writeText) {
+                resolve(false);
+                return;
+            }
+            // На некоторых Android в WebView clipboard пишет, но требует фокус
+            navigator.clipboard.writeText(text).then(function() {
+                resolve(true);
+            }).catch(function() {
+                resolve(false);
+            });
+            // Защита от зависшего promise
+            setTimeout(function() { resolve(false); }, 1500);
+        });
+    }
+
+    // Пытается скопировать текст всеми способами. field — необязательное
+    // поле, куда предварительно вставлен текст (для fallback-выделения).
+    async function copyText(text, field) {
+        if (!text) return false;
+
+        // 1. Clipboard API
+        const okApi = await tryNavigatorCopy(text);
+        if (okApi) return true;
+
+        // 2. execCommand с временным textarea
+        const tmp = document.createElement('textarea');
+        tmp.value = text;
+        tmp.setAttribute('readonly', '');
+        tmp.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(tmp);
+        tmp.focus();
+        tmp.setSelectionRange(0, text.length);
+        let okExec = false;
+        try { okExec = document.execCommand('copy'); } catch(e) { okExec = false; }
+        document.body.removeChild(tmp);
+        if (okExec) return true;
+
+        // 3. Если всё упало — выделяем в постоянном поле, пользователь
+        //    сам нажмёт системную «Копировать»
+        if (field) {
+            selectAllInField(field);
+        }
+        return false;
     }
 
     // ============================================
@@ -83,9 +164,7 @@
     }
 
     // ============================================
-    // RLE — сжатие повторов
-    // Формат: 0xFF <count> <byte>
-    // 0xFF в исходнике экранируется как 0xFF 0x00 0xFF
+    // RLE
     // ============================================
 
     function rleEncode(bytes) {
@@ -392,6 +471,9 @@
                 <div class="cooop-section-title">Ваша ссылка</div>
                 <div class="cooop-desc" id="cooopLinkStats">—</div>
                 <textarea class="cooop-link" id="cooopLinkText" readonly></textarea>
+                <div class="cooop-hint" id="cooopCopyHint" style="display:none;">
+                    Текст выделен — нажмите «Копировать» в системном меню или используйте Ctrl+C
+                </div>
                 <button class="cooop-btn" id="cooopCopyLinkBtn">СКОПИРОВАТЬ ССЫЛКУ</button>
                 <button class="cooop-btn-secondary" id="cooopOpenLinkBtn" style="margin-top:10px;">ОТКРЫТЬ ССЫЛКУ</button>
             </div>
@@ -407,6 +489,7 @@
         const linkSection = document.getElementById('cooopLinkSection');
         const linkText = document.getElementById('cooopLinkText');
         const linkStats = document.getElementById('cooopLinkStats');
+        const copyHint = document.getElementById('cooopCopyHint');
 
         fileSelect.addEventListener('click', () => fileInput.click());
 
@@ -469,12 +552,30 @@
             }
         });
 
-        document.getElementById('cooopCopyLinkBtn').addEventListener('click', function() {
+        // Тап по полю со ссылкой — сразу выделяем весь текст,
+        // чтобы можно было скопировать долгим нажатием
+        linkText.addEventListener('click', function() {
+            selectAllInField(linkText);
+        });
+        linkText.addEventListener('focus', function() {
+            selectAllInField(linkText);
+        });
+
+        document.getElementById('cooopCopyLinkBtn').addEventListener('click', async function() {
             const link = linkText.value.trim();
             if (!link) return;
-            copyToClipboard(link);
-            if (window.Win && window.Win.notify) {
-                window.Win.notify('Ссылка скопирована', { type: 'success' });
+
+            const ok = await copyText(link, linkText);
+            if (ok) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Ссылка скопирована', { type: 'success' });
+                }
+                if (copyHint) copyHint.style.display = 'none';
+            } else {
+                if (copyHint) copyHint.style.display = 'block';
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Не удалось скопировать автоматически. Текст выделен — скопируйте вручную.', { type: 'info', duration: 4000 });
+                }
             }
         });
 
@@ -550,20 +651,6 @@
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    }
-
-    function copyToClipboard(text) {
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).catch(function() {});
-        }
-        try {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-        } catch(e) {}
     }
 
     // ============================================
@@ -788,9 +875,21 @@
                     outline: none;
                     margin-bottom: 12px;
                     word-break: break-all;
+                    -webkit-user-select: text;
+                    user-select: text;
                 }
                 .cooop-link:focus {
                     border-color: var(--accent);
+                }
+
+                .cooop-hint {
+                    font-size: 12px;
+                    color: var(--accent);
+                    line-height: 1.4;
+                    margin-bottom: 12px;
+                    padding: 8px 10px;
+                    background: var(--bg-hover);
+                    border-left: 3px solid var(--accent);
                 }
 
                 .cooop-btn {
@@ -847,7 +946,7 @@
                     .cooop-menu-desc { font-size: 12px; }
                     .cooop-section { padding: 16px; }
                     .cooop-section-title { font-size: 14px; }
-                    .cooop-link { font-size: 10px; min-height: 90px; }
+                    .cooop-link { font-size: 10px; min-height: 100px; }
                 }
             `;
             document.head.appendChild(style);
