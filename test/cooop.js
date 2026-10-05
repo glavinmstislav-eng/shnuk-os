@@ -15,7 +15,7 @@
     }
 
     // ============================================
-    // КОПИРОВАНИЕ (работает на телефоне)
+    // КОПИРОВАНИЕ
     // ============================================
 
     function selectAllInField(field) {
@@ -23,7 +23,6 @@
         try {
             field.focus();
             field.setSelectionRange(0, field.value.length);
-            // Для старых Android
             if (field.createTextRange) {
                 const r = field.createTextRange();
                 r.collapse(true);
@@ -34,47 +33,28 @@
         } catch(e) {}
     }
 
-    function tryExecCommandCopy(field) {
-        try {
-            selectAllInField(field);
-            const ok = document.execCommand('copy');
-            // Снимаем выделение
-            if (field.setSelectionRange) {
-                try { field.setSelectionRange(0, 0); } catch(e) {}
-            }
-            return ok;
-        } catch(e) {
-            return false;
-        }
-    }
-
     function tryNavigatorCopy(text) {
         return new Promise(function(resolve) {
             if (!navigator.clipboard || !navigator.clipboard.writeText) {
                 resolve(false);
                 return;
             }
-            // На некоторых Android в WebView clipboard пишет, но требует фокус
+            let done = false;
             navigator.clipboard.writeText(text).then(function() {
-                resolve(true);
+                if (!done) { done = true; resolve(true); }
             }).catch(function() {
-                resolve(false);
+                if (!done) { done = true; resolve(false); }
             });
-            // Защита от зависшего promise
-            setTimeout(function() { resolve(false); }, 1500);
+            setTimeout(function() { if (!done) { done = true; resolve(false); } }, 1200);
         });
     }
 
-    // Пытается скопировать текст всеми способами. field — необязательное
-    // поле, куда предварительно вставлен текст (для fallback-выделения).
     async function copyText(text, field) {
         if (!text) return false;
 
-        // 1. Clipboard API
         const okApi = await tryNavigatorCopy(text);
         if (okApi) return true;
 
-        // 2. execCommand с временным textarea
         const tmp = document.createElement('textarea');
         tmp.value = text;
         tmp.setAttribute('readonly', '');
@@ -87,16 +67,12 @@
         document.body.removeChild(tmp);
         if (okExec) return true;
 
-        // 3. Если всё упало — выделяем в постоянном поле, пользователь
-        //    сам нажмёт системную «Копировать»
-        if (field) {
-            selectAllInField(field);
-        }
+        if (field) selectAllInField(field);
         return false;
     }
 
     // ============================================
-    // СЖАТИЕ
+    // СЖАТИЕ — важно: используем deflate-raw
     // ============================================
 
     function supportsCompression() {
@@ -104,9 +80,16 @@
     }
 
     async function compressBytes(bytes) {
-        if (!supportsCompression()) return bytes;
+        if (!supportsCompression()) return null;
         try {
-            const cs = new CompressionStream('deflate');
+            // Используем deflate-raw, чтобы не было zlib-заголовков
+            let cs;
+            try {
+                cs = new CompressionStream('deflate-raw');
+            } catch(e) {
+                // Fallback для браузеров без deflate-raw
+                cs = new CompressionStream('deflate');
+            }
             const writer = cs.writable.getWriter();
             writer.write(bytes);
             writer.close();
@@ -129,38 +112,42 @@
             return out;
         } catch(e) {
             log('compress error', e);
-            return bytes;
+            return null;
         }
     }
 
-    async function decompressBytes(bytes) {
-        if (!supportsCompression()) return bytes;
-        try {
-            const ds = new DecompressionStream('deflate');
-            const writer = ds.writable.getWriter();
-            writer.write(bytes);
-            writer.close();
+    async function decompressBytes(bytes, streamType) {
+        if (!supportsCompression()) return null;
+        const types = streamType ? [streamType] : ['deflate-raw', 'deflate', 'gzip'];
+        for (const t of types) {
+            try {
+                const ds = new DecompressionStream(t);
+                const writer = ds.writable.getWriter();
+                writer.write(bytes);
+                writer.close();
 
-            const reader = ds.readable.getReader();
-            const chunks = [];
-            let total = 0;
-            while (true) {
-                const r = await reader.read();
-                if (r.done) break;
-                chunks.push(r.value);
-                total += r.value.length;
+                const reader = ds.readable.getReader();
+                const chunks = [];
+                let total = 0;
+                while (true) {
+                    const r = await reader.read();
+                    if (r.done) break;
+                    chunks.push(r.value);
+                    total += r.value.length;
+                }
+                const out = new Uint8Array(total);
+                let off = 0;
+                for (const c of chunks) {
+                    out.set(c, off);
+                    off += c.length;
+                }
+                return out;
+            } catch(e) {
+                // Пробуем следующий тип
+                continue;
             }
-            const out = new Uint8Array(total);
-            let off = 0;
-            for (const c of chunks) {
-                out.set(c, off);
-                off += c.length;
-            }
-            return out;
-        } catch(e) {
-            log('decompress error', e);
-            return null;
         }
+        return null;
     }
 
     // ============================================
@@ -222,45 +209,57 @@
     // УПАКОВКА
     // ============================================
 
+    // Методы:
+    //   'd'  — только deflate
+    //   'r'  — только RLE
+    //   'dr' — deflate, потом RLE
+    //   'n'  — без сжатия
     async function packFile(bytes) {
         const deflated = await compressBytes(bytes);
-        const rleAfter = rleEncode(deflated);
         const rleOnly = rleEncode(bytes);
 
-        let best = deflated;
-        let method = 'd';
-        let bestLen = deflated.length;
+        let candidates = [];
 
-        if (rleAfter.length < bestLen) {
-            best = rleAfter;
-            method = 'dr';
-            bestLen = rleAfter.length;
+        if (deflated) {
+            candidates.push({ data: deflated, method: 'd' });
+            candidates.push({ data: rleEncode(deflated), method: 'dr' });
         }
-        if (rleOnly.length < bestLen) {
-            best = rleOnly;
-            method = 'r';
-            bestLen = rleOnly.length;
-        }
-        if (bytes.length < bestLen) {
-            best = bytes;
-            method = 'n';
+        candidates.push({ data: rleOnly, method: 'r' });
+        candidates.push({ data: bytes, method: 'n' });
+
+        // Выбираем минимальный
+        let best = candidates[0];
+        for (const c of candidates) {
+            if (c.data.length < best.data.length) best = c;
         }
 
-        return { data: best, method: method, originalSize: bytes.length };
+        return { data: best.data, method: best.method, originalSize: bytes.length };
     }
 
     async function unpackFile(bytes, method) {
-        if (method === 'n') return bytes;
+        // Пробуем строго указанный метод, но с fallback на другие,
+        // если что-то не получилось.
+        const tryOrder = [method, 'dr', 'd', 'r', 'n'];
 
-        let data = bytes;
-        if (method === 'r' || method === 'dr') {
-            data = rleDecode(data);
+        for (const m of tryOrder) {
+            try {
+                let data = bytes;
+
+                if (m === 'r' || m === 'dr') {
+                    data = rleDecode(data);
+                }
+                if (m === 'd' || m === 'dr') {
+                    const dec = await decompressBytes(data);
+                    if (!dec) continue;
+                    data = dec;
+                }
+                // Проверка: если результат разумный, возвращаем
+                if (data && data.length > 0) return data;
+            } catch(e) {
+                continue;
+            }
         }
-        if (method === 'd' || method === 'dr') {
-            data = await decompressBytes(data);
-            if (!data) return null;
-        }
-        return data;
+        return null;
     }
 
     // ============================================
@@ -280,7 +279,9 @@
     }
 
     function base64UrlDecode(str) {
-        let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+        // Убираем все пробелы и переносы — часто появляются при копировании
+        let b64 = String(str).replace(/\s+/g, '');
+        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
         while (b64.length % 4) b64 += '=';
         const binary = atob(b64);
         const bytes = new Uint8Array(binary.length);
@@ -300,8 +301,13 @@
     }
 
     function parseLink(hash) {
-        if (!hash || hash.indexOf('#cooop=') !== 0) return null;
-        const payload = hash.substring(7);
+        if (!hash) return null;
+        let payload = null;
+        const idx = hash.indexOf('#cooop=');
+        if (idx === -1) return null;
+        payload = hash.substring(idx + 7);
+        // Убираем возможные пробелы и переносы
+        payload = payload.replace(/\s+/g, '');
         const parts = payload.split('|');
         if (parts.length !== 4) return null;
         try {
@@ -325,7 +331,9 @@
             if (onStatus) onStatus('Распаковка...');
             const packedBytes = base64UrlDecode(parsed.b64);
             const unpacked = await unpackFile(packedBytes, parsed.method);
-            if (!unpacked) {
+
+            if (!unpacked || unpacked.length === 0) {
+                if (onStatus) onStatus('Не удалось распаковать');
                 if (window.Win && window.Win.notify) {
                     window.Win.notify('Не удалось распаковать файл', { type: 'error' });
                 }
@@ -373,6 +381,7 @@
             if (onStatus) onStatus('Файл: ' + parsed.name + ' (' + formatSize(unpacked.length) + ')');
         } catch(e) {
             log('downloadFromParsed', e);
+            if (onStatus) onStatus('Ошибка: ' + e.message);
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Ошибка: ' + e.message, { type: 'error' });
             }
@@ -461,8 +470,7 @@
                 <input type="file" id="cooopFileInput" style="display:none;" />
                 <div class="cooop-file-info" id="cooopFileInfo" style="display:none;"></div>
                 <div class="cooop-desc" style="margin-top:12px;">
-                    Файл сжимается алгоритмом deflate + RLE, затем кодируется в base64url.
-                    Итоговая ссылка обычно <b>меньше</b> исходного файла.
+                    Файл сжимается и кодируется в base64url.
                     Лимит до сжатия — 4 МБ.
                 </div>
             </div>
@@ -472,7 +480,7 @@
                 <div class="cooop-desc" id="cooopLinkStats">—</div>
                 <textarea class="cooop-link" id="cooopLinkText" readonly></textarea>
                 <div class="cooop-hint" id="cooopCopyHint" style="display:none;">
-                    Текст выделен — нажмите «Копировать» в системном меню или используйте Ctrl+C
+                    Текст выделен — нажмите «Копировать» в системном меню
                 </div>
                 <button class="cooop-btn" id="cooopCopyLinkBtn">СКОПИРОВАТЬ ССЫЛКУ</button>
                 <button class="cooop-btn-secondary" id="cooopOpenLinkBtn" style="margin-top:10px;">ОТКРЫТЬ ССЫЛКУ</button>
@@ -552,8 +560,6 @@
             }
         });
 
-        // Тап по полю со ссылкой — сразу выделяем весь текст,
-        // чтобы можно было скопировать долгим нажатием
         linkText.addEventListener('click', function() {
             selectAllInField(linkText);
         });
@@ -574,7 +580,7 @@
             } else {
                 if (copyHint) copyHint.style.display = 'block';
                 if (window.Win && window.Win.notify) {
-                    window.Win.notify('Не удалось скопировать автоматически. Текст выделен — скопируйте вручную.', { type: 'info', duration: 4000 });
+                    window.Win.notify('Текст выделен — скопируйте вручную', { type: 'info', duration: 4000 });
                 }
             }
         });
@@ -616,12 +622,7 @@
                 return;
             }
 
-            let hash = '';
-            const hashIdx = link.indexOf('#cooop=');
-            if (hashIdx !== -1) hash = link.substring(hashIdx);
-            else if (link.indexOf('cooop=') === 0) hash = '#' + link;
-
-            const parsed = parseLink(hash);
+            const parsed = parseLink(link);
             if (!parsed) {
                 status.textContent = 'Неверный формат ссылки';
                 if (window.Win && window.Win.notify) {
