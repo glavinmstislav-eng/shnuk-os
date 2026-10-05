@@ -15,7 +15,8 @@
         { id: 'recorder', name: 'Звукозапись', icon: 'recording.png' },
         { id: 'cooop', name: 'Cooop', icon: 'cooop.png' },
         { id: 'gamecenter', name: 'Game Center', icon: 'games.png' },
-        { id: 'coll', name: 'Collaris', icon: 'coll.png' }
+        { id: 'coll', name: 'Collaris', icon: 'coll.png' },
+        { id: 'cooop-messenger', name: 'cooop-messenger', icon: 'coll.png' }
     ];
 
     const BASE_PATH = './';

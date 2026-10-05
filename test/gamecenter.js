@@ -109,6 +109,35 @@
         setInstalled(installed);
     }
 
+    // Отключает все backdrop-filter на странице во время игры,
+    // чтобы размытие из-под других приложений не влияло на игровой канвас
+    function enterGameMode() {
+        document.documentElement.classList.add('gc-playing');
+        if (!document.getElementById('gcPlayingStyles')) {
+            const st = document.createElement('style');
+            st.id = 'gcPlayingStyles';
+            st.textContent = `
+                .gc-playing .scroll-blur::after,
+                .gc-playing .gc-list::after {
+                    display: none !important;
+                }
+                .gc-playing .win-backdrop {
+                    backdrop-filter: none !important;
+                    -webkit-backdrop-filter: none !important;
+                    background: rgba(0,0,0,0.85) !important;
+                }
+                #gameCenterGameContainer {
+                    z-index: 2147483600 !important;
+                }
+            `;
+            document.head.appendChild(st);
+        }
+    }
+
+    function exitGameMode() {
+        document.documentElement.classList.remove('gc-playing');
+    }
+
     function openGameCenter() {
         if (isOpen) {
             const ex = document.getElementById('gameCenterApp');
@@ -153,6 +182,7 @@
     }
 
     function stopActiveGame() {
+        exitGameMode();
         if (activeGameId) {
             const game = GAMES.find(g => g.id === activeGameId);
             if (game && game.destroyFn) {
@@ -208,24 +238,26 @@
 
         const listEl = document.getElementById('gameCenterList');
         const headerEl = document.getElementById('gameCenterHeader');
-        const backBtn = document.getElementById('gameCenterBackBtn');
-        if (listEl) listEl.style.display = 'none';
+        if (listEl && listEl.parentNode) listEl.parentNode.removeChild(listEl);
         if (headerEl) headerEl.style.display = 'none';
-        if (backBtn) backBtn.style.display = 'flex';
 
-        const app = document.getElementById('gameCenterApp');
+        enterGameMode();
 
         activeGameContainer = document.createElement('div');
         activeGameContainer.id = 'gameCenterGameContainer';
         activeGameContainer.style.cssText = `
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            position: fixed;
+            top: var(--livebar-h, 44px);
+            left: 0;
+            width: 100%;
+            height: calc(100% - var(--livebar-h, 44px));
             background: #000000;
-            z-index: 5;
+            z-index: 2147483600;
             overflow: hidden;
+            animation: none;
+            transition: none;
         `;
-        app.appendChild(activeGameContainer);
+        document.body.appendChild(activeGameContainer);
 
         activeCloseBtn = document.createElement('button');
         activeCloseBtn.id = 'gameCenterGameCloseBtn';
@@ -250,8 +282,9 @@
             justify-content: center;
             padding: 0;
             box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-            transition: all 0.15s ease;
+            transition: background 0.15s ease, transform 0.15s ease;
             -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         `;
         activeCloseBtn.addEventListener('mouseenter', function() {
             activeCloseBtn.style.background = '#990000';
@@ -301,11 +334,20 @@
     function returnFromGame() {
         stopActiveGame();
 
-        const listEl = document.getElementById('gameCenterList');
         const headerEl = document.getElementById('gameCenterHeader');
-        const backBtn = document.getElementById('gameCenterBackBtn');
-        if (listEl) listEl.style.display = 'flex';
+        const app = document.getElementById('gameCenterApp');
+
+        if (app && !document.getElementById('gameCenterList')) {
+            const list = document.createElement('div');
+            list.className = 'gc-list';
+            list.id = 'gameCenterList';
+            list.innerHTML = '<div class="gc-list-inner" id="gameCenterListInner"></div>';
+            app.appendChild(list);
+        }
+
         if (headerEl) headerEl.style.display = 'flex';
+
+        const backBtn = document.getElementById('gameCenterBackBtn');
         if (backBtn) backBtn.style.display = 'none';
 
         renderGameList();
@@ -398,7 +440,6 @@
 
         const app = document.createElement('div');
         app.id = 'gameCenterApp';
-        app.className = 'scroll-blur';
         app.style.cssText = `
             position: fixed;
             top: var(--livebar-h, 44px);
@@ -414,7 +455,7 @@
             opacity: 0;
             animation: gcFadeIn 0.3s ease forwards;
             overflow: hidden;
-            transition: background 0.4s ease, color 0.4s ease;
+            transition: none;
         `;
 
         if (!document.getElementById('gameCenterStyles')) {
@@ -425,26 +466,6 @@
 
                 #gameCenterApp, #gameCenterApp * {
                     font-family: ${FONT_MAIN} !important;
-                }
-
-                /* Постоянное размытие снизу — как в настройках */
-                .scroll-blur {
-                    position: relative;
-                    isolation: isolate;
-                }
-                .scroll-blur::after {
-                    content: '';
-                    position: fixed;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    height: 80px;
-                    pointer-events: none;
-                    z-index: 20;
-                    -webkit-backdrop-filter: blur(12px);
-                    backdrop-filter: blur(12px);
-                    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
-                    mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
                 }
 
                 .gc-header {
@@ -485,6 +506,7 @@
                     justify-content: center;
                     transition: all 0.2s ease;
                     padding: 0;
+                    touch-action: manipulation;
                 }
                 .gc-close-btn:hover {
                     background: #cc0000;
@@ -504,6 +526,7 @@
                     justify-content: center;
                     transition: all 0.2s ease;
                     padding: 0;
+                    touch-action: manipulation;
                 }
                 .gc-back-btn:hover {
                     background: #cc0000;
@@ -522,6 +545,20 @@
                     z-index: 2;
                     background: #ffffff;
                     isolation: isolate;
+                }
+                .gc-list::after {
+                    content: '';
+                    position: fixed;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    height: 80px;
+                    pointer-events: none;
+                    z-index: 20;
+                    -webkit-backdrop-filter: blur(12px);
+                    backdrop-filter: blur(12px);
+                    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+                    mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
                 }
 
                 .gc-list-inner {
@@ -622,6 +659,7 @@
                     min-width: 100px;
                     background: #eeeeee;
                     color: #1a1a1a;
+                    touch-action: manipulation;
                 }
                 .gc-btn.play {
                     background: #cc0000;

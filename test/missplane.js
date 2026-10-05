@@ -61,6 +61,8 @@
 
     let keys = { left: false, right: false, up: false, down: false };
 
+    let lastFrameTime = 0;
+
     const BEST_KEY = 'shnuk_missplane_best';
     const FONT_MAIN = "'TTPaplane', monospace";
 
@@ -74,10 +76,6 @@
     function setBest(v) {
         try { localStorage.setItem(BEST_KEY, String(v)); } catch(e) {}
     }
-
-    // ============================================
-    // UI
-    // ============================================
 
     function buildUI() {
         if (!container) return false;
@@ -250,10 +248,6 @@
         resizeCanvas();
     }
 
-    // ============================================
-    // ИГРА
-    // ============================================
-
     function startGame() {
         const startScreen = document.getElementById('mpStart');
         if (startScreen) startScreen.style.display = 'none';
@@ -285,6 +279,7 @@
         gameStarted = true;
         startTime = performance.now();
         elapsed = 0;
+        lastFrameTime = 0;
 
         joy.active = false;
         joy.id = null;
@@ -337,7 +332,9 @@
         });
     }
 
-    function updateMissiles() {
+    function updateMissiles(dt) {
+        const frameFactor = dt * 60;
+
         for (let i = missiles.length - 1; i >= 0; i--) {
             const m = missiles[i];
 
@@ -346,20 +343,21 @@
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
-            if (diff > m.turnRate) diff = m.turnRate;
-            if (diff < -m.turnRate) diff = -m.turnRate;
+            const turnStep = m.turnRate * frameFactor;
+            if (diff > turnStep) diff = turnStep;
+            if (diff < -turnStep) diff = -turnStep;
             m.angle += diff;
 
             m.vx = Math.cos(m.angle) * m.speed;
             m.vy = Math.sin(m.angle) * m.speed;
 
-            m.x += m.vx;
-            m.y += m.vy;
-            m.life--;
+            m.x += m.vx * frameFactor;
+            m.y += m.vy * frameFactor;
+            m.life -= frameFactor;
 
             m.trail.push({ x: m.x, y: m.y, life: 24 });
             if (m.trail.length > 32) m.trail.shift();
-            for (const t of m.trail) t.life--;
+            for (const t of m.trail) t.life -= frameFactor;
 
             const dx = m.x - plane.x;
             const dy = m.y - plane.y;
@@ -436,19 +434,22 @@
         }
     }
 
-    function updateExplosions() {
+    function updateExplosions(dt) {
+        const frameFactor = dt * 60;
         for (let i = explosions.length - 1; i >= 0; i--) {
             const p = explosions[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vx *= 0.94;
-            p.vy *= 0.94;
-            p.life--;
+            p.x += p.vx * frameFactor;
+            p.y += p.vy * frameFactor;
+            p.vx *= Math.pow(0.94, frameFactor);
+            p.vy *= Math.pow(0.94, frameFactor);
+            p.life -= frameFactor;
             if (p.life <= 0) explosions.splice(i, 1);
         }
     }
 
-    function updatePlane() {
+    function updatePlane(dt) {
+        const frameFactor = dt * 60;
+
         let jx = 0, jy = 0;
 
         if (joy.active) {
@@ -475,23 +476,23 @@
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
-            const turnSpeed = plane.turnRate * (0.6 + mag * 0.8);
+            const turnSpeed = plane.turnRate * (0.6 + mag * 0.8) * frameFactor;
             if (diff > turnSpeed) diff = turnSpeed;
             if (diff < -turnSpeed) diff = -turnSpeed;
             plane.angle += diff;
 
             const targetSpeed = plane.maxSpeed * mag;
-            plane.speed += (targetSpeed - plane.speed) * 0.06;
+            plane.speed += (targetSpeed - plane.speed) * 0.06 * frameFactor;
         } else {
-            plane.speed += (plane.speed * 0.7 - plane.speed) * 0.05;
+            plane.speed += (plane.speed * 0.7 - plane.speed) * 0.05 * frameFactor;
             if (plane.speed < 1.6) plane.speed = 1.6;
         }
 
         plane.vx = Math.cos(plane.angle) * plane.speed;
         plane.vy = Math.sin(plane.angle) * plane.speed;
 
-        plane.x += plane.vx;
-        plane.y += plane.vy;
+        plane.x += plane.vx * frameFactor;
+        plane.y += plane.vy * frameFactor;
 
         const pad = 60;
         if (plane.x < pad) plane.x = pad;
@@ -501,28 +502,36 @@
 
         trail.push({ x: plane.x, y: plane.y, life: 26, maxLife: 26 });
         if (trail.length > 40) trail.shift();
-        for (const t of trail) t.life--;
+        for (const t of trail) t.life -= frameFactor;
 
-        if (invulnerableTimer > 0) invulnerableTimer--;
+        if (invulnerableTimer > 0) invulnerableTimer -= frameFactor;
     }
 
-    function updateCamera() {
+    function updateCamera(dt) {
+        const frameFactor = dt * 60;
         const targetX = plane.x - W / 2;
         const targetY = plane.y - H / 2;
-        camera.x += (targetX - camera.x) * camera.smooth;
-        camera.y += (targetY - camera.y) * camera.smooth;
+        camera.x += (targetX - camera.x) * camera.smooth * frameFactor;
+        camera.y += (targetY - camera.y) * camera.smooth * frameFactor;
     }
 
-    function update() {
+    function update(now) {
         if (!gameStarted || gameOver) return;
 
-        elapsed = (performance.now() - startTime) / 1000;
-        updatePlane();
-        updateCamera();
-        updateMissiles();
-        updateExplosions();
+        if (!lastFrameTime) lastFrameTime = now;
+        let dt = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+        if (dt > 0.1) dt = 0.1;
 
-        missileSpawnTimer++;
+        elapsed = (now - startTime) / 1000;
+        updatePlane(dt);
+        updateCamera(dt);
+        updateMissiles(dt);
+        updateExplosions(dt);
+
+        const frameFactor = dt * 60;
+
+        missileSpawnTimer += frameFactor;
         const interval = Math.max(28, missileSpawnInterval - Math.floor(elapsed * 1.2));
         if (missileSpawnTimer >= interval) {
             missileSpawnTimer = 0;
@@ -536,10 +545,6 @@
             updateHud();
         }
     }
-
-    // ============================================
-    // ОТРИСОВКА
-    // ============================================
 
     function draw() {
         if (!ctx) return;
@@ -703,19 +708,15 @@
         ctx.restore();
     }
 
-    function loop() {
+    function loop(now) {
         animationId = requestAnimationFrame(loop);
         try {
-            update();
+            update(now);
             draw();
         } catch(e) {
             console.warn('[Missplane] loop error:', e);
         }
     }
-
-    // ============================================
-    // ВВОД — Pointer Events (единый путь для мыши и касаний)
-    // ============================================
 
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
@@ -768,7 +769,6 @@
         if (e.cancelable) e.preventDefault();
     }
 
-    // Fallback для браузеров без Pointer Events
     function onTouchStart(e) {
         if (!canvas) return;
         if (gameOver || !gameStarted) return;
@@ -803,7 +803,6 @@
 
     function onTouchEnd(e) {
         if (!joy.active) return;
-        // Если наш палец ушёл — отпускаем
         if (e.changedTouches) {
             let ours = false;
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -913,10 +912,6 @@
         if (el) el.style.display = 'flex';
     }
 
-    // ============================================
-    // INIT / DESTROY
-    // ============================================
-
     function init() {
         try {
             container = document.getElementById('gameCenterGameContainer');
@@ -929,7 +924,8 @@
             if (!ok) return false;
 
             initialized = true;
-            loop();
+            lastFrameTime = 0;
+            loop(performance.now());
             return true;
         } catch(e) {
             console.warn('[Missplane] init error:', e);

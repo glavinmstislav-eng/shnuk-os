@@ -1016,11 +1016,11 @@
                 }
                 .settings-icon-btn {
                     background: none; border: none; cursor: pointer;
-                    padding: 8px; color: var(--text-secondary); transition: color 0.2s;
+                    padding: 8px; color: var(--text-secondary); transition: color 0.2s, border-radius 0.25s;
                     display: flex; align-items: center; justify-content: center;
                     width: 46px; height: 46px;
                 }
-                .settings-icon-btn:hover { color: var(--accent); }
+                .settings-icon-btn:hover { color: var(--accent); border-radius: 9999px; }
                 .settings-icon-btn svg { display: block; width: 28px; height: 28px; }
 
                 .settings-dropdown {
@@ -1036,6 +1036,11 @@
                     overflow-y: auto;
                     animation: menuFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
                     border: 2px solid var(--border-color);
+                    border-radius: 0;
+                    transition: border-radius 0.25s ease;
+                }
+                .settings-dropdown:hover {
+                    border-radius: 9999px;
                 }
                 .settings-dropdown.closing {
                     animation: menuFadeOut 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -1050,13 +1055,15 @@
                     border: 2px solid var(--border-color);
                     cursor: pointer;
                     font-size: 20px;
-                    transition: all 0.2s;
+                    transition: all 0.2s, border-radius 0.25s;
                     text-align: left;
+                    border-radius: 0;
                 }
                 .settings-dropdown button:last-child { margin-bottom: 0; }
                 .settings-dropdown button:hover {
                     background: var(--bg-tertiary);
                     border-color: var(--accent);
+                    border-radius: 9999px;
                 }
                 .settings-dropdown button.active {
                     background: var(--accent);
@@ -1064,40 +1071,10 @@
                     border-color: var(--accent);
                 }
 
-                /* === Stage для анимации переключения секций === */
-                .settings-stage {
-                    position: relative;
-                    width: 100%;
-                    max-width: 720px;
-                    margin: 0 auto;
+                .settings-section {
+                    max-width: 720px; margin: 0 auto 40px; display: none;
                 }
-
-                .settings-section-view {
-                    width: 100%;
-                    display: none;
-                    transition: filter 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-                                opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-                                transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-                    will-change: filter, opacity, transform;
-                }
-                .settings-section-view.active {
-                    display: block;
-                }
-                .settings-section-view.entering {
-                    opacity: 0;
-                    filter: blur(18px);
-                    transform: scale(0.94);
-                }
-                .settings-section-view.entered {
-                    opacity: 1;
-                    filter: blur(0);
-                    transform: scale(1);
-                }
-                .settings-section-view.leaving {
-                    opacity: 0;
-                    filter: blur(18px);
-                    transform: scale(0.94);
-                }
+                .settings-section.active { display: block; }
 
                 .settings-section-title {
                     font-size: 19px; font-weight: 700; color: var(--text-muted);
@@ -1136,11 +1113,16 @@
                     transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
                                 opacity 0.4s ease,
                                 filter 0.4s ease,
-                                box-shadow 0.4s ease;
+                                box-shadow 0.4s ease,
+                                border-radius 0.25s ease;
                     will-change: transform, opacity;
                     cursor: pointer;
                     border: 3px solid transparent;
                     box-sizing: border-box;
+                }
+                .theme-carousel-item:hover {
+                    border-color: var(--accent);
+                    border-radius: 32px;
                 }
 
                 .theme-carousel-item img {
@@ -1237,10 +1219,6 @@
                     box-shadow: 0 14px 40px rgba(0,0,0,0.3);
                 }
 
-                .theme-carousel-item:hover {
-                    border-color: var(--accent);
-                }
-
                 @media (max-width: 600px) {
                     .theme-carousel {
                         height: 290px;
@@ -1293,11 +1271,15 @@
                     border: 2px solid var(--border-color);
                     box-shadow: 0 20px 60px rgba(0,0,0,0.4);
                     transform: scale(0.94) translateY(10px);
-                    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+                    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.25s ease;
                     display: flex;
                     flex-direction: column;
                     max-height: calc(100% - 40px);
                     overflow: hidden;
+                    border-radius: 0;
+                }
+                .theme-apply-modal:hover {
+                    border-radius: 32px;
                 }
                 .theme-apply-overlay.visible .theme-apply-modal {
                     transform: scale(1) translateY(0);
@@ -1326,11 +1308,13 @@
                     padding: 4px 12px;
                     cursor: pointer;
                     line-height: 1;
-                    transition: all 0.2s ease;
+                    transition: all 0.2s ease, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
                 .theme-apply-close:hover {
                     background: var(--accent);
                     color: var(--text-on-accent);
+                    border-radius: 9999px;
                 }
 
                 .theme-apply-name {
@@ -1358,8 +1342,12 @@
                     font-weight: 700;
                     letter-spacing: 0.5px;
                     cursor: pointer;
-                    transition: all 0.2s ease;
+                    transition: all 0.2s ease, border-radius 0.25s ease;
                     border: 2px solid transparent;
+                    border-radius: 0;
+                }
+                .theme-apply-btn:hover {
+                    border-radius: 9999px;
                 }
                 .theme-apply-btn.primary {
                     background: var(--accent);
@@ -1383,6 +1371,11 @@
                 .cooop-section {
                     background: var(--bg-secondary); padding: 22px;
                     margin-bottom: 18px; border: 2px solid var(--border-color);
+                    transition: border-radius 0.25s ease;
+                    border-radius: 0;
+                }
+                .cooop-section:hover {
+                    border-radius: 32px;
                 }
                 .cooop-section-title {
                     font-size: 20px; font-weight: 700; color: var(--text-primary);
@@ -1404,8 +1397,11 @@
                     box-sizing: border-box;
                     background: var(--bg-primary);
                     color: var(--text-primary);
+                    transition: border-color 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
                 .cooop-input:focus { border-color: var(--accent); }
+                .cooop-input:hover { border-radius: 9999px; }
                 .cooop-btn {
                     padding: 14px 26px;
                     border: 2px solid var(--accent);
@@ -1414,9 +1410,13 @@
                     cursor: pointer;
                     font-size: 20px;
                     font-weight: 700;
-                    transition: all 0.2s;
+                    transition: all 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
-                .cooop-btn:hover { background: var(--accent-dark); }
+                .cooop-btn:hover {
+                    background: var(--accent-dark);
+                    border-radius: 9999px;
+                }
                 .cooop-btn-secondary {
                     padding: 12px 22px;
                     border: 2px solid var(--border-color);
@@ -1424,9 +1424,14 @@
                     color: var(--text-primary);
                     cursor: pointer;
                     font-size: 19px;
-                    transition: all 0.2s;
+                    transition: all 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
-                .cooop-btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+                .cooop-btn-secondary:hover {
+                    border-color: var(--accent);
+                    color: var(--accent);
+                    border-radius: 9999px;
+                }
                 .cooop-hint {
                     font-size: 16px; margin-top: 10px;
                     min-height: 22px; color: var(--text-muted);
@@ -1453,6 +1458,11 @@
 
                 .system-info {
                     background: var(--bg-secondary); padding: 18px 22px; margin-bottom: 26px;
+                    transition: border-radius 0.25s ease;
+                    border-radius: 0;
+                }
+                .system-info:hover {
+                    border-radius: 32px;
                 }
                 .system-info .info-row {
                     display: flex; justify-content: space-between;
@@ -1468,6 +1478,11 @@
                 .action-card {
                     background: var(--bg-secondary); padding: 22px;
                     margin-bottom: 18px; border: 2px solid var(--border-color);
+                    transition: border-radius 0.25s ease;
+                    border-radius: 0;
+                }
+                .action-card:hover {
+                    border-radius: 32px;
                 }
                 .action-card .action-title {
                     font-size: 22px; font-weight: 700;
@@ -1482,16 +1497,20 @@
                     background: var(--accent); color: var(--text-on-accent);
                     cursor: pointer;
                     font-size: 20px; font-weight: 700;
-                    transition: all 0.2s;
+                    transition: all 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
                 .action-card button:hover {
-                    background: var(--accent-dark); transform: scale(1.02);
+                    background: var(--accent-dark);
+                    transform: scale(1.02);
+                    border-radius: 9999px;
                 }
                 .action-card button.danger {
                     background: var(--accent); border-color: var(--accent); color: var(--text-on-accent);
                 }
                 .action-card button.danger:hover {
                     background: var(--accent-dark); border-color: var(--accent-dark);
+                    border-radius: 9999px;
                 }
                 .action-card.danger-card {
                     border-color: var(--border-color); background: var(--bg-hover);
@@ -1502,10 +1521,13 @@
                     justify-content: space-between;
                     padding: 18px 22px; background: var(--bg-secondary);
                     border: 2px solid var(--border-color); margin-bottom: 18px;
-                    cursor: pointer; transition: all 0.2s;
+                    cursor: pointer;
+                    transition: all 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
                 .toggle-row:hover {
                     border-color: var(--accent); background: var(--bg-hover);
+                    border-radius: 32px;
                 }
                 .toggle-row .tr-left {
                     display: flex; align-items: center; gap: 12px;
@@ -1519,19 +1541,23 @@
                 .toggle-row .tr-switch {
                     width: 54px; height: 32px; background: var(--border-color);
                     border-radius: 16px; position: relative;
-                    transition: background 0.3s; flex-shrink: 0;
+                    transition: background 0.3s, border-radius 0.25s; flex-shrink: 0;
                 }
                 .toggle-row .tr-switch::after {
                     content: ''; position: absolute;
                     top: 2px; left: 2px;
                     width: 28px; height: 28px;
                     background: var(--bg-primary); border-radius: 50%;
-                    transition: transform 0.3s;
+                    transition: transform 0.3s, border-radius 0.25s;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
                 .toggle-row.active .tr-switch { background: var(--accent); }
                 .toggle-row.active .tr-switch::after {
                     transform: translateX(22px);
+                }
+                .toggle-row:hover .tr-switch,
+                .toggle-row:hover .tr-switch::after {
+                    border-radius: 9999px;
                 }
 
                 .security-status {
@@ -1539,6 +1565,11 @@
                     padding: 18px 22px;
                     margin-bottom: 26px;
                     border: 2px solid var(--border-color);
+                    transition: border-radius 0.25s ease;
+                    border-radius: 0;
+                }
+                .security-status:hover {
+                    border-radius: 32px;
                 }
                 .security-status-row {
                     display: flex;
@@ -1558,9 +1589,13 @@
                     cursor: pointer;
                     font-size: 20px;
                     font-weight: 700;
-                    transition: all 0.2s;
+                    transition: all 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
-                .security-btn:hover { background: var(--accent-dark); }
+                .security-btn:hover {
+                    background: var(--accent-dark);
+                    border-radius: 9999px;
+                }
                 .security-btn.danger {
                     background: var(--bg-primary);
                     color: var(--accent);
@@ -1568,6 +1603,7 @@
                 .security-btn.danger:hover {
                     background: var(--accent);
                     color: var(--text-on-accent);
+                    border-radius: 9999px;
                 }
 
                 .security-section {
@@ -1575,6 +1611,11 @@
                     padding: 22px;
                     margin-bottom: 18px;
                     border: 2px solid var(--border-color);
+                    transition: border-radius 0.25s ease;
+                    border-radius: 0;
+                }
+                .security-section:hover {
+                    border-radius: 32px;
                 }
                 .security-section-title {
                     font-size: 20px;
@@ -1592,8 +1633,11 @@
                     box-sizing: border-box;
                     background: var(--bg-primary);
                     color: var(--text-primary);
+                    transition: border-color 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
                 .security-input:focus { border-color: var(--accent); }
+                .security-input:hover { border-radius: 9999px; }
 
                 .security-choice-row {
                     display: flex;
@@ -1611,12 +1655,14 @@
                     color: var(--text-primary);
                     text-align: left;
                     cursor: pointer;
-                    transition: all 0.2s ease;
+                    transition: all 0.2s ease, border-radius 0.25s ease;
                     font-family: inherit;
+                    border-radius: 0;
                 }
                 .security-choice-btn:hover {
                     border-color: var(--accent);
                     background: var(--bg-hover);
+                    border-radius: 9999px;
                 }
                 .security-choice-btn:active {
                     transform: scale(0.99);
@@ -1649,11 +1695,13 @@
                     cursor: pointer;
                     font-size: 18px;
                     font-family: inherit;
-                    transition: all 0.2s;
+                    transition: all 0.2s, border-radius 0.25s ease;
+                    border-radius: 0;
                 }
                 .security-back-btn:hover {
                     border-color: var(--accent);
                     color: var(--accent);
+                    border-radius: 9999px;
                 }
                 .security-subheader-title {
                     font-size: 24px;
@@ -1671,6 +1719,11 @@
                     border: 2px solid var(--border-color);
                     touch-action: none;
                     cursor: crosshair;
+                    transition: border-radius 0.25s ease;
+                    border-radius: 0;
+                }
+                #patternCanvas:hover {
+                    border-radius: 24px;
                 }
                 .pattern-hint {
                     text-align: center;
@@ -1937,7 +1990,6 @@
             clearAllBtn.addEventListener('click', clearAllData);
         }
 
-        // Первичная отрисовка: тема — активная, без анимации
         prepareView('theme');
         const themeView = document.getElementById('viewTheme');
         themeView.classList.add('active', 'entered');
@@ -2019,7 +2071,6 @@
             setTimeout(function() {
                 const container = document.getElementById('settingsApp');
                 if (!container) return;
-                // Открываем напрямую нужную секцию без анимации перехода
                 const tabIds = ['theme', 'security', 'cooop', 'system'];
                 tabIds.forEach(id => {
                     const v = document.getElementById('view' + id.charAt(0).toUpperCase() + id.slice(1));

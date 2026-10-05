@@ -19,17 +19,27 @@
     let sourceNode = null;
     let frequencyData = null;
 
-    let threeScene = null;
-    let threeCamera = null;
-    let threeRenderer = null;
-    let threeBars = [];
-    let threeAnimationId = null;
-    let threeReady = false;
-    let threeLoading = false;
-    let lastLevels = null;
+    // История уровней громкости для воспроизведения
+    let levelsHistory = [];
+    let lastLevelSampleTime = 0;
+    const LEVEL_SAMPLE_INTERVAL = 50;
+    const MAX_HISTORY_SECONDS = 600;
+
+    // Позиция просмотра
+    let viewPosition = 0;
+    let isScrubbing = false;
+
+    // Текущий уровень
+    let liveLevel = 0;
+
+    // Canvas
+    let canvas = null;
+    let canvasCtx = null;
+    let animId = null;
+
+    const FONT_MAIN = "'TTPaplane', monospace";
 
     function openRecorder() {
-        // Разрешаем приложению писать в LiveBar
         if (window.LiveBar && typeof window.LiveBar.resume === 'function') {
             window.LiveBar.resume('recorder');
         }
@@ -43,7 +53,6 @@
     function closeRecorder() {
         isOpen = false;
 
-        // Запрещаем приложению писать в LiveBar — защита от "мёртвых" интервалов
         if (window.LiveBar && typeof window.LiveBar.suspend === 'function') {
             window.LiveBar.suspend('recorder');
         }
@@ -51,7 +60,7 @@
         stopRecording(true);
         stopStream();
         stopAudioAnalysis();
-        closeThree();
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
         document.removeEventListener('keydown', onKeyDown);
 
         const el = document.getElementById('recorderApp');
@@ -77,7 +86,7 @@
         stopRecording(true);
         stopStream();
         stopAudioAnalysis();
-        closeThree();
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         document.removeEventListener('keydown', onKeyDown);
         const el = document.getElementById('recorderApp');
@@ -120,207 +129,16 @@
         frequencyData = null;
     }
 
-    function sampleLevels(count) {
-        if (!analyser || !frequencyData) return null;
-        analyser.getByteFrequencyData(frequencyData);
-        const data = frequencyData;
-        const len = data.length;
-        const step = Math.max(1, Math.floor(len / count));
-        const out = new Array(count).fill(0);
-        for (let i = 0; i < count; i++) {
-            let sum = 0;
-            let n = 0;
-            for (let j = 0; j < step; j++) {
-                const idx = i * step + j;
-                if (idx < len) { sum += data[idx]; n++; }
-            }
-            out[i] = n > 0 ? (sum / n) / 255 : 0;
+    function sampleLevel() {
+        if (!analyser || !frequencyData) return 0;
+        analyser.getByteTimeDomainData(frequencyData);
+        let sum = 0;
+        for (let i = 0; i < frequencyData.length; i++) {
+            const v = (frequencyData[i] - 128) / 128;
+            sum += v * v;
         }
-        return out;
-    }
-
-    function closeThree() {
-        if (threeAnimationId) {
-            cancelAnimationFrame(threeAnimationId);
-            threeAnimationId = null;
-        }
-        if (threeRenderer) {
-            threeRenderer.dispose();
-            if (threeRenderer.domElement && threeRenderer.domElement.parentNode) {
-                threeRenderer.domElement.parentNode.removeChild(threeRenderer.domElement);
-            }
-            threeRenderer = null;
-        }
-        window.removeEventListener('resize', onThreeResize);
-        threeScene = null;
-        threeCamera = null;
-        threeBars = [];
-        threeReady = false;
-        threeLoading = false;
-        lastLevels = null;
-    }
-
-    function initThree(container) {
-        if (typeof THREE === 'undefined') {
-            if (threeLoading) return;
-            threeLoading = true;
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-            script.onload = function() { threeLoading = false; initThreeScene(container); };
-            script.onerror = function() { threeLoading = false; };
-            document.head.appendChild(script);
-            return;
-        }
-        initThreeScene(container);
-    }
-
-    function getAccentColor() {
-        const style = getComputedStyle(document.documentElement);
-        return style.getPropertyValue('--accent').trim() || '#cc0000';
-    }
-
-    function hexToInt(hex) {
-        if (!hex) return 0xcc0000;
-        hex = hex.replace('#', '');
-        if (hex.length === 3) {
-            hex = hex.split('').map(c => c + c).join('');
-        }
-        return parseInt(hex, 16);
-    }
-
-    function initThreeScene(container) {
-        try {
-            closeThree();
-
-            const width = container.clientWidth || 320;
-            const height = container.clientHeight || 200;
-
-            threeScene = new THREE.Scene();
-            threeScene.background = null;
-
-            threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-            threeCamera.position.set(0, 0.4, 4.2);
-            threeCamera.lookAt(0, 0, 0);
-
-            threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            threeRenderer.setSize(width, height);
-            threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            threeRenderer.setClearColor(0x000000, 0);
-            container.appendChild(threeRenderer.domElement);
-
-            const ambient = new THREE.AmbientLight(0xffffff, 0.9);
-            threeScene.add(ambient);
-            const dir = new THREE.DirectionalLight(0xffffff, 0.7);
-            dir.position.set(3, 5, 5);
-            threeScene.add(dir);
-
-            const COUNT = 40;
-            const radius = 1.4;
-            const barWidth = 0.08;
-            const baseHeight = 0.06;
-
-            const accentInt = hexToInt(getAccentColor());
-
-            threeBars = [];
-            for (let i = 0; i < COUNT; i++) {
-                const angle = (i / COUNT) * Math.PI * 2;
-
-                const geo = new THREE.BoxGeometry(barWidth, baseHeight, barWidth);
-                const mat = new THREE.MeshStandardMaterial({
-                    color: accentInt,
-                    roughness: 0.4,
-                    metalness: 0.3,
-                    emissive: accentInt,
-                    emissiveIntensity: 0.2
-                });
-                const mesh = new THREE.Mesh(geo, mat);
-
-                const x = Math.cos(angle) * radius;
-                const z = Math.sin(angle) * radius;
-                mesh.position.set(x, baseHeight / 2, z);
-                mesh.rotation.y = -angle;
-
-                threeScene.add(mesh);
-                threeBars.push(mesh);
-            }
-
-            const ringGeo = new THREE.RingGeometry(1.2, 1.6, 64);
-            const ringMat = new THREE.MeshBasicMaterial({
-                color: accentInt,
-                transparent: true,
-                opacity: 0.15,
-                side: THREE.DoubleSide
-            });
-            const ring = new THREE.Mesh(ringGeo, ringMat);
-            ring.rotation.x = -Math.PI / 2;
-            threeScene.add(ring);
-
-            threeReady = true;
-            lastLevels = new Array(COUNT).fill(0);
-
-            function animate() {
-                threeAnimationId = requestAnimationFrame(animate);
-
-                let levels = null;
-                if (isRecording && !isPaused) {
-                    levels = sampleLevels(threeBars.length);
-                }
-                if (!levels) {
-                    levels = lastLevels.map(v => v * 0.92);
-                }
-                lastLevels = levels;
-
-                for (let i = 0; i < threeBars.length; i++) {
-                    const bar = threeBars[i];
-                    const lvl = levels[i] || 0;
-                    const h = 0.06 + lvl * 1.6;
-                    bar.scale.y = Math.max(0.1, h / 0.06);
-                    bar.position.y = (0.06 * bar.scale.y) / 2;
-
-                    const t = performance.now() * 0.001 + i * 0.3;
-                    const sway = Math.sin(t) * 0.02 * (0.5 + lvl);
-                    bar.position.x = Math.cos((i / threeBars.length) * Math.PI * 2) * (1.4 + sway);
-                    bar.position.z = Math.sin((i / threeBars.length) * Math.PI * 2) * (1.4 + sway);
-
-                    if (bar.material) {
-                        bar.material.emissiveIntensity = 0.2 + lvl * 0.9;
-                    }
-                }
-
-                const camAngle = performance.now() * 0.00015;
-                threeCamera.position.x = Math.sin(camAngle) * 0.3;
-                threeCamera.lookAt(0, 0.3, 0);
-
-                threeRenderer.render(threeScene, threeCamera);
-            }
-            animate();
-
-            window.addEventListener('resize', onThreeResize);
-        } catch(e) {
-            console.warn('[Recorder] Three init error:', e);
-        }
-    }
-
-    function updateThreeAccentColor() {
-        if (!threeBars || threeBars.length === 0) return;
-        const accentInt = hexToInt(getAccentColor());
-        threeBars.forEach(bar => {
-            if (bar.material) {
-                bar.material.color.setHex(accentInt);
-                bar.material.emissive.setHex(accentInt);
-            }
-        });
-    }
-
-    function onThreeResize() {
-        if (!threeRenderer || !threeCamera) return;
-        const container = document.getElementById('recorderVisual3D');
-        if (!container) return;
-        const w = container.clientWidth || 320;
-        const h = container.clientHeight || 200;
-        threeCamera.aspect = w / h;
-        threeCamera.updateProjectionMatrix();
-        threeRenderer.setSize(w, h);
+        const rms = Math.sqrt(sum / frequencyData.length);
+        return Math.min(1, rms * 3);
     }
 
     function formatTime(ms) {
@@ -394,13 +212,16 @@
 
             pendingMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
 
-            chunks = [];
+            if (!isPaused) {
+                chunks = [];
+                levelsHistory = [];
+                viewPosition = 0;
+            } else {
+                isPaused = false;
+            }
 
             mediaRecorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) chunks.push(e.data);
-            };
-            mediaRecorder.onstop = function() {
-                saveRecording();
             };
             mediaRecorder.onerror = function(e) {
                 if (window.Win && window.Win.notify) {
@@ -410,17 +231,18 @@
 
             mediaRecorder.start(1000);
             isRecording = true;
-            isPaused = false;
-            recordingStartTime = Date.now();
-            recordingElapsed = 0;
+            recordingStartTime = Date.now() - recordingElapsed;
             timerInterval = setInterval(updateTimer, 100);
+            lastLevelSampleTime = performance.now();
+
             updateUI();
+            startDrawLoop();
 
             if (window.LiveBar) {
                 window.LiveBar.set({
                     type: 'recording',
                     appId: 'recorder',
-                    payload: { elapsed: 0, paused: false }
+                    payload: { elapsed: recordingElapsed / 1000, paused: false }
                 });
             }
         } catch(e) {
@@ -430,52 +252,41 @@
         }
     }
 
-    function pauseRecording() {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.pause();
-            isPaused = true;
-            recordingElapsed = Date.now() - recordingStartTime;
-            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-            updateUI();
-            if (window.LiveBar) {
-                window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: true });
-            }
-        } else if (mediaRecorder && mediaRecorder.state === 'paused') {
-            mediaRecorder.resume();
-            isPaused = false;
-            recordingStartTime = Date.now() - recordingElapsed;
-            timerInterval = setInterval(updateTimer, 100);
-            updateUI();
-            if (window.LiveBar) {
-                window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: false });
-            }
-        }
-    }
-
     function stopRecording(silent) {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             try { mediaRecorder.stop(); } catch(e) {}
         }
-        isRecording = false;
-        isPaused = false;
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-        if (!silent) updateUI();
+        if (!silent) {
+            isRecording = false;
+            isPaused = false;
+            updateUI();
+        }
         if (window.LiveBar) window.LiveBar.clear();
     }
 
-    function extFromMime(mime) {
-        if (!mime) return 'webm';
-        if (mime.indexOf('mp4') !== -1 || mime.indexOf('mpeg') !== -1) return 'm4a';
-        if (mime.indexOf('ogg') !== -1) return 'ogg';
-        if (mime.indexOf('wav') !== -1) return 'wav';
-        return 'webm';
+    // Остановка через кнопку «СТОП» — пауза без сохранения,
+    // чтобы можно было либо продолжить, либо сохранить.
+    function stopAndPause() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            try { mediaRecorder.pause(); } catch(e) {}
+        }
+        isPaused = true;
+        recordingElapsed = Date.now() - recordingStartTime;
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        if (window.LiveBar) window.LiveBar.clear();
+        updateUI();
     }
 
     async function saveRecording() {
-        const localChunks = chunks.slice();
-        chunks = [];
+        if (chunks.length === 0) {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                stopRecording(false);
+                await new Promise(function(r) { setTimeout(r, 500); });
+            }
+        }
 
-        if (localChunks.length === 0) {
+        if (chunks.length === 0) {
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Нет данных для сохранения', { type: 'error' });
             }
@@ -484,7 +295,7 @@
 
         const type = pendingMimeType || 'audio/webm';
         const ext = extFromMime(type);
-        const blob = new Blob(localChunks, { type: type });
+        const blob = new Blob(chunks, { type: type });
 
         const reader = new FileReader();
         reader.onload = async function() {
@@ -527,6 +338,14 @@
                     window.Win.notify('Не удалось сохранить', { type: 'error' });
                 }
             }
+
+            chunks = [];
+            levelsHistory = [];
+            recordingElapsed = 0;
+            viewPosition = 0;
+            isRecording = false;
+            isPaused = false;
+            updateUI();
         };
         reader.onerror = function() {
             if (window.Win && window.Win.notify) {
@@ -536,32 +355,296 @@
         reader.readAsDataURL(blob);
     }
 
+    function extFromMime(mime) {
+        if (!mime) return 'webm';
+        if (mime.indexOf('mp4') !== -1 || mime.indexOf('mpeg') !== -1) return 'm4a';
+        if (mime.indexOf('ogg') !== -1) return 'ogg';
+        if (mime.indexOf('wav') !== -1) return 'wav';
+        return 'webm';
+    }
+
     function updateUI() {
         const btn = document.getElementById('recorderMainBtn');
         const status = document.getElementById('recorderStatus');
         const timer = document.getElementById('recorderTimer');
-        const pauseBtn = document.getElementById('recorderPauseBtn');
+        const saveBtn = document.getElementById('recorderSaveBtn');
+        const continueBtn = document.getElementById('recorderContinueBtn');
 
         if (!btn) return;
 
-        if (isRecording) {
+        if (isRecording && !isPaused) {
+            // Идёт запись — кнопка работает как СТОП
             btn.textContent = 'СТОП';
             btn.style.background = 'var(--accent)';
             btn.style.color = 'var(--text-on-accent)';
-            if (status) status.textContent = isPaused ? 'Пауза' : 'Идёт запись';
-            if (pauseBtn) {
-                pauseBtn.style.display = 'inline-block';
-                pauseBtn.textContent = isPaused ? 'Продолжить' : 'Пауза';
-            }
+            if (status) status.textContent = 'Идёт запись';
+            if (saveBtn) saveBtn.style.display = 'none';
+            if (continueBtn) continueBtn.style.display = 'none';
+        } else if (isRecording && isPaused) {
+            // Запись на паузе
+            btn.textContent = 'ПРОДОЛЖИТЬ';
+            btn.style.background = '#4CAF50';
+            btn.style.color = '#ffffff';
+            if (status) status.textContent = 'Пауза';
+            if (saveBtn) saveBtn.style.display = 'inline-block';
+            if (continueBtn) continueBtn.style.display = 'none';
+        } else if (chunks.length > 0 || levelsHistory.length > 0) {
+            // Запись остановлена, но не сохранена
+            btn.textContent = 'ЗАПИСАТЬ';
+            btn.style.background = '#4CAF50';
+            btn.style.color = '#ffffff';
+            if (status) status.textContent = 'Готово. Прослушайте или продолжите запись';
+            if (saveBtn) saveBtn.style.display = 'inline-block';
+            if (continueBtn) continueBtn.style.display = 'inline-block';
         } else {
             btn.textContent = 'НАЧАТЬ';
             btn.style.background = '#4CAF50';
             btn.style.color = '#ffffff';
             if (status) status.textContent = 'Готово к записи';
             if (timer) timer.textContent = '00:00.0';
-            if (pauseBtn) pauseBtn.style.display = 'none';
+            if (saveBtn) saveBtn.style.display = 'none';
+            if (continueBtn) continueBtn.style.display = 'none';
         }
     }
+
+    // ============================================
+    // ОТРИСОВКА
+    // ============================================
+
+    function startDrawLoop() {
+        if (animId) return;
+        function loop() {
+            animId = requestAnimationFrame(loop);
+            drawWaveform();
+            if (isRecording && !isPaused) {
+                const now = performance.now();
+                if (now - lastLevelSampleTime >= LEVEL_SAMPLE_INTERVAL) {
+                    lastLevelSampleTime = now;
+                    liveLevel = sampleLevel();
+                    levelsHistory.push({
+                        t: recordingElapsed,
+                        v: liveLevel
+                    });
+                    const cutoff = recordingElapsed - MAX_HISTORY_SECONDS * 1000;
+                    while (levelsHistory.length > 0 && levelsHistory[0].t < cutoff) {
+                        levelsHistory.shift();
+                    }
+                }
+            } else {
+                liveLevel *= 0.92;
+            }
+        }
+        loop();
+    }
+
+    function drawWaveform() {
+        if (!canvas || !canvasCtx) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        // Белый фон
+        canvasCtx.fillStyle = '#ffffff';
+        canvasCtx.fillRect(0, 0, w, h);
+
+        // Клетчатый фон
+        const cellSize = 40;
+        canvasCtx.strokeStyle = 'rgba(0,0,0,0.06)';
+        canvasCtx.lineWidth = 1;
+        for (let x = 0; x <= w; x += cellSize) {
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(x, 0);
+            canvasCtx.lineTo(x, h);
+            canvasCtx.stroke();
+        }
+        for (let y = 0; y <= h; y += cellSize) {
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(0, y);
+            canvasCtx.lineTo(w, y);
+            canvasCtx.stroke();
+        }
+
+        const centerY = h / 2;
+
+        // Общая длительность
+        let duration = recordingElapsed;
+        if (duration <= 0 && levelsHistory.length > 0) {
+            duration = levelsHistory[levelsHistory.length - 1].t;
+        }
+        if (duration <= 0) duration = 1000;
+
+        const pixelsPerMs = w / Math.max(duration, 1000);
+
+        // Точки на экране
+        const points = [];
+        for (let i = 0; i < levelsHistory.length; i++) {
+            const sample = levelsHistory[i];
+            const x = sample.t * pixelsPerMs - viewPosition * pixelsPerMs;
+            if (x < -20) continue;
+            if (x > w + 20) break;
+            const level = Math.max(0.015, sample.v);
+            const y = centerY - (level * h * 0.42);
+            points.push({ x: x, y: y });
+        }
+
+        // Живая точка в правом краю во время записи
+        if (isRecording && !isPaused && levelsHistory.length > 0) {
+            const liveT = recordingElapsed;
+            const liveX = liveT * pixelsPerMs - viewPosition * pixelsPerMs;
+            if (liveX <= w + 20) {
+                const liveY = centerY - (Math.max(0.015, liveLevel) * h * 0.42);
+                points.push({ x: liveX, y: liveY });
+            }
+        }
+
+        // Плавная линия
+        if (points.length > 0) {
+            canvasCtx.save();
+
+            canvasCtx.strokeStyle = '#cc0000';
+            canvasCtx.lineWidth = 2.5;
+            canvasCtx.lineJoin = 'round';
+            canvasCtx.lineCap = 'round';
+
+            canvasCtx.beginPath();
+            if (points.length === 1) {
+                canvasCtx.moveTo(points[0].x, points[0].y);
+                canvasCtx.lineTo(points[0].x + 2, points[0].y);
+            } else {
+                canvasCtx.moveTo(points[0].x, points[0].y);
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p0 = points[i];
+                    const p1 = points[i + 1];
+                    const mx = (p0.x + p1.x) / 2;
+                    const my = (p0.y + p1.y) / 2;
+                    canvasCtx.quadraticCurveTo(p0.x, p0.y, mx, my);
+                }
+                const last = points[points.length - 1];
+                canvasCtx.lineTo(last.x, last.y);
+            }
+            canvasCtx.stroke();
+
+            // Заливка под линией до центра
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(points[0].x, centerY);
+            canvasCtx.lineTo(points[0].x, points[0].y);
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i];
+                const p1 = points[i + 1];
+                const mx = (p0.x + p1.x) / 2;
+                const my = (p0.y + p1.y) / 2;
+                canvasCtx.quadraticCurveTo(p0.x, p0.y, mx, my);
+            }
+            const last = points[points.length - 1];
+            canvasCtx.lineTo(last.x, last.y);
+            canvasCtx.lineTo(last.x, centerY);
+            canvasCtx.closePath();
+            canvasCtx.fillStyle = 'rgba(204,0,0,0.12)';
+            canvasCtx.fill();
+
+            // Отражение снизу
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(points[0].x, centerY + (centerY - points[0].y));
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i];
+                const p1 = points[i + 1];
+                const mx = (p0.x + p1.x) / 2;
+                const my = (p0.y + p1.y) / 2;
+                const rmy = centerY + (centerY - my);
+                canvasCtx.quadraticCurveTo(p0.x, centerY + (centerY - p0.y), mx, rmy);
+            }
+            const last2 = points[points.length - 1];
+            canvasCtx.lineTo(last2.x, centerY + (centerY - last2.y));
+
+            canvasCtx.strokeStyle = 'rgba(204,0,0,0.45)';
+            canvasCtx.lineWidth = 1.5;
+            canvasCtx.stroke();
+
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(points[0].x, centerY);
+            canvasCtx.lineTo(points[0].x, centerY + (centerY - points[0].y));
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i];
+                const p1 = points[i + 1];
+                const mx = (p0.x + p1.x) / 2;
+                const my = (p0.y + p1.y) / 2;
+                const rmy = centerY + (centerY - my);
+                canvasCtx.quadraticCurveTo(p0.x, centerY + (centerY - p0.y), mx, rmy);
+            }
+            const last3 = points[points.length - 1];
+            canvasCtx.lineTo(last3.x, centerY + (centerY - last3.y));
+            canvasCtx.lineTo(last3.x, centerY);
+            canvasCtx.closePath();
+            canvasCtx.fillStyle = 'rgba(204,0,0,0.06)';
+            canvasCtx.fill();
+
+            canvasCtx.restore();
+        }
+
+        // Линия центра
+        canvasCtx.strokeStyle = 'rgba(0,0,0,0.12)';
+        canvasCtx.lineWidth = 1;
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(0, centerY);
+        canvasCtx.lineTo(w, centerY);
+        canvasCtx.stroke();
+
+        // Курсор просмотра
+        if (!isRecording && duration > 0) {
+            const xPos = (viewPosition / duration) * w;
+            if (xPos >= 0 && xPos <= w) {
+                canvasCtx.strokeStyle = '#1a1a1a';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(xPos, 0);
+                canvasCtx.lineTo(xPos, h);
+                canvasCtx.stroke();
+            }
+        }
+    }
+
+    function onCanvasDown(e) {
+        if (isRecording) return;
+        if (levelsHistory.length === 0) return;
+        isScrubbing = true;
+        updateScrubPosition(e);
+        if (e.cancelable) e.preventDefault();
+    }
+
+    function onCanvasMove(e) {
+        if (!isScrubbing) return;
+        updateScrubPosition(e);
+        if (e.cancelable) e.preventDefault();
+    }
+
+    function onCanvasUp(e) {
+        isScrubbing = false;
+    }
+
+    function updateScrubPosition(e) {
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const w = rect.width;
+        const ratio = Math.max(0, Math.min(1, x / w));
+        let duration = recordingElapsed;
+        if (duration <= 0 && levelsHistory.length > 0) {
+            duration = levelsHistory[levelsHistory.length - 1].t;
+        }
+        viewPosition = ratio * duration;
+        const timer = document.getElementById('recorderTimer');
+        if (timer) timer.textContent = formatTime(viewPosition);
+    }
+
+    // ============================================
+    // UI
+    // ============================================
 
     function createUI() {
         if (document.getElementById('recorderApp')) {
@@ -572,21 +655,21 @@
 
         const app = document.createElement('div');
         app.id = 'recorderApp';
+        app.className = 'scroll-blur';
         app.style.cssText = `
             position: fixed;
             top: var(--livebar-h, 44px);
             left: 0;
             width: 100%;
             height: calc(100% - var(--livebar-h, 44px));
-            background: var(--bg-primary);
+            background: #ffffff;
             z-index: 99999;
             display: flex;
             flex-direction: column;
-            font-family: 'ST-SimpleSquare', monospace;
-            color: var(--text-primary);
+            font-family: ${FONT_MAIN};
+            color: #1a1a1a;
             opacity: 0;
             animation: recorderFadeIn 0.3s ease forwards;
-            transition: background 0.4s ease, color 0.4s ease;
             overflow: hidden;
         `;
 
@@ -595,97 +678,179 @@
             style.id = 'recorderStyles';
             style.textContent = `
                 @keyframes recorderFadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .recorder-header {
-                    display:flex; justify-content:space-between; align-items:center;
-                    padding:16px 24px;
-                    background:var(--header-bg);
-                    border-bottom:2px solid var(--border-color);
-                    flex-shrink:0;
-                    color:var(--header-text);
+
+                #recorderApp, #recorderApp * {
+                    font-family: ${FONT_MAIN} !important;
                 }
-                .recorder-header h1 { font-size:20px; font-weight:600; margin:0; }
+
+                .scroll-blur {
+                    position: relative;
+                    isolation: isolate;
+                }
+                .scroll-blur::after {
+                    content: '';
+                    position: fixed;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    height: 80px;
+                    pointer-events: none;
+                    z-index: 20;
+                    -webkit-backdrop-filter: blur(12px);
+                    backdrop-filter: blur(12px);
+                    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+                    mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+                }
+
+                .recorder-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px 24px;
+                    background: #ffffff;
+                    border-bottom: 2px solid #e0e0e0;
+                    flex-shrink: 0;
+                    color: #1a1a1a;
+                    font-family: ${FONT_MAIN};
+                }
+                .recorder-header h1 {
+                    font-size: 20px;
+                    font-weight: 600;
+                    margin: 0;
+                    font-family: ${FONT_MAIN};
+                }
                 .recorder-header-actions button {
-                    background:var(--bg-primary);
-                    border:2px solid var(--accent);
-                    color:var(--accent);
-                    font-size:18px;
-                    padding:4px 12px;
-                    cursor:pointer;
-                    font-family:'ST-SimpleSquare',monospace;
+                    background: #ffffff;
+                    border: 2px solid var(--accent);
+                    color: var(--accent);
+                    font-size: 18px;
+                    padding: 4px 12px;
+                    cursor: pointer;
+                    font-family: ${FONT_MAIN};
                     transition: all 0.2s;
                 }
                 .recorder-header-actions button:hover {
-                    background:var(--accent);
-                    color:var(--text-on-accent);
-                }
-                .recorder-content {
-                    flex:1; display:flex; flex-direction:column;
-                    align-items:center; justify-content:center;
-                    padding:20px 24px;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
                 }
 
-                .recorder-visual-3d {
-                    width: 100%;
-                    max-width: 520px;
-                    height: 260px;
-                    position: relative;
-                    margin-bottom: 16px;
-                    background: transparent;
-                    border: none;
+                .recorder-content {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 0;
                     overflow: hidden;
+                    background: #ffffff;
                 }
-                .recorder-visual-3d canvas {
+
+                .recorder-wave-area {
+                    flex: 1;
+                    position: relative;
+                    background: #ffffff;
+                    min-height: 0;
+                    cursor: pointer;
+                }
+                .recorder-wave-canvas {
                     display: block;
-                    width: 100% !important;
-                    height: 100% !important;
-                    background: transparent;
+                    width: 100%;
+                    height: 100%;
+                    background: #ffffff;
+                    touch-action: none;
+                }
+
+                .recorder-controls-panel {
+                    flex-shrink: 0;
+                    padding: 20px 24px 100px;
+                    background: #ffffff;
+                    border-top: 2px solid #e0e0e0;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 14px;
+                    position: relative;
+                    z-index: 21;
                 }
 
                 .recorder-timer {
-                    font-size: 42px; font-weight: 700; letter-spacing: 3px;
-                    color: var(--text-primary); margin-bottom: 8px;
-                    font-family: 'ST-SimpleSquare', monospace;
+                    font-size: 42px;
+                    font-weight: 700;
+                    letter-spacing: 3px;
+                    color: #1a1a1a;
+                    font-family: ${FONT_MAIN};
+                    line-height: 1;
                 }
                 .recorder-status {
-                    font-size: 14px; color: var(--text-muted);
-                    margin-bottom: 20px;
-                    min-height: 20px;
+                    font-size: 13px;
+                    color: #888888;
+                    min-height: 18px;
+                    font-family: ${FONT_MAIN};
                 }
+
                 .recorder-controls {
-                    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                    justify-content: center;
                     align-items: center;
                 }
                 .recorder-main-btn {
-                    padding: 16px 48px; border: none;
+                    padding: 14px 40px;
+                    border: none;
                     color: #ffffff;
-                    cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
-                    font-size: 16px; font-weight: 600;
+                    cursor: pointer;
+                    font-family: ${FONT_MAIN};
+                    font-size: 15px;
+                    font-weight: 700;
                     background: #4CAF50;
-                    transition: background 0.2s, transform 0.15s, color 0.2s;
+                    transition: background 0.2s, transform 0.15s;
                     letter-spacing: 1px;
+                    touch-action: manipulation;
                 }
                 .recorder-main-btn:active { transform: scale(0.96); }
-                .recorder-pause-btn {
-                    padding: 16px 32px; border: 2px solid var(--accent);
-                    background: none; color: var(--accent);
-                    cursor: pointer; font-family: 'ST-SimpleSquare', monospace;
-                    font-size: 14px; font-weight: 600;
+                .recorder-save-btn,
+                .recorder-continue-btn {
+                    padding: 14px 26px;
+                    border: 2px solid var(--accent);
+                    background: none;
+                    color: var(--accent);
+                    cursor: pointer;
+                    font-family: ${FONT_MAIN};
+                    font-size: 14px;
+                    font-weight: 600;
                     transition: all 0.2s;
                     display: none;
+                    touch-action: manipulation;
                 }
-                .recorder-pause-btn:hover {
+                .recorder-save-btn:hover,
+                .recorder-continue-btn:hover {
                     background: var(--accent);
                     color: var(--text-on-accent);
+                }
+                .recorder-save-btn {
+                    border-color: #4CAF50;
+                    color: #4CAF50;
+                }
+                .recorder-save-btn:hover {
+                    background: #4CAF50;
+                    color: #ffffff;
+                }
+                .recorder-continue-btn {
+                    border-color: #333;
+                    color: #333;
+                }
+                .recorder-continue-btn:hover {
+                    background: #333;
+                    color: #ffffff;
                 }
 
                 @media (max-width: 500px) {
                     .recorder-header { padding: 12px 16px; }
                     .recorder-header h1 { font-size: 17px; }
-                    .recorder-content { padding: 14px 16px; }
-                    .recorder-visual-3d { height: 200px; margin-bottom: 12px; }
+                    .recorder-controls-panel { padding: 16px 16px 90px; gap: 10px; }
                     .recorder-timer { font-size: 34px; }
-                    .recorder-main-btn { padding: 14px 32px; font-size: 15px; }
-                    .recorder-pause-btn { padding: 14px 22px; font-size: 13px; }
+                    .recorder-main-btn { padding: 12px 28px; font-size: 14px; }
+                    .recorder-save-btn,
+                    .recorder-continue-btn { padding: 12px 18px; font-size: 12px; }
                 }
             `;
             document.head.appendChild(style);
@@ -702,41 +867,113 @@
 
         const content = document.createElement('div');
         content.className = 'recorder-content';
-        content.innerHTML = `
-            <div class="recorder-visual-3d" id="recorderVisual3D"></div>
+
+        const waveArea = document.createElement('div');
+        waveArea.className = 'recorder-wave-area';
+        canvas = document.createElement('canvas');
+        canvas.className = 'recorder-wave-canvas';
+        waveArea.appendChild(canvas);
+        content.appendChild(waveArea);
+
+        const controlsPanel = document.createElement('div');
+        controlsPanel.className = 'recorder-controls-panel';
+        controlsPanel.innerHTML = `
             <div class="recorder-timer" id="recorderTimer">00:00.0</div>
             <div class="recorder-status" id="recorderStatus">Готово к записи</div>
             <div class="recorder-controls">
-                <button class="recorder-pause-btn" id="recorderPauseBtn">Пауза</button>
+                <button class="recorder-continue-btn" id="recorderContinueBtn">ПРОДОЛЖИТЬ</button>
                 <button class="recorder-main-btn" id="recorderMainBtn">НАЧАТЬ</button>
+                <button class="recorder-save-btn" id="recorderSaveBtn">СОХРАНИТЬ</button>
             </div>
         `;
+        content.appendChild(controlsPanel);
 
         app.appendChild(header);
         app.appendChild(content);
         document.body.appendChild(app);
 
-        const visualContainer = document.getElementById('recorderVisual3D');
-        if (visualContainer) {
-            setTimeout(function() { initThree(visualContainer); }, 50);
-        }
+        canvasCtx = canvas.getContext('2d');
+
+        canvas.addEventListener('pointerdown', onCanvasDown);
+        canvas.addEventListener('pointermove', onCanvasMove);
+        canvas.addEventListener('pointerup', onCanvasUp);
+        canvas.addEventListener('pointercancel', onCanvasUp);
+        canvas.addEventListener('pointerleave', onCanvasUp);
 
         document.getElementById('recorderCloseBtn').addEventListener('click', closeRecorder);
+
         document.getElementById('recorderMainBtn').addEventListener('click', function() {
-            if (isRecording) {
-                stopRecording();
-            } else {
-                startRecording();
+            if (isRecording && !isPaused) {
+                // СТОП — приостанавливаем, но не сохраняем
+                stopAndPause();
+            } else if (!isRecording) {
+                // НАЧАТЬ / ЗАПИСАТЬ / ПРОДОЛЖИТЬ
+                if (chunks.length > 0) {
+                    resumeExistingRecording();
+                } else {
+                    startRecording();
+                }
             }
         });
-        document.getElementById('recorderPauseBtn').addEventListener('click', pauseRecording);
+
+        document.getElementById('recorderSaveBtn').addEventListener('click', saveRecording);
+
+        document.getElementById('recorderContinueBtn').addEventListener('click', function() {
+            resumeExistingRecording();
+        });
 
         document.addEventListener('keydown', onKeyDown);
-        updateUI();
 
-        window.addEventListener('shnuk:theme-changed', function() {
-            updateThreeAccentColor();
-        });
+        startDrawLoop();
+        updateUI();
+    }
+
+    async function resumeExistingRecording() {
+        try {
+            if (!stream) {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+            startAudioAnalysis(stream);
+
+            const mimeType = pickMimeType();
+            try {
+                mediaRecorder = mimeType
+                    ? new MediaRecorder(stream, { mimeType: mimeType })
+                    : new MediaRecorder(stream);
+            } catch(e) {
+                mediaRecorder = new MediaRecorder(stream);
+            }
+
+            mediaRecorder.ondataavailable = function(e) {
+                if (e.data && e.data.size > 0) chunks.push(e.data);
+            };
+            mediaRecorder.onerror = function(e) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Ошибка записи', { type: 'error' });
+                }
+            };
+
+            mediaRecorder.start(1000);
+            isRecording = true;
+            isPaused = false;
+            recordingStartTime = Date.now() - recordingElapsed;
+            timerInterval = setInterval(updateTimer, 100);
+            lastLevelSampleTime = performance.now();
+
+            updateUI();
+
+            if (window.LiveBar) {
+                window.LiveBar.set({
+                    type: 'recording',
+                    appId: 'recorder',
+                    payload: { elapsed: recordingElapsed / 1000, paused: false }
+                });
+            }
+        } catch(e) {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Не удалось продолжить запись', { type: 'error' });
+            }
+        }
     }
 
     function onKeyDown(e) {

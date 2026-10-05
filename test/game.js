@@ -50,6 +50,11 @@
 
     let threeLoading = false;
 
+    // DeltaTime
+    let lastFrameTime = 0;
+    // Скорость "по умолчанию" — насколько должна двигаться сцена за секунду при 60 fps
+    const SPEED_PER_SECOND = 20;
+
     function getBest() {
         try {
             const v = localStorage.getItem(BEST_KEY);
@@ -60,10 +65,6 @@
     function setBest(v) {
         try { localStorage.setItem(BEST_KEY, String(v)); } catch(e) {}
     }
-
-    // ============================================
-    // UI
-    // ============================================
 
     function buildUI() {
         if (!container) return false;
@@ -76,7 +77,7 @@
             width: 100%; height: 100%;
             background: #1a1a2e;
             overflow: hidden;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
             touch-action: none;
             user-select: none;
             -webkit-user-select: none;
@@ -96,7 +97,7 @@
             pointer-events: none;
             z-index: 10;
             color: #ffffff;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
             box-sizing: border-box;
         `;
         ui.innerHTML = `
@@ -123,7 +124,7 @@
             justify-content: center;
             z-index: 20;
             color: #ffffff;
-            font-family: 'ST-SimpleSquare', monospace;
+            font-family: 'TTPaplane', monospace;
             padding: 20px;
             box-sizing: border-box;
         `;
@@ -140,7 +141,7 @@
                 font-size: 18px;
                 font-weight: 600;
                 cursor: pointer;
-                font-family: 'ST-SimpleSquare', monospace;
+                font-family: 'TTPaplane', monospace;
                 transition: transform 0.2s;
                 box-shadow: 0 0 30px rgba(204,0,0,0.3);
             ">НАЧАТЬ ЗАНОВО</button>
@@ -163,10 +164,6 @@
         document.getElementById('restartBtn').addEventListener('click', restartGame);
         return true;
     }
-
-    // ============================================
-    // THREE.JS
-    // ============================================
 
     function loadThree() {
         return new Promise(function(resolve) {
@@ -617,26 +614,36 @@
     // GAME LOOP
     // ============================================
 
-    function gameLoop() {
+    function gameLoop(now) {
         if (!gameRunning || isPaused) return;
+
+        if (!lastFrameTime) lastFrameTime = now;
+        let dt = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+
+        // Ограничиваем dt, чтобы при возврате из фона не было скачка
+        if (dt > 0.1) dt = 0.1;
+
+        // Скорость движения относительно 60 fps
+        const frameFactor = dt * 60;
 
         const currentSpeed = speed + score * 0.001;
 
-        carX += (carTargetX - carX) * 0.12;
+        carX += (carTargetX - carX) * 0.12 * frameFactor;
         if (carX > 2.5) carX = 2.5;
         if (carX < -2.5) carX = -2.5;
         car.position.x = carX;
 
-        cameraBob += 0.02;
+        cameraBob += 0.02 * frameFactor;
         const bobOffset = Math.sin(cameraBob) * 0.03;
 
         const targetCamX = carX * 0.5;
-        camera.position.x += (targetCamX - camera.position.x) * 0.08;
+        camera.position.x += (targetCamX - camera.position.x) * 0.08 * frameFactor;
 
         camera.position.y = CAMERA_HEIGHT + bobOffset + Math.sin(cameraBob * 0.5) * 0.03;
         camera.position.z = CAR_START_Z + CAMERA_BEHIND;
 
-        camera.rotation.z += (-carX * 0.04 - camera.rotation.z) * 0.08;
+        camera.rotation.z += (-carX * 0.04 - camera.rotation.z) * 0.08 * frameFactor;
 
         const lookTargetX = carX * 0.3;
         camera.lookAt(lookTargetX, 0, CAR_LOOK_AHEAD);
@@ -654,9 +661,9 @@
             const wind = Math.sin(Date.now() * 0.0005) * 0.003;
 
             for (let i = 0; i < snowParticles.count; i++) {
-                positions[i * 3] += vels[i * 3] + wind + currentSpeed * 0.001;
-                positions[i * 3 + 1] += vels[i * 3 + 1];
-                positions[i * 3 + 2] += vels[i * 3 + 2] + currentSpeed * 0.01;
+                positions[i * 3] += (vels[i * 3] + wind + currentSpeed * 0.001) * frameFactor;
+                positions[i * 3 + 1] += vels[i * 3 + 1] * frameFactor;
+                positions[i * 3 + 2] += (vels[i * 3 + 2] + currentSpeed * 0.01) * frameFactor;
 
                 if (positions[i * 3 + 1] < 0) {
                     positions[i * 3] = (Math.random() - 0.5) * 60;
@@ -671,8 +678,8 @@
         }
 
         for (const house of houses) {
-            house.z += currentSpeed;
-            house.mesh.position.z += currentSpeed;
+            house.z += currentSpeed * frameFactor;
+            house.mesh.position.z += currentSpeed * frameFactor;
             if (house.z > 25) {
                 house.z = -130 - Math.random() * 30;
                 house.mesh.position.z = house.z;
@@ -688,7 +695,7 @@
         }
 
         for (const drift of snowdrifts) {
-            drift.position.z += currentSpeed;
+            drift.position.z += currentSpeed * frameFactor;
             if (drift.position.z > 25) {
                 drift.position.z = -130 - Math.random() * 30;
                 const side = Math.random() > 0.5 ? 1 : -1;
@@ -699,7 +706,7 @@
         }
 
         for (const line of roadLines) {
-            line.position.z += currentSpeed;
+            line.position.z += currentSpeed * frameFactor;
             if (line.position.z > 25) {
                 line.position.z -= 96;
             }
@@ -707,9 +714,9 @@
 
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const obs = obstacles[i];
-            obs.mesh.position.z += currentSpeed;
-            obs.mesh.rotation.y += 0.02;
-            obs.mesh.rotation.x += 0.01;
+            obs.mesh.position.z += currentSpeed * frameFactor;
+            obs.mesh.rotation.y += 0.02 * frameFactor;
+            obs.mesh.rotation.x += 0.01 * frameFactor;
 
             const glow = obs.mesh.children[0];
             if (glow && glow.material) {
@@ -738,7 +745,7 @@
             }
         }
 
-        obstacleTimer++;
+        obstacleTimer += frameFactor;
         const spawnRate = Math.max(12, spawnInterval - score * 0.4);
         if (obstacleTimer > spawnRate) {
             obstacleTimer = 0;
@@ -750,28 +757,34 @@
             }
         }
 
-        if (Math.random() < currentSpeed * 0.3) {
+        if (Math.random() < currentSpeed * 0.3 * frameFactor) {
             createSpeedLine();
+        }
+
+        for (let i = speedLines.length - 1; i >= 0; i--) {
+            const sl = speedLines[i];
+            sl.position.z += currentSpeed * 2 * frameFactor;
+            if (sl.position.z > 10) {
+                scene.remove(sl);
+                speedLines.splice(i, 1);
+            }
         }
 
         renderer.render(scene, camera);
         animationId = requestAnimationFrame(gameLoop);
     }
 
-    // ============================================
-    // ЛОГИКА
-    // ============================================
-
     function startGame() {
         gameRunning = true;
         isPaused = false;
         gameOverShown = false;
+        lastFrameTime = 0;
         const el = document.getElementById('gameOverScreen');
         if (el) el.style.display = 'none';
         const s = document.getElementById('gameScore');
         if (s) s.textContent = '0';
         if (animationId) cancelAnimationFrame(animationId);
-        gameLoop();
+        animationId = requestAnimationFrame(gameLoop);
     }
 
     function gameOver() {
@@ -811,6 +824,7 @@
         cameraShake = 0;
         isPaused = false;
         gameOverShown = false;
+        lastFrameTime = 0;
         const el = document.getElementById('gameOverScreen');
         if (el) el.style.display = 'none';
         const s = document.getElementById('gameScore');
@@ -843,7 +857,8 @@
                 animationId = null;
             }
         } else {
-            gameLoop();
+            lastFrameTime = 0;
+            animationId = requestAnimationFrame(gameLoop);
         }
     }
 
@@ -858,10 +873,6 @@
         camera.updateProjectionMatrix();
         renderer.setSize(w, h, false);
     }
-
-    // ============================================
-    // ВВОД
-    // ============================================
 
     function onKeyDown(e) {
         if (!gameRunning) return;
@@ -988,10 +999,6 @@
         }
     }
 
-    // ============================================
-    // PUBLIC API
-    // ============================================
-
     function init() {
         try {
             container = document.getElementById('gameCenterGameContainer');
@@ -1030,6 +1037,7 @@
                 carTargetX = 0;
                 obstacleTimer = 0;
                 isPaused = false;
+                lastFrameTime = 0;
                 startGame();
 
                 initialized = true;

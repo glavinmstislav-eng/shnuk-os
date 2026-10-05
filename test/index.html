@@ -389,9 +389,6 @@
         </div>
     </div>
 
-    <script src="firebase-config.js"></script>
-    <script src="auth.js"></script>
-
     <script>
     (function() {
         'use strict';
@@ -457,7 +454,8 @@
                 'settings.js',
                 'cooop.js',
                 'my-shnuk.js',
-                'audio.js'
+                'audio.js',
+                'lockscreen.js'
             ];
 
             for (let i = 0; i < scripts.length; i++) {
@@ -471,9 +469,6 @@
             if (window.SharedFiles && window.SharedFiles.ready) {
                 try { await window.SharedFiles.ready(); } catch(e) {}
             }
-            if (window.__firebaseReady) {
-                try { await window.__firebaseReady; } catch(e) {}
-            }
             if (window.Auth) window.Auth.init();
 
             if (window.Auth && window.Auth.ensureAnonymous) {
@@ -484,6 +479,36 @@
                 }
             }
 
+            // Новый экран блокировки с вытянутыми часами и эффектом огибания
+            if (typeof window.LockScreen !== 'undefined') {
+                osApp.style.display = 'none';
+                window.LockScreen.show(function() {
+                    osApp.style.display = 'block';
+                    osApp.classList.add('visible');
+
+                    // После разблокировки нового экрана — если стоит пароль/ключ,
+                    // показываем старый экран безопасности
+                    if (typeof window.Security !== 'undefined' && window.Security.hasSecurity()) {
+                        if (!window.Security.isSessionUnlocked()) {
+                            osApp.style.display = 'none';
+                            window.Security.showLockScreen(function(unlocked) {
+                                if (unlocked) {
+                                    osApp.style.display = 'block';
+                                    osApp.classList.add('visible');
+                                    if (typeof window.initOS === 'function') window.initOS();
+                                } else {
+                                    document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+                                }
+                            });
+                            return;
+                        }
+                    }
+                    if (typeof window.initOS === 'function') window.initOS();
+                });
+                return;
+            }
+
+            // Fallback: если lockscreen.js не загрузился
             if (typeof window.Security !== 'undefined' && window.Security.hasSecurity()) {
                 if (!window.Security.isSessionUnlocked()) {
                     osApp.style.display = 'none';

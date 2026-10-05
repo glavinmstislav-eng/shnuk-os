@@ -54,29 +54,27 @@
     let mousePos = { x: 0, y: 0 };
     let camera = { x: 0, y: 0, zoom: 0.55, minZoom: 0.2, maxZoom: 2.0 };
 
-    // Панорамирование одним пальцем/мышью
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
     let cameraStart = { x: 0, y: 0 };
     let panMoved = false;
 
-    // Pinch-zoom
+    let activePointers = new Map();
     let isPinching = false;
     let pinchStartDist = 0;
     let pinchStartZoom = 1;
     let pinchCenterWorld = { x: 0, y: 0 };
 
+    let lastFrameTime = 0;
+
     const AA_COST = 60;
     const LAUNCHER_COST = 90;
     const AA_RANGE = 340;
-    const AA_COOLDOWN = 55;
-    const DRONE_SPEED = 0.9;
-    const MISSILE_SPEED = 5.5;
+    const AA_COOLDOWN_SECONDS = 0.9;
+    const DRONE_SPEED = 54;      // px/сек
+    const MISSILE_SPEED = 330;   // px/сек
+    const LAUNCHER_COOLDOWN_SECONDS = 3.0;
     const MIN_DIST_BETWEEN_BUILDINGS = 46;
-
-    // ============================================
-    // UI
-    // ============================================
 
     function buildUI() {
         if (!container) return false;
@@ -105,6 +103,7 @@
             height: 100%;
             background: #e8e0d0;
             touch-action: none;
+            pointer-events: auto;
         `;
 
         const hud = document.createElement('div');
@@ -150,11 +149,12 @@
             justify-content: center;
             max-width: calc(100% - 24px);
             box-sizing: border-box;
+            pointer-events: auto;
         `;
         controls.innerHTML = `
-            <button class="dviz-btn" data-mode="aa" style="padding:10px 18px;border:none;background:#4CAF50;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;letter-spacing:0.5px;">ПВО (${AA_COST})</button>
-            <button class="dviz-btn" data-mode="launcher" style="padding:10px 18px;border:none;background:#cc0000;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;letter-spacing:0.5px;">ПУСКОВАЯ (${LAUNCHER_COST})</button>
-            <button class="dviz-btn" data-mode="none" style="padding:10px 18px;border:none;background:#333;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;letter-spacing:0.5px;">ОТМЕНА</button>
+            <button class="dviz-btn" data-mode="aa" style="padding:10px 18px;border:none;background:#4CAF50;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;letter-spacing:0.5px;touch-action:manipulation;">ПВО (${AA_COST})</button>
+            <button class="dviz-btn" data-mode="launcher" style="padding:10px 18px;border:none;background:#cc0000;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;letter-spacing:0.5px;touch-action:manipulation;">ПУСКОВАЯ (${LAUNCHER_COST})</button>
+            <button class="dviz-btn" data-mode="none" style="padding:10px 18px;border:none;background:#333;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;letter-spacing:0.5px;touch-action:manipulation;">ОТМЕНА</button>
         `;
 
         const hintBar = document.createElement('div');
@@ -195,13 +195,40 @@
             max-width: calc(100% - 40px);
             box-sizing: border-box;
             box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+            pointer-events: auto;
         `;
         launcherMenu.innerHTML = `
             <div style="font-size:16px;font-weight:700;margin-bottom:6px;letter-spacing:0.4px;">ПУСКОВАЯ ПЛОЩАДКА</div>
             <div id="dvizCurrentTarget" style="font-size:12px;opacity:0.65;margin-bottom:10px;">Цель не назначена</div>
-            <button class="dviz-launcher-btn" data-action="retarget" style="padding:12px 18px;border:none;background:#cc0000;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;text-align:left;">НАЗНАЧИТЬ НОВУЮ ЦЕЛЬ</button>
-            <button class="dviz-launcher-btn" data-action="sell" style="padding:12px 18px;border:none;background:#555;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;text-align:left;">СНЕСТИ (+${Math.floor(LAUNCHER_COST/2)})</button>
-            <button class="dviz-launcher-btn" data-action="cancel" style="padding:10px 18px;border:none;background:#ddd;color:#333;cursor:pointer;font-family:${FONT_MAIN};font-size:12px;font-weight:700;text-align:left;margin-top:4px;">ОТМЕНА</button>
+            <button class="dviz-launcher-btn" data-action="retarget" style="padding:12px 18px;border:none;background:#cc0000;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;text-align:left;touch-action:manipulation;">НАЗНАЧИТЬ НОВУЮ ЦЕЛЬ</button>
+            <button class="dviz-launcher-btn" data-action="sell" style="padding:12px 18px;border:none;background:#555;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;text-align:left;touch-action:manipulation;">СНЕСТИ (+${Math.floor(LAUNCHER_COST/2)})</button>
+            <button class="dviz-launcher-btn" data-action="cancel" style="padding:10px 18px;border:none;background:#ddd;color:#333;cursor:pointer;font-family:${FONT_MAIN};font-size:12px;font-weight:700;text-align:left;margin-top:4px;touch-action:manipulation;">ОТМЕНА</button>
+        `;
+
+        const aaMenu = document.createElement('div');
+        aaMenu.id = 'dvizAaMenu';
+        aaMenu.style.cssText = `
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.96);
+            padding: 22px 26px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 30;
+            font-family: ${FONT_MAIN};
+            min-width: 300px;
+            max-width: calc(100% - 40px);
+            box-sizing: border-box;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+            pointer-events: auto;
+        `;
+        aaMenu.innerHTML = `
+            <div style="font-size:16px;font-weight:700;margin-bottom:6px;letter-spacing:0.4px;">ПВО</div>
+            <div id="dvizAaInfo" style="font-size:12px;opacity:0.65;margin-bottom:10px;">—</div>
+            <button class="dviz-aa-btn" data-action="sell" style="padding:12px 18px;border:none;background:#555;color:#fff;cursor:pointer;font-family:${FONT_MAIN};font-size:13px;font-weight:700;text-align:left;touch-action:manipulation;">СНЕСТИ (+${Math.floor(AA_COST/2)})</button>
+            <button class="dviz-aa-btn" data-action="cancel" style="padding:10px 18px;border:none;background:#ddd;color:#333;cursor:pointer;font-family:${FONT_MAIN};font-size:12px;font-weight:700;text-align:left;margin-top:4px;touch-action:manipulation;">ОТМЕНА</button>
         `;
 
         const startScreen = document.createElement('div');
@@ -283,6 +310,7 @@
         wrap.appendChild(controls);
         wrap.appendChild(hintBar);
         wrap.appendChild(launcherMenu);
+        wrap.appendChild(aaMenu);
         wrap.appendChild(startScreen);
         wrap.appendChild(gameOverScreen);
         container.appendChild(wrap);
@@ -290,9 +318,8 @@
         ctx = canvas.getContext('2d');
         if (!ctx) return false;
 
-        // Кнопки управления
         controls.querySelectorAll('.dviz-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
+            const handler = function(e) {
                 e.stopPropagation();
                 const mode = this.dataset.mode;
                 if (mode === 'none') buildMode = null;
@@ -302,11 +329,10 @@
                 retargetLauncher = null;
                 updateControlsUI();
                 updateHint(null);
-            });
-            // Чтобы кнопки не запускали тап по карте
-            btn.addEventListener('touchstart', function(e) {
-                e.stopPropagation();
-            }, { passive: true });
+            };
+            btn.addEventListener('click', handler);
+            btn.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+            btn.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
         });
 
         launcherMenu.querySelectorAll('.dviz-launcher-btn').forEach(btn => {
@@ -336,21 +362,37 @@
                     return;
                 }
             });
-            btn.addEventListener('touchstart', function(e) {
+            btn.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+            btn.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+        });
+
+        aaMenu.querySelectorAll('.dviz-aa-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
                 e.stopPropagation();
-            }, { passive: true });
+                const action = this.dataset.action;
+                if (action === 'cancel') {
+                    hideAaMenu();
+                    return;
+                }
+                if (action === 'sell') {
+                    const aa = aaMenu._aa;
+                    hideAaMenu();
+                    if (aa) sellAA(aa);
+                    return;
+                }
+            });
+            btn.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+            btn.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
         });
 
         document.getElementById('dvizStartBtn').addEventListener('click', startGame);
         document.getElementById('dvizRestart').addEventListener('click', restartGame);
 
-        // Единый обработчик указателя — и для мыши, и для касаний
         canvas.addEventListener('pointerdown', onPointerDown);
         canvas.addEventListener('pointermove', onPointerMove);
         canvas.addEventListener('pointerup', onPointerUp);
         canvas.addEventListener('pointercancel', onPointerUp);
 
-        // Fallback для браузеров без Pointer Events (старые)
         if (!window.PointerEvent) {
             canvas.addEventListener('mousedown', onPointerDown);
             window.addEventListener('mousemove', onPointerMove);
@@ -362,7 +404,6 @@
             canvas.addEventListener('touchcancel', onTouchEndFallback, { passive: false });
         }
 
-        // Колесо мыши для зума на десктопе
         canvas.addEventListener('wheel', onWheel, { passive: false });
 
         window.addEventListener('resize', onResize);
@@ -371,12 +412,6 @@
         return true;
     }
 
-    // ============================================
-    // POINTER EVENTS
-    // ============================================
-
-    let activePointers = new Map();
-
     function onPointerDown(e) {
         if (!gameStarted || gameOver) return;
         if (e.target !== canvas) return;
@@ -384,14 +419,12 @@
         activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
         if (activePointers.size === 1) {
-            // Начинаем панорамирование
             const pos = getCanvasPos(e);
             isPanning = true;
             panMoved = false;
             panStart = { x: pos.x, y: pos.y };
             cameraStart = { x: camera.x, y: camera.y };
         } else if (activePointers.size === 2) {
-            // Начинаем pinch-zoom
             isPanning = false;
             isPinching = true;
             const pts = Array.from(activePointers.values());
@@ -400,7 +433,6 @@
             pinchStartDist = Math.sqrt(dx * dx + dy * dy);
             pinchStartZoom = camera.zoom;
 
-            // Центр между пальцами в мировых координатах
             const rect = canvas.getBoundingClientRect();
             const midX = (pts[0].x + pts[1].x) / 2 - rect.left;
             const midY = (pts[0].y + pts[1].y) / 2 - rect.top;
@@ -419,7 +451,6 @@
         mousePos = pos;
 
         if (activePointers.size === 2 && isPinching) {
-            // Pinch-zoom
             const pts = Array.from(activePointers.values());
             const dx = pts[0].x - pts[1].x;
             const dy = pts[0].y - pts[1].y;
@@ -428,14 +459,12 @@
                 const ratio = dist / pinchStartDist;
                 const newZoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, pinchStartZoom * ratio));
 
-                // Зум относительно центра между пальцами
                 const rect = canvas.getBoundingClientRect();
                 const midX = (pts[0].x + pts[1].x) / 2 - rect.left;
                 const midY = (pts[0].y + pts[1].y) / 2 - rect.top;
 
                 camera.zoom = newZoom;
 
-                // Сдвигаем камеру так, чтобы точка под центром не сместилась
                 const wx = (midX - W / 2) / camera.zoom + camera.x;
                 const wy = (midY - H / 2) / camera.zoom + camera.y;
                 camera.x += pinchCenterWorld.x - wx;
@@ -467,13 +496,12 @@
                 const pos = getCanvasPos(e);
                 const dx = pos.x - panStart.x;
                 const dy = pos.y - panStart.y;
-                if (!panMoved && Math.abs(dx) < 6 && Math.abs(dy) < 6) {
+                if (!panMoved && Math.abs(dx) < 8 && Math.abs(dy) < 8) {
                     handleClick(pos.x, pos.y);
                 }
             }
             isPinching = false;
         } else if (activePointers.size === 1 && isPinching) {
-            // Один палец остался — перезапускаем панорамирование
             isPinching = false;
             const pos = getCanvasPos(e);
             isPanning = true;
@@ -484,10 +512,6 @@
 
         if (e.cancelable) e.preventDefault();
     }
-
-    // ============================================
-    // FALLBACK (Touch Events)
-    // ============================================
 
     let touchPanning = false;
     let touchPinching = false;
@@ -575,17 +599,13 @@
             const pos = { x: t.clientX - rect.left, y: t.clientY - rect.top };
             const dx = pos.x - touchPanStart.x;
             const dy = pos.y - touchPanStart.y;
-            if (!touchPanMoved && Math.abs(dx) < 6 && Math.abs(dy) < 6) {
+            if (!touchPanMoved && Math.abs(dx) < 8 && Math.abs(dy) < 8) {
                 handleClick(pos.x, pos.y);
             }
             touchPanning = false;
         }
         if (e.touches.length === 0) touchPinching = false;
     }
-
-    // ============================================
-    // ОБЩЕЕ
-    // ============================================
 
     function screenToWorld(sx, sy) {
         const cx = W / 2;
@@ -652,6 +672,25 @@
         }
     }
 
+    function showAaMenu(aa) {
+        const m = document.getElementById('dvizAaMenu');
+        if (!m) return;
+        const info = document.getElementById('dvizAaInfo');
+        if (info) {
+            info.textContent = 'Прочность: ' + aa.hp + ' / ' + aa.maxHp;
+        }
+        m._aa = aa;
+        m.style.display = 'flex';
+    }
+
+    function hideAaMenu() {
+        const m = document.getElementById('dvizAaMenu');
+        if (m) {
+            m.style.display = 'none';
+            m._aa = null;
+        }
+    }
+
     function resizeCanvas() {
         if (!canvas || !container) return;
         const wrap = document.getElementById('dvizWrap');
@@ -687,10 +726,6 @@
         camera.zoom = Math.min(Math.max(camera.zoom + delta, camera.minZoom), camera.maxZoom);
     }
 
-    // ============================================
-    // ИГРА
-    // ============================================
-
     function startGame() {
         const s = document.getElementById('dvizStart');
         if (s) s.style.display = 'none';
@@ -724,6 +759,7 @@
         gameStarted = true;
         startTime = performance.now();
         elapsed = 0;
+        lastFrameTime = 0;
 
         lastEnemyAction = 0;
         lastPlayerIncome = 0;
@@ -737,6 +773,7 @@
         updateHud();
 
         hideLauncherMenu();
+        hideAaMenu();
 
         document.getElementById('dvizGameOver').style.display = 'none';
     }
@@ -749,10 +786,6 @@
         const eh = document.getElementById('dvizEnemyCapHp');
         if (eh) eh.textContent = Math.max(0, Math.floor(enemyCapital.hp));
     }
-
-    // ============================================
-    // ПОСТРОЙКИ
-    // ============================================
 
     function isOnPlayerTerritory(x, y) {
         return x > 40 && x < map.width / 2 - 40 && y > 40 && y < map.height - 40;
@@ -812,7 +845,7 @@
         playerMoney -= LAUNCHER_COST;
         const l = {
             x, y,
-            cooldown: 120,
+            cooldown: 0,
             hp: 4,
             maxHp: 4,
             targetPoint: targetPoint ? { x: targetPoint.x, y: targetPoint.y } : null
@@ -827,6 +860,14 @@
         if (idx === -1) return;
         playerLaunchers.splice(idx, 1);
         playerMoney += Math.floor(LAUNCHER_COST / 2);
+        updateHud();
+    }
+
+    function sellAA(aa) {
+        const idx = playerAA.indexOf(aa);
+        if (idx === -1) return;
+        playerAA.splice(idx, 1);
+        playerMoney += Math.floor(AA_COST / 2);
         updateHud();
     }
 
@@ -859,7 +900,7 @@
         enemyMoney -= LAUNCHER_COST;
         enemyLaunchers.push({
             x, y,
-            cooldown: 120,
+            cooldown: 0,
             hp: 4,
             maxHp: 4,
             targetPoint: targetPoint ? { x: targetPoint.x, y: targetPoint.y } : { x: playerCapital.x, y: playerCapital.y }
@@ -871,10 +912,15 @@
     // ЛОГИКА
     // ============================================
 
-    function update() {
+    function update(now) {
         if (!gameStarted || gameOver) return;
 
-        elapsed += 1 / 60;
+        if (!lastFrameTime) lastFrameTime = now;
+        let dt = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+        if (dt > 0.1) dt = 0.1;
+
+        elapsed += dt;
 
         if (elapsed - lastPlayerIncome >= incomeInterval) {
             lastPlayerIncome = elapsed;
@@ -889,18 +935,14 @@
             enemyActionInterval = Math.max(1.8, 3.5 - elapsed * 0.02);
         }
 
-        updateLaunchers();
-        updateDrones();
-        updateMissiles();
-        updateExplosions();
+        updateLaunchers(dt);
+        updateDrones(dt);
+        updateMissiles(dt);
+        updateExplosions(dt);
 
         if (enemyCapital.hp <= 0 && !gameOver) endGame('player');
         if (playerCapital.hp <= 0 && !gameOver) endGame('enemy');
     }
-
-    // ============================================
-    // ИИ
-    // ============================================
 
     function countAAWithin(x, y, radius, list) {
         let count = 0;
@@ -1015,27 +1057,27 @@
         });
     }
 
-    function updateLaunchers() {
+    function updateLaunchers(dt) {
         for (const l of playerLaunchers) {
-            l.cooldown--;
+            l.cooldown -= dt;
             if (l.cooldown <= 0) {
-                l.cooldown = 180;
+                l.cooldown = LAUNCHER_COOLDOWN_SECONDS;
                 const tp = l.targetPoint || { x: enemyCapital.x, y: enemyCapital.y };
                 launchDrone(l.x, l.y, tp, true);
             }
         }
 
         for (const l of enemyLaunchers) {
-            l.cooldown--;
+            l.cooldown -= dt;
             if (l.cooldown <= 0) {
-                l.cooldown = 180;
+                l.cooldown = LAUNCHER_COOLDOWN_SECONDS;
                 const tp = l.targetPoint || { x: playerCapital.x, y: playerCapital.y };
                 launchDrone(l.x, l.y, tp, false);
             }
         }
     }
 
-    function updateDrones() {
+    function updateDrones(dt) {
         for (let i = drones.length - 1; i >= 0; i--) {
             const d = drones[i];
             const dx = d.targetPoint.x - d.x;
@@ -1053,13 +1095,13 @@
             const ny = dy / dist;
             d.vx = nx * DRONE_SPEED;
             d.vy = ny * DRONE_SPEED;
-            d.x += d.vx;
-            d.y += d.vy;
+            d.x += d.vx * dt;
+            d.y += d.vy * dt;
             d.angle = Math.atan2(d.vy, d.vx);
 
-            d.trail.push({ x: d.x, y: d.y, life: 20 });
+            d.trail.push({ x: d.x, y: d.y, life: 0.33 });
             if (d.trail.length > 24) d.trail.shift();
-            for (const t of d.trail) t.life--;
+            for (const t of d.trail) t.life -= dt;
 
             if (d.isPlayer) {
                 for (const aa of enemyAA) {
@@ -1067,7 +1109,7 @@
                     const dy2 = d.y - aa.y;
                     const dst = Math.sqrt(dx2 * dx2 + dy2 * dy2);
                     if (dst < AA_RANGE && aa.cooldown <= 0) {
-                        aa.cooldown = AA_COOLDOWN;
+                        aa.cooldown = AA_COOLDOWN_SECONDS;
                         spawnMissile(aa.x, aa.y, d);
                         break;
                     }
@@ -1078,7 +1120,7 @@
                     const dy2 = d.y - aa.y;
                     const dst = Math.sqrt(dx2 * dx2 + dy2 * dy2);
                     if (dst < AA_RANGE && aa.cooldown <= 0) {
-                        aa.cooldown = AA_COOLDOWN;
+                        aa.cooldown = AA_COOLDOWN_SECONDS;
                         spawnMissile(aa.x, aa.y, d);
                         break;
                     }
@@ -1086,8 +1128,8 @@
             }
         }
 
-        for (const aa of playerAA) if (aa.cooldown > 0) aa.cooldown--;
-        for (const aa of enemyAA) if (aa.cooldown > 0) aa.cooldown--;
+        for (const aa of playerAA) if (aa.cooldown > 0) aa.cooldown -= dt;
+        for (const aa of enemyAA) if (aa.cooldown > 0) aa.cooldown -= dt;
     }
 
     function applyDamageAtPoint(x, y, isPlayer) {
@@ -1168,14 +1210,14 @@
             target,
             radius: 4,
             trail: [],
-            life: 100
+            life: 1.67
         });
     }
 
-    function updateMissiles() {
+    function updateMissiles(dt) {
         for (let i = missiles.length - 1; i >= 0; i--) {
             const m = missiles[i];
-            m.life--;
+            m.life -= dt;
 
             if (!m.target || m.life <= 0) {
                 missiles.splice(i, 1);
@@ -1186,18 +1228,20 @@
             let diff = angle - m.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
-            if (diff > 0.05) diff = 0.05;
-            if (diff < -0.05) diff = -0.05;
+
+            const maxTurn = 3.0 * dt;
+            if (diff > maxTurn) diff = maxTurn;
+            if (diff < -maxTurn) diff = -maxTurn;
             m.angle += diff;
 
             m.vx = Math.cos(m.angle) * MISSILE_SPEED;
             m.vy = Math.sin(m.angle) * MISSILE_SPEED;
-            m.x += m.vx;
-            m.y += m.vy;
+            m.x += m.vx * dt;
+            m.y += m.vy * dt;
 
-            m.trail.push({ x: m.x, y: m.y, life: 15 });
+            m.trail.push({ x: m.x, y: m.y, life: 0.25 });
             if (m.trail.length > 16) m.trail.shift();
-            for (const t of m.trail) t.life--;
+            for (const t of m.trail) t.life -= dt;
 
             const dx = m.x - m.target.x;
             const dy = m.y - m.target.y;
@@ -1219,26 +1263,26 @@
         const count = 10;
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * Math.PI * 2;
-            const speed = 1.2 + Math.random() * 2;
+            const speed = 72 + Math.random() * 120;
             explosions.push({
                 x, y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                life: 24,
-                maxLife: 24,
+                life: 0.4,
+                maxLife: 0.4,
                 radius: 3 + Math.random() * 3
             });
         }
     }
 
-    function updateExplosions() {
+    function updateExplosions(dt) {
         for (let i = explosions.length - 1; i >= 0; i--) {
             const p = explosions[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vx *= 0.94;
-            p.vy *= 0.94;
-            p.life--;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vx *= Math.pow(0.94, dt * 60);
+            p.vy *= Math.pow(0.94, dt * 60);
+            p.life -= dt;
             if (p.life <= 0) explosions.splice(i, 1);
         }
     }
@@ -1247,10 +1291,11 @@
         const world = screenToWorld(sx, sy);
 
         const lm = document.getElementById('dvizLauncherMenu');
-        if (lm && lm.style.display !== 'none') return;
+        const am = document.getElementById('dvizAaMenu');
+        if ((lm && lm.style.display !== 'none') || (am && am.style.display !== 'none')) return;
 
         if (pendingLauncher) {
-            const l = buildPlayerLauncher(pendingLauncher.x, pendingLauncher.y, world);
+            buildPlayerLauncher(pendingLauncher.x, pendingLauncher.y, world);
             pendingLauncher = null;
             awaitingTargetPoint = false;
             buildMode = null;
@@ -1273,6 +1318,15 @@
             const dy = l.y - world.y;
             if (Math.sqrt(dx * dx + dy * dy) < 24) {
                 showLauncherMenu(l);
+                return;
+            }
+        }
+
+        for (const aa of playerAA) {
+            const dx = aa.x - world.x;
+            const dy = aa.y - world.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 24) {
+                showAaMenu(aa);
                 return;
             }
         }
@@ -1491,7 +1545,7 @@
     function drawDrones() {
         for (const d of drones) {
             for (const t of d.trail) {
-                const a = t.life / 20;
+                const a = t.life / 0.33;
                 if (a <= 0) continue;
                 ctx.fillStyle = 'rgba(0,0,0,' + (a * 0.25) + ')';
                 ctx.beginPath();
@@ -1532,7 +1586,7 @@
     function drawMissiles() {
         for (const m of missiles) {
             for (const t of m.trail) {
-                const a = t.life / 15;
+                const a = t.life / 0.25;
                 if (a <= 0) continue;
                 ctx.fillStyle = 'rgba(200,200,200,' + (a * 0.5) + ')';
                 ctx.beginPath();
@@ -1564,10 +1618,10 @@
         }
     }
 
-    function loop() {
+    function loop(now) {
         animationId = requestAnimationFrame(loop);
         try {
-            update();
+            update(now);
             draw();
         } catch(e) {
             console.warn('[Dviz] loop error:', e);
@@ -1599,10 +1653,6 @@
         if (el) el.style.display = 'flex';
     }
 
-    // ============================================
-    // INIT / DESTROY
-    // ============================================
-
     function init() {
         try {
             container = document.getElementById('gameCenterGameContainer');
@@ -1613,7 +1663,8 @@
             const ok = buildUI();
             if (!ok) return false;
             initialized = true;
-            loop();
+            lastFrameTime = 0;
+            loop(performance.now());
             return true;
         } catch(e) {
             console.warn('[Dviz] init error:', e);
