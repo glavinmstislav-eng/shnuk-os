@@ -395,7 +395,8 @@
         var params = new URLSearchParams(window.location.search);
         var token = params.get('t');
         var cooopParam = params.get('cooop');
-        if ((!token || !token.startsWith('shnuk_')) && !cooopParam) {
+        var cooopHash = (location.hash && location.hash.indexOf('#cooop=') === 0);
+        if ((!token || !token.startsWith('shnuk_')) && !cooopParam && !cooopHash) {
             document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
             return;
         }
@@ -404,6 +405,7 @@
                 if (window.history && window.history.replaceState) {
                     var cleanUrl = window.location.pathname;
                     if (cooopParam) cleanUrl += '?cooop=' + encodeURIComponent(cooopParam);
+                    if (cooopHash) cleanUrl += location.hash;
                     window.history.replaceState(null, '', cleanUrl);
                 }
             } catch(e) {}

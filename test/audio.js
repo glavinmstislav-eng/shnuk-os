@@ -11,6 +11,8 @@
     let isSeeking = false;
     let isDraggingSlider = false;
 
+    const FONT_MAIN = "'TTPaplane', monospace";
+
     function warn() {
         try { console.warn.apply(console, ['[Audio]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
     }
@@ -145,6 +147,119 @@
         return canvas.toDataURL('image/png');
     }
 
+    // ============================================
+    // ВОЛНА
+    // ============================================
+
+    // Создаём штук 5 синусоид-линий под прогрессом. Каждая чуть смещена
+    // по фазе — получается «дышащая» волна, которая плавно движется.
+    function createWaveLayer(container) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'audio-wave-canvas';
+        canvas.width = 480;
+        canvas.height = 60;
+        canvas.style.cssText = 'position:absolute;left:0;bottom:0;width:100%;height:60px;pointer-events:none;';
+        container.appendChild(canvas);
+        return canvas;
+    }
+
+    function initWaveAnimation(canvas) {
+        const ctx = canvas.getContext('2d');
+        let animId = null;
+        let startTime = performance.now();
+
+        let targetOpacity = 0;
+        let currentOpacity = 0;
+
+        function getAccent() {
+            const style = getComputedStyle(document.documentElement);
+            return style.getPropertyValue('--accent').trim() || '#cc0000';
+        }
+
+        function hexToRgb(hex) {
+            hex = hex.replace('#', '');
+            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+            const n = parseInt(hex, 16);
+            if (isNaN(n)) return { r: 204, g: 0, b: 0 };
+            return {
+                r: (n >> 16) & 255,
+                g: (n >> 8) & 255,
+                b: n & 255
+            };
+        }
+
+        function draw() {
+            animId = requestAnimationFrame(draw);
+
+            // Плавно подтягиваем opacity
+            currentOpacity += (targetOpacity - currentOpacity) * 0.08;
+            if (Math.abs(currentOpacity - targetOpacity) < 0.005) {
+                currentOpacity = targetOpacity;
+            }
+
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (currentOpacity < 0.01 && targetOpacity === 0) return;
+
+            const t = (performance.now() - startTime) / 1000;
+            const accent = hexToRgb(getAccent());
+
+            // Рисуем 3 слоя волны с разной амплитудой и скоростью
+            const layers = [
+                { amp: h * 0.18, freq: 0.035, speed: 1.4, opacity: 0.6, phase: 0 },
+                { amp: h * 0.24, freq: 0.028, speed: 1.1, opacity: 0.4, phase: 1.6 },
+                { amp: h * 0.30, freq: 0.022, speed: 0.9, opacity: 0.25, phase: 3.1 }
+            ];
+
+            const centerY = h / 2;
+
+            layers.forEach(function(layer, i) {
+                ctx.beginPath();
+                const baseOpacity = layer.opacity * currentOpacity;
+
+                for (let x = 0; x <= w; x += 2) {
+                    // Две бегущие волны с разной частотой
+                    const wave1 = Math.sin((x + t * 60 * layer.speed) * layer.freq);
+                    const wave2 = Math.sin((x - t * 40 * layer.speed) * layer.freq * 1.7 + layer.phase) * 0.5;
+                    const y = centerY + (wave1 + wave2) * layer.amp;
+
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+
+                ctx.strokeStyle = 'rgba(' + accent.r + ',' + accent.g + ',' + accent.b + ',' + baseOpacity + ')';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            });
+        }
+
+        draw();
+
+        return {
+            setActive: function(active) {
+                targetOpacity = active ? 1 : 0;
+            },
+            destroy: function() {
+                if (animId) cancelAnimationFrame(animId);
+                animId = null;
+            },
+            restartTime: function() {
+                startTime = performance.now();
+            }
+        };
+    }
+
+    // ============================================
+    // UI
+    // ============================================
+
     function createUI() {
         if (document.getElementById('audioApp')) {
             document.getElementById('audioApp').remove();
@@ -169,7 +284,7 @@
             z-index: 100050;
             display: flex;
             flex-direction: column;
-            font-family: 'TTPaplane', monospace;
+            font-family: ${FONT_MAIN};
             color: #1a1a1a;
             opacity: 0;
             animation: audioFadeIn 0.3s ease forwards;
@@ -191,7 +306,7 @@
                 }
 
                 #audioApp, #audioApp * {
-                    font-family: 'TTPaplane', monospace !important;
+                    font-family: ${FONT_MAIN} !important;
                 }
 
                 .audio-header {
@@ -217,7 +332,7 @@
                     font-size: 16px;
                     padding: 4px 12px;
                     cursor: pointer;
-                    font-family: 'TTPaplane', monospace;
+                    font-family: ${FONT_MAIN};
                     transition: all 0.2s ease;
                 }
                 .audio-close-btn:hover {
@@ -235,6 +350,8 @@
                     box-sizing: border-box;
                     background: #ffffff;
                     gap: 20px;
+                    min-height: 0;
+                    overflow: hidden;
                 }
 
                 .audio-cover-wrap {
@@ -275,12 +392,23 @@
                 .audio-slider-wrap {
                     width: 100%;
                     max-width: 480px;
-                    padding: 20px 0 6px;
+                    padding: 30px 0 6px;
                     box-sizing: border-box;
                     position: relative;
                     user-select: none;
                     -webkit-user-select: none;
                     touch-action: none;
+                    overflow: visible;
+                }
+
+                .audio-wave-canvas {
+                    position: absolute;
+                    left: 0;
+                    bottom: 0;
+                    width: 100%;
+                    height: 60px;
+                    pointer-events: none;
+                    z-index: 0;
                 }
 
                 .audio-slider-track {
@@ -291,6 +419,7 @@
                     cursor: pointer;
                     touch-action: none;
                     box-sizing: border-box;
+                    z-index: 2;
                 }
                 .audio-slider-track::before {
                     content: '';
@@ -303,6 +432,7 @@
                     background: #e8e8e8;
                     border: 1px solid #d0d0d0;
                     box-sizing: border-box;
+                    z-index: 1;
                 }
 
                 .audio-slider-progress {
@@ -317,8 +447,9 @@
                     transition: none;
                     box-sizing: border-box;
                     pointer-events: none;
+                    z-index: 2;
                 }
-                .audio-slider-progress.wave-active::before {
+                .audio-slider-progress::before {
                     content: '';
                     position: absolute;
                     top: 0;
@@ -328,8 +459,13 @@
                     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><polyline points='0,7 8,2 16,12 24,2 32,7' fill='none' stroke='rgba(255,255,255,0.9)' stroke-width='1.6' stroke-linejoin='round'/></svg>");
                     background-repeat: repeat-x;
                     background-size: 32px 14px;
-                    animation: waveform-shift 0.8s linear infinite;
+                    opacity: 0;
+                    transition: opacity 0.6s ease;
                     pointer-events: none;
+                }
+                .audio-slider-progress.wave-active::before {
+                    opacity: 1;
+                    animation: waveform-shift 0.8s linear infinite;
                 }
 
                 .audio-slider-knob {
@@ -344,9 +480,14 @@
                     transform: translate(-50%, -50%);
                     box-sizing: border-box;
                     pointer-events: none;
+                    z-index: 3;
+                    transition: box-shadow 0.3s ease;
                 }
                 .audio-slider-knob.spinning {
                     animation: knob-spin 1.2s linear infinite;
+                }
+                .audio-slider-knob.playing {
+                    box-shadow: 0 0 0 4px rgba(204, 0, 0, 0.15), 0 2px 8px rgba(0,0,0,0.25);
                 }
 
                 .audio-time-row {
@@ -367,7 +508,7 @@
                     border: none;
                     color: #ffffff;
                     cursor: pointer;
-                    font-family: 'TTPaplane', monospace;
+                    font-family: ${FONT_MAIN};
                     font-size: 22px;
                     display: flex;
                     align-items: center;
@@ -391,6 +532,8 @@
                     .audio-title { font-size: 16px; }
                     .audio-play-btn { width: 56px; height: 56px; }
                     .audio-slider-knob { width: 24px; height: 24px; }
+                    .audio-slider-wrap { padding: 24px 0 6px; }
+                    .audio-wave-canvas { height: 50px; }
                 }
             `;
             document.head.appendChild(style);
@@ -422,6 +565,10 @@
         const sliderWrap = document.createElement('div');
         sliderWrap.className = 'audio-slider-wrap';
         sliderWrap.id = 'audioSliderWrap';
+
+        // Волна под слайдером
+        const waveCanvas = createWaveLayer(sliderWrap);
+        const wave = initWaveAnimation(waveCanvas);
 
         const track = document.createElement('div');
         track.className = 'audio-slider-track';
@@ -536,18 +683,26 @@
             setPlayIcon(false);
             progress.classList.remove('wave-active');
             knob.classList.remove('spinning');
+            knob.classList.remove('playing');
+            wave.setActive(false);
         });
 
         audioEl.addEventListener('play', function() {
             setPlayIcon(true);
+            // Плавное включение волны
+            wave.setActive(true);
+            // Рисунок внутри прогресса — плавное появление через CSS
             progress.classList.add('wave-active');
             knob.classList.add('spinning');
+            knob.classList.add('playing');
         });
 
         audioEl.addEventListener('pause', function() {
             setPlayIcon(false);
+            wave.setActive(false);
             progress.classList.remove('wave-active');
             knob.classList.remove('spinning');
+            knob.classList.remove('playing');
         });
 
         playBtn.addEventListener('click', togglePlay);
@@ -644,13 +799,22 @@
             }
         }
 
+        // При уничтожении окна — уничтожаем анимацию
+        app.__waveDestroy = function() {
+            wave.destroy();
+        };
+
         updateSliderVisual(0);
     }
 
     window.AudioPlayer = {
         open: openAudio,
         close: closeAudio,
-        destroy: destroy
+        destroy: function() {
+            const el = document.getElementById('audioApp');
+            if (el && el.__waveDestroy) el.__waveDestroy();
+            destroy();
+        }
     };
     window.audioInit = function(fileData) { openAudio(fileData); };
     window.audio = { open: openAudio, destroy: destroy };

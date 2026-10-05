@@ -22,9 +22,9 @@
         vx: 0,
         vy: 0,
         angle: -Math.PI / 2,
-        speed: 3.4,
-        maxSpeed: 5.6,
-        turnRate: 0.06,
+        speed: 6.8,
+        maxSpeed: 11.2,
+        turnRate: 0.12,
         size: 18
     };
 
@@ -76,6 +76,10 @@
     function setBest(v) {
         try { localStorage.setItem(BEST_KEY, String(v)); } catch(e) {}
     }
+
+    // ============================================
+    // UI
+    // ============================================
 
     function buildUI() {
         if (!container) return false;
@@ -248,6 +252,10 @@
         resizeCanvas();
     }
 
+    // ============================================
+    // ИГРА
+    // ============================================
+
     function startGame() {
         const startScreen = document.getElementById('mpStart');
         if (startScreen) startScreen.style.display = 'none';
@@ -260,7 +268,7 @@
         plane.vx = 0;
         plane.vy = 0;
         plane.angle = -Math.PI / 2;
-        plane.speed = 3.4;
+        plane.speed = 6.8;
 
         camera.x = plane.x - W / 2;
         camera.y = plane.y - H / 2;
@@ -317,7 +325,7 @@
         y = Math.max(20, Math.min(worldH - 20, y));
 
         const angle = Math.atan2(plane.y - y, plane.x - x);
-        const speed = 1.6 + Math.random() * 1.2;
+        const speed = 3.2 + Math.random() * 2.4;
 
         missiles.push({
             x, y,
@@ -325,7 +333,7 @@
             vy: Math.sin(angle) * speed,
             angle,
             speed,
-            turnRate: 0.022 + Math.random() * 0.012,
+            turnRate: 0.044 + Math.random() * 0.024,
             life: 1800,
             radius: 8,
             trail: []
@@ -485,7 +493,7 @@
             plane.speed += (targetSpeed - plane.speed) * 0.06 * frameFactor;
         } else {
             plane.speed += (plane.speed * 0.7 - plane.speed) * 0.05 * frameFactor;
-            if (plane.speed < 1.6) plane.speed = 1.6;
+            if (plane.speed < 3.2) plane.speed = 3.2;
         }
 
         plane.vx = Math.cos(plane.angle) * plane.speed;
@@ -545,6 +553,10 @@
             updateHud();
         }
     }
+
+    // ============================================
+    // ОТРИСОВКА
+    // ============================================
 
     function draw() {
         if (!ctx) return;
@@ -718,6 +730,10 @@
         }
     }
 
+    // ============================================
+    // ВВОД — Pointer Events
+    // ============================================
+
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -769,6 +785,7 @@
         if (e.cancelable) e.preventDefault();
     }
 
+    // Fallback для браузеров без Pointer Events
     function onTouchStart(e) {
         if (!canvas) return;
         if (gameOver || !gameStarted) return;
@@ -911,6 +928,10 @@
         const el = document.getElementById('mpGameOver');
         if (el) el.style.display = 'flex';
     }
+
+    // ============================================
+    // INIT / DESTROY
+    // ============================================
 
     function init() {
         try {
