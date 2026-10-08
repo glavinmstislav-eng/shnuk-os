@@ -19,29 +19,21 @@
     let sourceNode = null;
     let frequencyData = null;
 
-    // История уровней громкости для воспроизведения
     let levelsHistory = [];
     let lastLevelSampleTime = 0;
     const LEVEL_SAMPLE_INTERVAL = 50;
     const MAX_HISTORY_SECONDS = 600;
 
-    // Позиция просмотра
     let viewPosition = 0;
     let isScrubbing = false;
 
-    // Текущий уровень
     let liveLevel = 0;
 
-    // Canvas
     let canvas = null;
     let canvasCtx = null;
     let animId = null;
 
     const FONT_MAIN = "'TTPaplane', monospace";
-
-    // ============================================
-    // АНИМАЦИИ (как в настройках)
-    // ============================================
 
     function animationEnabled() {
         return window.L && typeof window.L.blurIn === 'function' && typeof window.L.blurOut === 'function';
@@ -60,10 +52,6 @@
         el.style.opacity = '0';
         return new Promise(function(resolve) { setTimeout(resolve, 340); });
     }
-
-    // ============================================
-    // ОТКРЫТИЕ / ЗАКРЫТИЕ
-    // ============================================
 
     function openRecorder() {
         if (window.LiveBar && typeof window.LiveBar.resume === 'function') {
@@ -85,8 +73,6 @@
 
         isOpen = false;
 
-        // Если идёт запись или пауза — не трогаем ни MediaRecorder,
-        // ни LiveBar. Просто анимированно скрываем окно.
         const recordingActive = isRecording;
 
         if (animId) {
@@ -101,7 +87,6 @@
             return;
         }
 
-        // Полное закрытие: остановка записи, стрима, анализа, LiveBar
         if (window.LiveBar && typeof window.LiveBar.suspend === 'function') {
             window.LiveBar.suspend('recorder');
         }
@@ -308,7 +293,6 @@
         if (window.LiveBar) window.LiveBar.clear();
     }
 
-    // Пауза без сохранения: рекордер остаётся жив, можно продолжить
     function pauseRecording() {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             try { mediaRecorder.pause(); } catch(e) {}
@@ -319,7 +303,6 @@
         const timerEl = document.getElementById('recorderTimer');
         if (timerEl) timerEl.textContent = formatTime(recordingElapsed);
 
-        // Live bar не сбрасываем — показываем состояние паузы
         if (window.LiveBar) {
             window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: true });
         }
@@ -367,6 +350,39 @@
         } catch(e) {
             if (window.Win && window.Win.notify) {
                 window.Win.notify('Не удалось продолжить запись', { type: 'error' });
+            }
+        }
+    }
+
+    async function discardRecording() {
+        // Останавливаем рекордер, если он ещё активен
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            try { mediaRecorder.stop(); } catch(e) {}
+        }
+        mediaRecorder = null;
+
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+        chunks = [];
+        levelsHistory = [];
+        recordingElapsed = 0;
+        viewPosition = 0;
+        liveLevel = 0;
+        isRecording = false;
+        isPaused = false;
+
+        // Перезапускаем анализ, чтобы индикатор уровня не завис
+        if (stream && stream.active) {
+            if (!analyser) startAudioAnalysis(stream);
+        }
+
+        if (window.LiveBar) window.LiveBar.clear();
+
+        updateUI();
+        if (canvas) {
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                drawWaveform();
             }
         }
     }
@@ -469,6 +485,7 @@
         const status = document.getElementById('recorderStatus');
         const timer = document.getElementById('recorderTimer');
         const saveBtn = document.getElementById('recorderSaveBtn');
+        const deleteBtn = document.getElementById('recorderDeleteBtn');
 
         if (!btn) return;
 
@@ -480,18 +497,21 @@
             btn.style.color = 'var(--text-on-accent)';
             if (status) status.textContent = 'Идёт запись';
             if (saveBtn) saveBtn.style.display = 'none';
+            if (deleteBtn) deleteBtn.style.display = 'none';
         } else if (isRecording && isPaused) {
             btn.textContent = 'ПРОДОЛЖИТЬ';
             btn.style.background = '#4CAF50';
             btn.style.color = '#ffffff';
             if (status) status.textContent = 'Пауза';
             if (saveBtn) saveBtn.style.display = 'inline-block';
+            if (deleteBtn) deleteBtn.style.display = 'inline-block';
         } else if (hasData) {
             btn.textContent = 'ПРОДОЛЖИТЬ';
             btn.style.background = '#4CAF50';
             btn.style.color = '#ffffff';
             if (status) status.textContent = 'Готово. Можно продолжить или сохранить';
             if (saveBtn) saveBtn.style.display = 'inline-block';
+            if (deleteBtn) deleteBtn.style.display = 'inline-block';
         } else {
             btn.textContent = 'НАЧАТЬ';
             btn.style.background = '#4CAF50';
@@ -499,16 +519,13 @@
             if (status) status.textContent = 'Готово к записи';
             if (timer) timer.textContent = '00:00.0';
             if (saveBtn) saveBtn.style.display = 'none';
+            if (deleteBtn) deleteBtn.style.display = 'none';
         }
 
         if (timer && isRecording) {
             timer.textContent = formatTime(recordingElapsed);
         }
     }
-
-    // ============================================
-    // ОТРИСОВКА
-    // ============================================
 
     function startDrawLoop() {
         if (animId) return;
@@ -716,10 +733,6 @@
         if (timer) timer.textContent = formatTime(viewPosition);
     }
 
-    // ============================================
-    // UI
-    // ============================================
-
     function createUI() {
         if (document.getElementById('recorderApp')) {
             document.getElementById('recorderApp').style.display = 'flex';
@@ -906,6 +919,23 @@
                     background: #4CAF50;
                     color: #ffffff;
                 }
+                .recorder-delete-btn {
+                    padding: 14px 26px;
+                    border: 2px solid #cc0000;
+                    background: none;
+                    color: #cc0000;
+                    cursor: pointer;
+                    font-family: ${FONT_MAIN};
+                    font-size: 14px;
+                    font-weight: 600;
+                    transition: all 0.2s;
+                    display: none;
+                    touch-action: manipulation;
+                }
+                .recorder-delete-btn:hover {
+                    background: #cc0000;
+                    color: #ffffff;
+                }
 
                 @media (max-width: 500px) {
                     .recorder-header { padding: 12px 16px; }
@@ -914,6 +944,7 @@
                     .recorder-timer { font-size: 34px; }
                     .recorder-main-btn { padding: 12px 28px; font-size: 14px; }
                     .recorder-save-btn { padding: 12px 18px; font-size: 12px; }
+                    .recorder-delete-btn { padding: 12px 18px; font-size: 12px; }
                 }
             `;
             document.head.appendChild(style);
@@ -946,6 +977,7 @@
             <div class="recorder-controls">
                 <button class="recorder-main-btn" id="recorderMainBtn">НАЧАТЬ</button>
                 <button class="recorder-save-btn" id="recorderSaveBtn">СОХРАНИТЬ</button>
+                <button class="recorder-delete-btn" id="recorderDeleteBtn">УДАЛИТЬ</button>
             </div>
         `;
         content.appendChild(controlsPanel);
@@ -978,9 +1010,27 @@
 
         document.getElementById('recorderSaveBtn').addEventListener('click', saveRecording);
 
+        document.getElementById('recorderDeleteBtn').addEventListener('click', function() {
+            const doDelete = function() {
+                discardRecording();
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Запись удалена', { type: 'success' });
+                }
+            };
+            if (window.Win && window.Win.confirm) {
+                window.Win.confirm('Удалить запись?', {
+                    title: 'Удаление',
+                    okText: 'Удалить',
+                    cancelText: 'Отмена',
+                    danger: true
+                }).then(function(ok) { if (ok) doDelete(); });
+            } else {
+                if (confirm('Удалить запись?')) doDelete();
+            }
+        });
+
         document.addEventListener('keydown', onKeyDown);
 
-        // Анимация появления — как в настройках
         blurIn(app);
 
         startDrawLoop();

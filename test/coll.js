@@ -147,14 +147,20 @@
         wrap.className = 'coll-element';
         wrap.dataset.elementId = el.id;
         wrap.style.fontFamily = font;
+        // Явно — блочный элемент на всю ширину, не даём схлопываться и налезать
+        wrap.style.display = 'block';
+        wrap.style.width = '100%';
+        wrap.style.boxSizing = 'border-box';
+        wrap.style.minHeight = '1px';
+        wrap.style.clear = 'both';
 
         if (!isPreviewOnly) {
             wrap.style.position = 'relative';
             wrap.style.padding = '10px';
             wrap.style.border = '2px dashed transparent';
             wrap.style.transition = 'border-color 0.15s';
-            wrap.style.maxWidth = '100%';
-            wrap.style.overflow = 'hidden';
+            // Не обрезаем — иначе кнопки управления исчезают
+            wrap.style.overflow = 'visible';
             wrap.addEventListener('mouseenter', function() {
                 wrap.style.borderColor = 'var(--border-color)';
             });
@@ -199,7 +205,9 @@
 
         const inner = document.createElement('div');
         inner.style.fontFamily = font;
-        inner.style.maxWidth = '100%';
+        inner.style.width = '100%';
+        inner.style.boxSizing = 'border-box';
+        // Обрезаем только контент, а не сам контейнер с кнопками
         inner.style.overflow = 'hidden';
 
         switch (el.type) {
@@ -214,6 +222,7 @@
                 h.style.margin = '4px 0';
                 h.style.color = 'var(--text-primary)';
                 h.style.wordBreak = 'break-word';
+                h.style.whiteSpace = 'normal';
                 inner.appendChild(h);
                 break;
             }
@@ -226,6 +235,7 @@
                 p.style.margin = '4px 0';
                 p.style.color = 'var(--text-primary)';
                 p.style.wordBreak = 'break-word';
+                p.style.whiteSpace = 'pre-wrap';
                 inner.appendChild(p);
                 break;
             }
@@ -234,7 +244,7 @@
                 input.type = 'text';
                 input.placeholder = f.placeholder || '';
                 input.dataset.varName = f.varName || 'input1';
-                input.style.cssText = 'padding:10px 14px;border:2px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);font-family:' + font + ';font-size:14px;width:100%;max-width:320px;box-sizing:border-box;';
+                input.style.cssText = 'padding:10px 14px;border:2px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);font-family:' + font + ';font-size:14px;width:100%;max-width:100%;box-sizing:border-box;display:block;';
                 if (!isPreviewOnly) {
                     input.addEventListener('click', function(e) { e.stopPropagation(); selectElement(el.id); });
                 } else {
@@ -247,7 +257,7 @@
                 const out = document.createElement('div');
                 out.dataset.varName = f.varName || 'input1';
                 out.textContent = '· вывод ' + (f.varName || 'input1') + ' ·';
-                out.style.cssText = 'padding:10px 14px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;font-family:' + font + ';text-align:center;word-break:break-word;';
+                out.style.cssText = 'padding:10px 14px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;font-family:' + font + ';text-align:center;word-break:break-word;width:100%;box-sizing:border-box;display:block;';
                 if (!isPreviewOnly) {
                     out.addEventListener('click', function(e) { e.stopPropagation(); selectElement(el.id); });
                 } else {
@@ -260,20 +270,22 @@
                 const s = document.createElement('div');
                 s.style.height = (f.size || '20') + 'px';
                 s.style.background = 'transparent';
+                s.style.width = '100%';
+                s.style.display = 'block';
                 if (!isPreviewOnly) s.style.borderTop = '1px dashed var(--border-color)';
                 inner.appendChild(s);
                 break;
             }
             case 'image': {
                 const imgWrap = document.createElement('div');
-                imgWrap.style.cssText = 'display:block; max-width:100%; overflow:hidden;';
+                imgWrap.style.cssText = 'display:block; width:100%; box-sizing:border-box;';
                 if (f.align === 'center') imgWrap.style.textAlign = 'center';
                 else if (f.align === 'right') imgWrap.style.textAlign = 'right';
                 const img = document.createElement('img');
                 if (f.src) img.src = f.src;
                 else {
                     img.alt = 'Нет изображения';
-                    img.style.cssText = 'background:var(--bg-secondary);border:2px dashed var(--border-color);width:240px;height:160px;';
+                    img.style.cssText = 'background:var(--bg-secondary);border:2px dashed var(--border-color);width:100%;max-width:240px;height:auto;display:inline-block;';
                 }
                 img.style.maxWidth = '100%';
                 img.style.width = (f.width || '320') + 'px';
@@ -289,7 +301,7 @@
             }
             case 'video': {
                 const vidWrap = document.createElement('div');
-                vidWrap.style.cssText = 'display:block; max-width:100%; overflow:hidden;';
+                vidWrap.style.cssText = 'display:block; width:100%; box-sizing:border-box;';
                 if (f.src) {
                     const vid = document.createElement('video');
                     vid.src = f.src;
@@ -307,7 +319,7 @@
                 } else {
                     const ph = document.createElement('div');
                     ph.textContent = '· видео не выбрано ·';
-                    ph.style.cssText = 'padding:24px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;text-align:center;max-width:420px;';
+                    ph.style.cssText = 'padding:24px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;text-align:center;width:100%;box-sizing:border-box;';
                     vidWrap.appendChild(ph);
                 }
                 if (!isPreviewOnly) {
@@ -318,7 +330,7 @@
             }
             case 'slider': {
                 const sWrap = document.createElement('div');
-                sWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-width:100%;';
+                sWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;width:100%;box-sizing:border-box;';
                 const s = document.createElement('input');
                 s.type = 'range';
                 s.min = f.min || '0';
@@ -326,7 +338,7 @@
                 s.value = f.value || '50';
                 s.step = f.step || '1';
                 s.dataset.varName = f.varName || 'slider1';
-                s.style.cssText = 'width:100%;max-width:320px;accent-color:#cc0000;';
+                s.style.cssText = 'width:100%;accent-color:#cc0000;display:block;';
                 const val = document.createElement('div');
                 val.textContent = s.value;
                 val.style.cssText = 'font-size:12px;color:var(--text-muted);';
@@ -1032,7 +1044,8 @@
             '  font-family: ' + fontFamily + ';',
             '}',
             '#collRoot { max-width: 720px; margin: 0 auto; padding: 32px 20px; overflow: hidden; }',
-            '#collRoot * { max-width: 100%; }',
+            '#collRoot * { max-width: 100%; box-sizing: border-box; }',
+            '#collRoot > * { display: block; width: 100%; margin-bottom: 8px; }',
             '#collHeader { padding: 16px 24px; background: #f5f5f5; border-bottom: 2px solid #e0e0e0; font-weight: 700; text-align: center; }',
             '.coll-image img, .coll-video video { max-width: 100%; height: auto; display: block; }'
         ].join('\n');
@@ -1120,6 +1133,8 @@
             '    node.style.fontSize = f.size === "large" ? "24px" : (f.size === "medium" ? "18px" : "14px");',
             '    node.style.margin = "8px 0";',
             '    node.style.wordBreak = "break-word";',
+            '    node.style.display = "block";',
+            '    node.style.width = "100%";',
             '  } else if (el.type === "paragraph") {',
             '    node = document.createElement("p");',
             '    node.textContent = f.text || "";',
@@ -1127,27 +1142,33 @@
             '    node.style.lineHeight = "1.5";',
             '    node.style.margin = "8px 0";',
             '    node.style.wordBreak = "break-word";',
+            '    node.style.whiteSpace = "pre-wrap";',
+            '    node.style.display = "block";',
+            '    node.style.width = "100%";',
             '  } else if (el.type === "input") {',
             '    node = document.createElement("input");',
             '    node.type = "text";',
             '    node.placeholder = f.placeholder || "";',
             '    node.dataset.varName = f.varName || "input1";',
             '    node.dataset.collInput = "1";',
-            '    node.style.cssText = "padding:10px 14px;border:2px solid #e0e0e0;background:#fff;color:#1a1a1a;font-family:inherit;font-size:14px;width:100%;max-width:320px;box-sizing:border-box;margin:8px 0;";',
+            '    node.style.cssText = "padding:10px 14px;border:2px solid #e0e0e0;background:#fff;color:#1a1a1a;font-family:inherit;font-size:14px;width:100%;max-width:100%;box-sizing:border-box;margin:8px 0;display:block;";',
             '  } else if (el.type === "output") {',
             '    node = document.createElement("div");',
             '    node.dataset.varName = f.varName || "input1";',
             '    node.dataset.collOutput = "1";',
             '    node.textContent = "· вывод " + (f.varName || "input1") + " ·";',
-            '    node.style.cssText = "padding:10px 14px;background:#f5f5f5;border:2px dashed #ccc;color:#888;font-size:13px;text-align:center;margin:8px 0;word-break:break-word;";',
+            '    node.style.cssText = "padding:10px 14px;background:#f5f5f5;border:2px dashed #ccc;color:#888;font-size:13px;text-align:center;margin:8px 0;word-break:break-word;width:100%;box-sizing:border-box;display:block;";',
             '  } else if (el.type === "spacer") {',
             '    node = document.createElement("div");',
             '    node.style.height = (f.size || "20") + "px";',
+            '    node.style.width = "100%";',
+            '    node.style.display = "block";',
             '  } else if (el.type === "image") {',
             '    const wrap = document.createElement("div");',
             '    wrap.className = "coll-image";',
-            '    wrap.style.maxWidth = "100%";',
-            '    wrap.style.overflow = "hidden";',
+            '    wrap.style.width = "100%";',
+            '    wrap.style.boxSizing = "border-box";',
+            '    wrap.style.display = "block";',
             '    wrap.style.textAlign = f.align === "center" ? "center" : (f.align === "right" ? "right" : "left");',
             '    if (f.src) {',
             '      const img = document.createElement("img");',
@@ -1178,7 +1199,9 @@
             '    }',
             '  } else if (el.type === "slider") {',
             '    const wrap = document.createElement("div");',
-            '    wrap.style.maxWidth = "100%";',
+            '    wrap.style.width = "100%";',
+            '    wrap.style.boxSizing = "border-box";',
+            '    wrap.style.display = "block";',
             '    const s = document.createElement("input");',
             '    s.type = "range";',
             '    s.min = f.min || "0";',
@@ -1186,7 +1209,7 @@
             '    s.value = f.value || "50";',
             '    s.step = f.step || "1";',
             '    s.dataset.varName = f.varName || "slider1";',
-            '    s.style.cssText = "width:100%;max-width:320px;accent-color:#cc0000;";',
+            '    s.style.cssText = "width:100%;accent-color:#cc0000;display:block;";',
             '    const val = document.createElement("div");',
             '    val.textContent = s.value;',
             '    val.style.cssText = "font-size:12px;color:#888;";',
@@ -1670,15 +1693,32 @@
             }
             .coll-palette-name { font-size: 12px; font-weight: 600; }
 
-            .coll-center { background: var(--bg-primary); overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; min-height: 0; }
+            .coll-center {
+                background: var(--bg-primary);
+                overflow: auto;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                min-height: 0;
+                -webkit-overflow-scrolling: touch;
+            }
             .coll-preview-frame {
                 width: 100%; max-width: 640px; background: var(--bg-primary);
                 border: 3px solid var(--border-color); padding: 20px;
                 min-height: 400px; box-sizing: border-box; position: relative;
-                overflow: hidden;
+                /* Не обрезаем — дети могут иметь свои кнопки */
+                overflow: visible;
             }
             .coll-preview-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; text-align: center; max-width: 640px; width: 100%; }
-            .coll-element { position: relative; max-width: 100%; overflow: hidden; }
+            .coll-element {
+                position: relative;
+                display: block;
+                width: 100%;
+                box-sizing: border-box;
+                min-height: 1px;
+                clear: both;
+            }
 
             .coll-right { background: var(--bg-secondary); border-left: 2px solid var(--border-color); overflow-y: auto; padding: 12px; min-height: 0; }
             .coll-inspector-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 40px 12px; line-height: 1.6; }
@@ -1771,21 +1811,34 @@
             .coll-logic-btn.danger:hover { background: rgba(0,0,0,0.5); }
 
             @media (max-width: 700px) {
-                .coll-body { display: block; position: relative; }
-                .coll-left, .coll-center, .coll-right {
-                    display: none; width: 100%; height: 100%;
-                    border: none; position: absolute; top: 0; left: 0; box-sizing: border-box;
+                .coll-body {
+                    display: block;
+                    position: relative;
+                    flex: 1;
+                    min-height: 0;
                 }
-                .coll-root[data-mobile-panel="palette"] .coll-left { display: flex; }
-                .coll-root[data-mobile-panel="preview"] .coll-center { display: flex; }
+                .coll-left, .coll-center, .coll-right {
+                    display: none;
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                    position: absolute;
+                    top: 0; left: 0;
+                    box-sizing: border-box;
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                }
+                .coll-root[data-mobile-panel="palette"] .coll-left { display: flex; flex-direction: column; }
+                .coll-root[data-mobile-panel="preview"] .coll-center { display: block; padding: 12px; }
                 .coll-root[data-mobile-panel="inspector"] .coll-right { display: block; }
-                .coll-root[data-mobile-panel="logic"] .coll-center { display: flex; }
+                .coll-root[data-mobile-panel="logic"] .coll-center { display: block; padding: 12px; }
                 .coll-mobile-tabs { display: flex; }
                 .coll-pages-list { max-height: none; }
-                .coll-preview-frame { padding: 14px; min-height: 300px; }
+                .coll-preview-frame { padding: 12px; min-height: 300px; overflow: visible; }
                 .coll-installed-card { flex-direction: column; align-items: stretch; }
                 .coll-installed-actions { width: 100%; }
                 .coll-installed-actions .coll-btn { flex: 1; }
+                /* На мобиле убираем кнопки ▲▼ слева/снизу, чтобы не мешали, оставляем только ✕ и перемещение в инспекторе */
             }
         `;
         document.head.appendChild(style);

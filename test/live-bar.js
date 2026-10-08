@@ -32,9 +32,6 @@
     let clockRunning = false;
     let clockStartTime = 0;
 
-    // ============================================
-    // УВЕДОМЛЕНИЯ
-    // ============================================
     let notifications = [];
     let shadeEl = null;
     let shadeOpen = false;
@@ -181,10 +178,6 @@
         return type === 'stopwatch' || type === 'timer' || type === 'alarm';
     }
 
-    // ============================================
-    // SVG-ЧАСЫ
-    // ============================================
-
     function buildClockSvg() {
         const ns = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(ns, 'svg');
@@ -251,10 +244,6 @@
         if (clockAnimId) { cancelAnimationFrame(clockAnimId); clockAnimId = null; }
     }
 
-    // ============================================
-    // ПОЛОСКА ЗВУКОЗАПИСИ
-    // ============================================
-
     function startRecordingWave() {
         if (recordingWaveRunning) return;
         recordingWaveRunning = true;
@@ -312,10 +301,6 @@
         ctx.globalAlpha = 1;
     }
 
-    // ============================================
-    // ЖИЗНЕННЫЙ ЦИКЛ
-    // ============================================
-
     function setCssVar(h) {
         document.documentElement.style.setProperty('--livebar-h', h + 'px');
     }
@@ -358,7 +343,7 @@
             font-family: ${BAR_FONT};
             pointer-events: auto;
             touch-action: none;
-            transition: height .45s cubic-bezier(.22,1,.36,1), background .45s cubic-bezier(.22,1,.36,1), color .45s cubic-bezier(.22,1,.36,1), align-items .45s cubic-bezier(.22,1,.36,1), padding .45s cubic-bezier(.22,1,.36,1);
+            transition: height .45s cubic-bezier(.22,1,.36,1), background .45s cubic-bezier(.22,1,.36,1), color .45s cubic-bezier(.22,1,.36,1), align-items .45s cubic-bezier(.22,1,.36,1), padding .45s cubic-bezier(.22,1,.36,1), opacity .25s ease;
         `;
 
         leftSlot = document.createElement('div');
@@ -380,6 +365,7 @@
             font-size: 15px; font-weight: 600; letter-spacing: .5px;
             flex-shrink: 0;
             transition: font-size .35s cubic-bezier(.22,1,.36,1);
+            cursor: pointer;
         `;
         rightSlot.textContent = formatClock();
 
@@ -389,6 +375,11 @@
 
         applyBarColors();
         leftSlot.addEventListener('click', onLeftClick);
+        rightSlot.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (shadeOpen) closeShade();
+            else openShade();
+        });
 
         bindShadeGestures();
 
@@ -500,6 +491,7 @@
             applyBarColors();
             setCssVar(BAR_HEIGHT);
             startClock();
+            updateShadeActivity();
             return;
         }
 
@@ -525,6 +517,7 @@
         applyBarColors();
         setCssVar(BAR_HEIGHT_ACTIVE);
         startClock();
+        updateShadeActivity();
     }
 
     function setActivity(data) {
@@ -558,6 +551,8 @@
         } else {
             if (leftSlot) leftSlot.textContent = buildLeftContent(currentActivity);
         }
+        // Обновляем значение в шторке без полной перерисовки
+        updateShadeActivity();
     }
 
     function clearActivity() { applyActivity(null); }
@@ -607,10 +602,6 @@
     function isActive() { return !!currentActivity; }
     function getActivity() { return currentActivity; }
     function isAnonMode() { return anonMode; }
-
-    // ============================================
-    // УВЕДОМЛЕНИЯ — модель
-    // ============================================
 
     function loadNotifications() {
         try {
@@ -721,8 +712,6 @@
         if (shadeOpen) closeShade();
         if (!n) return;
 
-        // Помечаем, что приложение открыто из уведомления — при закрытии
-        // оно улетит вниз (как из меню приложений), а не к иконке.
         window.__appOpenedFrom = 'notification';
 
         if (n.appId) {
@@ -745,12 +734,6 @@
         }
     }
 
-    // ============================================
-    // ШТОРКА УВЕДОМЛЕНИЙ
-    // ============================================
-
-    // Псевдо-фон: полупрозрачный с размытием. Уведомления — непрозрачные.
-    // Открытие/закрытие — через filter: blur() + opacity (без translateY).
     function getShadeBackdrop() {
         const theme = getTheme();
         if (theme === 'evening') {
@@ -777,7 +760,6 @@
         if (shadeEl) return shadeEl;
 
         const bd = getShadeBackdrop();
-        const it = getShadeItemColors();
 
         shadeEl = document.createElement('div');
         shadeEl.id = 'liveBarShade';
@@ -788,7 +770,7 @@
             background: ${bd.bg};
             -webkit-backdrop-filter: blur(${bd.blur});
             backdrop-filter: blur(${bd.blur});
-            z-index: 2147483645;
+            z-index: 2147483647;
             display: flex;
             flex-direction: column;
             font-family: ${BAR_FONT};
@@ -800,6 +782,7 @@
             overflow: hidden;
             color: ${bd.text};
             pointer-events: none;
+            padding-top: ${BAR_HEIGHT}px;
         `;
 
         const header = document.createElement('div');
@@ -810,7 +793,7 @@
             justify-content: space-between;
             align-items: center;
             background: transparent;
-            border-bottom: 2px solid ${bd.border};
+            border-bottom: none;
             flex-shrink: 0;
             box-sizing: border-box;
             min-height: 52px;
@@ -881,72 +864,11 @@
         body.innerHTML = '';
 
         const it = getShadeItemColors();
-        const bd = getShadeBackdrop();
 
-        // 1) Активность live bar — если есть
         if (currentActivity) {
-            const act = document.createElement('div');
-            act.className = 'lb-shade-activity';
-            act.style.cssText = `
-                padding: 14px 16px;
-                border: 2px solid #cc0000;
-                background: ${it.bg};
-                color: ${it.text};
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                flex-shrink: 0;
-            `;
-
-            const clock = buildClockSvg();
-            if (currentActivity.type === 'recording') {
-                const c = document.createElement('canvas');
-                c.style.cssText = 'width:48px;height:18px;flex-shrink:0;';
-                act.appendChild(c);
-            } else if (isClockType(currentActivity.type)) {
-                act.appendChild(clock.svg);
-            }
-
-            const text = document.createElement('div');
-            text.style.cssText = 'flex:1;min-width:0;';
-            const head = document.createElement('div');
-            head.textContent = T('Активное действие');
-            head.style.cssText = 'font-size: 11px; color: #cc0000; letter-spacing: .6px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px;';
-            text.appendChild(head);
-
-            const valueEl = document.createElement('div');
-            valueEl.className = 'lb-shade-activity-value';
-            if (currentActivity.type === 'recording') {
-                const p = currentActivity.payload || {};
-                const paused = p.paused ? ' · ' + T('ПАУЗА') : '';
-                valueEl.textContent = T('Запись') + ' ' + formatSecondsTenths(p.elapsed || 0) + paused;
-            } else if (isClockType(currentActivity.type)) {
-                valueEl.textContent = buildClockLabelText(currentActivity);
-            } else {
-                valueEl.textContent = buildLeftContent(currentActivity);
-            }
-            valueEl.style.cssText = 'font-size: 15px; font-weight: 600; overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            text.appendChild(valueEl);
-
-            act.appendChild(text);
-
-            if (currentActivity.appId) {
-                act.style.cursor = 'pointer';
-                act.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const id = currentActivity.appId;
-                    if (typeof window[id + 'Init'] === 'function') {
-                        window.__appOpenedFrom = 'notification';
-                        window[id + 'Init']();
-                    }
-                    closeShade();
-                });
-            }
-
-            body.appendChild(act);
+            body.appendChild(buildShadeActivityNode(currentActivity, it));
         }
 
-        // 2) Пустое состояние
         if (notifications.length === 0) {
             if (!currentActivity) {
                 const empty = document.createElement('div');
@@ -957,10 +879,186 @@
             return;
         }
 
-        // 3) Список уведомлений — непрозрачные
         notifications.forEach(function(n) {
             body.appendChild(buildNotificationItem(n, it));
         });
+    }
+
+    // Строит узел активного действия, повторяя структуру обычного уведомления:
+    // [иконка/плейсхолдер 36px] [gap 12px] [блок с заголовком и значением]
+    function buildShadeActivityNode(activity, it) {
+        if (!it) it = getShadeItemColors();
+
+        const item = document.createElement('div');
+        item.className = 'lb-shade-activity';
+        item.id = 'lbShadeActivity';
+        item.style.cssText = `
+            padding: 14px 16px;
+            background: ${it.bg};
+            border: 2px solid #cc0000;
+            color: ${it.text};
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            flex-shrink: 0;
+        `;
+
+        // Левая колонка — как иконка в уведомлении: фиксированные 36x36
+        const leading = document.createElement('div');
+        leading.style.cssText = 'width:36px;height:36px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;';
+
+        if (activity.type === 'recording') {
+            const c = document.createElement('canvas');
+            c.style.cssText = 'width:36px;height:18px;display:block;';
+            leading.appendChild(c);
+            // Запуск анимации волны внутри шторки (независимо от полосы)
+            startShadeRecordingWave(c);
+        } else if (isClockType(activity.type)) {
+            const clock = buildClockSvg();
+            leading.appendChild(clock.svg);
+        } else {
+            // Плейсхолдер — буква "A" (activity) на красном фоне, как у уведомлений
+            const ph = document.createElement('div');
+            ph.textContent = 'A';
+            ph.style.cssText = 'width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:#cc0000;color:#ffffff;font-weight:700;font-size:14px;';
+            leading.appendChild(ph);
+        }
+
+        item.appendChild(leading);
+
+        // Правая колонка — заголовок-метка и значение
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0;';
+
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px;';
+
+        const nameEl = document.createElement('div');
+        nameEl.textContent = T('Активное действие');
+        nameEl.style.cssText = 'font-size: 14px; font-weight: 700; color: #cc0000; letter-spacing: .4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+        head.appendChild(nameEl);
+
+        info.appendChild(head);
+
+        const valueEl = document.createElement('div');
+        valueEl.id = 'lbShadeActivityValue';
+        valueEl.textContent = buildShadeActivityValueText(activity);
+        valueEl.style.cssText = 'font-size: 13px; color: ' + it.text + '; line-height: 1.4; word-break: break-word;';
+        info.appendChild(valueEl);
+
+        item.appendChild(info);
+
+        // Клик по активности — открывает приложение
+        if (activity.appId) {
+            item.style.cursor = 'pointer';
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = activity.appId;
+                if (typeof window[id + 'Init'] === 'function') {
+                    window.__openedFrom = 'notification';
+                    window[id + 'Init']();
+                }
+                closeShade();
+            });
+        }
+
+        return item;
+    }
+
+    function buildShadeActivityValueText(activity) {
+        if (!activity) return '';
+        if (activity.type === 'recording') {
+            const p = activity.payload || {};
+            const paused = p.paused ? ' · ' + T('ПАУЗА') : '';
+            return T('Запись') + ' ' + formatSecondsTenths(p.elapsed || 0) + paused;
+        }
+        if (isClockType(activity.type)) {
+            return buildClockLabelText(activity);
+        }
+        return buildLeftContent(activity);
+    }
+
+    // Обновляет только значение в шторке (без пересборки всего DOM)
+    function updateShadeActivity() {
+        if (!shadeEl || !shadeOpen) return;
+        const existing = document.getElementById('lbShadeActivity');
+        if (!existing) {
+            // Если активность появилась — пересоберём шторку
+            if (currentActivity) renderShade();
+            return;
+        }
+        if (!currentActivity) {
+            // Активности больше нет — убираем узел
+            if (existing.parentNode) existing.parentNode.removeChild(existing);
+            return;
+        }
+        const valueEl = document.getElementById('lbShadeActivityValue');
+        if (valueEl) {
+            valueEl.textContent = buildShadeActivityValueText(currentActivity);
+        }
+    }
+
+    // Анимация волны записи внутри шторки — отдельный цикл, не связанный с полосой
+    let shadeWaveAnimId = null;
+    let shadeWaveRunning = false;
+    let shadeWaveStart = 0;
+    let shadeWaveCanvas = null;
+    let shadeWaveCtx = null;
+
+    function startShadeRecordingWave(canvas) {
+        stopShadeRecordingWave();
+        shadeWaveCanvas = canvas;
+        shadeWaveCtx = canvas.getContext('2d');
+        shadeWaveRunning = true;
+        shadeWaveStart = performance.now();
+        function loop(now) {
+            if (!shadeWaveRunning) return;
+            drawShadeRecordingWave(now);
+            shadeWaveAnimId = requestAnimationFrame(loop);
+        }
+        shadeWaveAnimId = requestAnimationFrame(loop);
+    }
+
+    function stopShadeRecordingWave() {
+        shadeWaveRunning = false;
+        if (shadeWaveAnimId) { cancelAnimationFrame(shadeWaveAnimId); shadeWaveAnimId = null; }
+        shadeWaveCanvas = null;
+        shadeWaveCtx = null;
+    }
+
+    function drawShadeRecordingWave(now) {
+        const canvas = shadeWaveCanvas;
+        const ctx = shadeWaveCtx;
+        if (!canvas || !ctx) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width || 36;
+        const h = rect.height || 18;
+        if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        ctx.clearRect(0, 0, w, h);
+        const paused = currentActivity && currentActivity.payload && currentActivity.payload.paused;
+        const t = paused ? 0 : (now - shadeWaveStart) / 1000;
+        const centerY = h / 2;
+        const amp = h * 0.42;
+        ctx.strokeStyle = '#cc0000';
+        ctx.lineWidth = 1.4;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = paused ? 0.35 : 1;
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 1) {
+            const phase1 = (x + t * 90) * 0.35;
+            const phase2 = (x - t * 60) * 0.5 + 1.7;
+            const y = centerY + Math.sin(phase1) * amp * 0.55 + Math.sin(phase2) * amp * 0.35;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
     }
 
     function buildNotificationItem(n, it) {
@@ -1113,29 +1211,31 @@
         window.addEventListener('mouseup', onEnd);
     }
 
-    // ============================================
-    // ЖЕСТЫ НА LIVE BAR: свайп сверху вниз → открыть шторку
-    // ============================================
-
     function bindShadeGestures() {
         let startY = 0;
         let startX = 0;
         let tracking = false;
 
+        function getPoint(e) {
+            if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        }
+
         function onStart(e) {
             if (shadeOpen) return;
-            const t = (e.touches && e.touches[0]) || e;
-            startX = t.clientX;
-            startY = t.clientY;
+            const p = getPoint(e);
+            startX = p.x;
+            startY = p.y;
             tracking = true;
         }
 
         function onMoveHandler(e) {
             if (!tracking) return;
-            const t = (e.touches && e.touches[0]) || e;
-            const dy = t.clientY - startY;
-            const dx = t.clientX - startX;
-            if (dy > 40 && Math.abs(dy) > Math.abs(dx)) {
+            const p = getPoint(e);
+            const dy = p.y - startY;
+            const dx = p.x - startX;
+            if (dy > 18 && Math.abs(dy) > Math.abs(dx)) {
                 tracking = false;
                 if (e.cancelable) e.preventDefault();
                 openShade();
@@ -1149,55 +1249,66 @@
         barEl.addEventListener('touchend', onEnd, { passive: true });
         barEl.addEventListener('touchcancel', onEnd, { passive: true });
 
-        barEl.addEventListener('mousedown', onStart);
-        window.addEventListener('mousemove', onMoveHandler);
-        window.addEventListener('mouseup', onEnd);
+        if (window.PointerEvent) {
+            barEl.addEventListener('pointerdown', onStart);
+            barEl.addEventListener('pointermove', onMoveHandler);
+            barEl.addEventListener('pointerup', onEnd);
+            barEl.addEventListener('pointercancel', onEnd);
+        } else {
+            barEl.addEventListener('mousedown', onStart);
+            window.addEventListener('mousemove', onMoveHandler);
+            window.addEventListener('mouseup', onEnd);
+        }
     }
 
-    // Свайп снизу вверх в любом месте шторки закрывает её
     function bindShadeCloseGesture() {
         if (!shadeEl) return;
         let startY = 0;
         let startX = 0;
         let tracking = false;
 
-        shadeEl.addEventListener('touchstart', function(e) {
-            const t = (e.touches && e.touches[0]) || e;
-            startX = t.clientX;
-            startY = t.clientY;
-            tracking = true;
-        }, { passive: true });
+        function getPoint(e) {
+            if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        }
 
-        shadeEl.addEventListener('touchmove', function(e) {
+        function onStart(e) {
+            const p = getPoint(e);
+            startX = p.x;
+            startY = p.y;
+            tracking = true;
+        }
+
+        function onMoveHandler(e) {
             if (!tracking) return;
-            const t = (e.touches && e.touches[0]) || e;
-            const dy = t.clientY - startY;
-            const dx = t.clientX - startX;
-            if (dy < -60 && Math.abs(dy) > Math.abs(dx)) {
+            const p = getPoint(e);
+            const dy = p.y - startY;
+            const dx = p.x - startX;
+            if (dy < -40 && Math.abs(dy) > Math.abs(dx)) {
                 tracking = false;
                 if (e.cancelable) e.preventDefault();
                 closeShade();
             }
-        }, { passive: false });
+        }
 
-        shadeEl.addEventListener('touchend', function() { tracking = false; }, { passive: true });
-        shadeEl.addEventListener('touchcancel', function() { tracking = false; }, { passive: true });
+        function onEnd() { tracking = false; }
 
-        shadeEl.addEventListener('mousedown', function(e) {
-            startX = e.clientX;
-            startY = e.clientY;
-            tracking = true;
-        });
-        shadeEl.addEventListener('mousemove', function(e) {
-            if (!tracking) return;
-            const dy = e.clientY - startY;
-            const dx = e.clientX - startX;
-            if (dy < -60 && Math.abs(dy) > Math.abs(dx)) {
-                tracking = false;
-                closeShade();
-            }
-        });
-        shadeEl.addEventListener('mouseup', function() { tracking = false; });
+        shadeEl.addEventListener('touchstart', onStart, { passive: true });
+        shadeEl.addEventListener('touchmove', onMoveHandler, { passive: false });
+        shadeEl.addEventListener('touchend', onEnd, { passive: true });
+        shadeEl.addEventListener('touchcancel', onEnd, { passive: true });
+
+        if (window.PointerEvent) {
+            shadeEl.addEventListener('pointerdown', onStart);
+            shadeEl.addEventListener('pointermove', onMoveHandler);
+            shadeEl.addEventListener('pointerup', onEnd);
+            shadeEl.addEventListener('pointercancel', onEnd);
+        } else {
+            shadeEl.addEventListener('mousedown', onStart);
+            window.addEventListener('mousemove', onMoveHandler);
+            window.addEventListener('mouseup', onEnd);
+        }
     }
 
     function openShade() {
@@ -1205,7 +1316,11 @@
         if (shadeOpen) return;
         shadeOpen = true;
         renderShade();
-        // Плавное "проявление" через blur → 0 и opacity → 1
+        // Пока шторка открыта, полоса делается неактивной и невидимой
+        if (barEl) {
+            barEl.style.pointerEvents = 'none';
+            barEl.style.opacity = '0';
+        }
         shadeEl.style.pointerEvents = 'auto';
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
@@ -1218,15 +1333,16 @@
     function closeShade() {
         if (!shadeOpen || !shadeEl) return;
         shadeOpen = false;
-        // Уход в размытие
+        stopShadeRecordingWave();
         shadeEl.style.opacity = '0';
         shadeEl.style.filter = 'blur(24px)';
         shadeEl.style.pointerEvents = 'none';
+        // Возвращаем полосу
+        if (barEl) {
+            barEl.style.pointerEvents = 'auto';
+            barEl.style.opacity = '1';
+        }
     }
-
-    // ============================================
-    // PUBLIC API
-    // ============================================
 
     window.LiveBar = {
         set: setActivity,
@@ -1266,7 +1382,6 @@
 
     window.addEventListener('shnuk:theme-changed', function() {
         applyBarColors();
-        // Пересобираем шторку, чтобы обновить цвета под новую тему
         if (shadeEl && shadeEl.parentNode) {
             shadeEl.parentNode.removeChild(shadeEl);
             shadeEl = null;
@@ -1276,6 +1391,10 @@
                 shadeEl.style.opacity = '1';
                 shadeEl.style.filter = 'blur(0px)';
                 shadeEl.style.pointerEvents = 'auto';
+                if (barEl) {
+                    barEl.style.pointerEvents = 'none';
+                    barEl.style.opacity = '0';
+                }
             }
         }
     });
