@@ -1,0 +1,2214 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Shnuk OS</title>
+    <style>
+        :root {
+            --livebar-h: 44px;
+            --accent: #cc0000;
+            --accent-dark: #990000;
+            --text-on-accent: #ffffff;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --bg-tertiary: #f0f0f0;
+            --bg-hover: #fff5f5;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --text-muted: #888888;
+            --border-color: #e0e0e0;
+            --header-bg: #f5f5f5;
+            --header-text: #1a1a1a;
+            --livebar-bg: #ffffff;
+            --livebar-text: #1a1a1a;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+
+            --desktop-cols: 4;
+            --desktop-rows: 2;
+            --apps-cols: 4;
+            --apps-rows: 3;
+        }
+
+        [data-theme="evening"] {
+            --accent: #cc0000;
+            --accent-dark: #990000;
+            --text-on-accent: #ffffff;
+            --bg-primary: #2a2a2a;
+            --bg-secondary: #333333;
+            --bg-tertiary: #3a3a3a;
+            --bg-hover: #3a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --text-muted: #999999;
+            --border-color: #444444;
+            --header-bg: #333333;
+            --header-text: #ffffff;
+            --livebar-bg: #2a2a2a;
+            --livebar-text: #ffffff;
+            --panel-bg: rgba(42, 42, 42, 0.9);
+        }
+
+        [data-theme="warm-night"] {
+            --accent: #ffe066;
+            --accent-dark: #e6c94d;
+            --text-on-accent: #000000;
+            --bg-primary: #000000;
+            --bg-secondary: #0a0a0a;
+            --bg-tertiary: #111111;
+            --bg-hover: #1a1a00;
+            --text-primary: #ffffff;
+            --text-secondary: #dddddd;
+            --text-muted: #aaaaaa;
+            --border-color: #333333;
+            --header-bg: #ffe066;
+            --header-text: #000000;
+            --livebar-bg: #000000;
+            --livebar-text: #ffffff;
+            --panel-bg: rgba(0, 0, 0, 0.9);
+        }
+
+        @font-face {
+            font-family: 'TTPaplane';
+            src: url('TT_Paplane_Trial_Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: block;
+        }
+        @font-face {
+            font-family: 'TTPaplane';
+            src: url('TT_Paplane_Trial_Regular.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: block;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'TTPaplane', monospace;
+        }
+
+        html, body {
+            width: 100%; height: 100%;
+            font-family: 'TTPaplane', monospace, sans-serif;
+            font-size: 20px;
+            touch-action: none; overflow: hidden;
+            background: var(--bg-primary);
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            transition: background 0.4s ease, color 0.4s ease;
+        }
+
+        #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
+        #osApp.visible { display: block; }
+
+        .app-background {
+            position: absolute;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition: background-image 0.5s ease, filter 0.35s ease, transform 0.35s ease, background-color 0.4s ease;
+            z-index: 0;
+            overflow: hidden;
+            background-color: var(--bg-primary);
+            touch-action: none;
+        }
+        .app-background.white-bg { background: var(--bg-primary) !important; transform: none !important; }
+        .app-background.blurred { filter: blur(30px); transform: scale(1.15); }
+
+        .top-panel {
+            position: absolute;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
+            display: flex;
+            flex-direction: column;
+            padding: 0 20px 24px 20px;
+            background: transparent;
+            z-index: 5;
+            transition: opacity 0.35s ease, background 0.25s ease;
+            will-change: opacity;
+            pointer-events: none;
+        }
+        .top-panel .button-group,
+        .top-panel .desktop-search { pointer-events: auto; }
+        .top-panel.swiped-down { opacity: 0; pointer-events: none; }
+        .top-panel.editing { background: var(--panel-bg); pointer-events: auto; }
+
+        .edit-title {
+            position: absolute;
+            top: 24px; left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 1px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+            z-index: 15;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .top-panel.editing .edit-title {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .edit-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            color: var(--text-primary);
+            font-family: 'TTPaplane', monospace;
+            font-size: 30px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-10px);
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s ease;
+            z-index: 16;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+        .top-panel.editing .edit-close {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+        .edit-close:hover { color: var(--accent); }
+        .edit-close:active { transform: scale(0.9); }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(var(--desktop-cols, 4), 1fr);
+            grid-auto-rows: minmax(80px, auto);
+            justify-items: center;
+            align-items: center;
+            gap: 20px 24px;
+            max-width: 620px;
+            width: 100%;
+            margin: auto auto 0 auto;
+            padding: 10px 0 0;
+            touch-action: none;
+            z-index: 3;
+        }
+
+        .btn-wrap {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+        }
+
+        .btn {
+            width: 100%; height: 100%;
+            background: transparent !important; border: none; cursor: grab;
+            box-shadow: none !important; outline: none !important;
+            transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+            -webkit-tap-highlight-color: transparent; touch-action: none;
+            position: relative; z-index: 1;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0; overflow: visible; border-radius: 0;
+        }
+        .btn img { width: 100%; height: 100%; object-fit: contain; display: block; z-index: 1; position: relative; pointer-events: none; }
+        .btn.dragging { cursor: grabbing; transform: scale(1.12); z-index: 1000; opacity: 0.92; filter: blur(0.5px); }
+        .btn.editable { cursor: grab; }
+        .button-group.edit-mode .btn:not(.dragging) { animation: wiggle 1.2s ease-in-out infinite; }
+        @keyframes wiggle {
+            0%, 100% { transform: rotate(0deg); }
+            15% { transform: rotate(2deg); }
+            30% { transform: rotate(-2deg); }
+            45% { transform: rotate(1.5deg); }
+            60% { transform: rotate(-1.5deg); }
+            75% { transform: rotate(0.5deg); }
+            90% { transform: rotate(-0.5deg); }
+        }
+        .btn:active { transform: scale(0.94); filter: blur(0.5px); }
+
+        .btn-remove {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 24px;
+            height: 24px;
+            background: var(--accent);
+            color: var(--text-on-accent);
+            border: 2px solid var(--bg-primary);
+            border-radius: 50%;
+            font-size: 15px;
+            line-height: 18px;
+            text-align: center;
+            cursor: pointer;
+            padding: 0;
+            font-family: 'TTPaplane', monospace;
+            z-index: 5;
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.6);
+            transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .button-group.edit-mode .btn-remove {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1);
+        }
+        .btn-remove:active { transform: scale(0.85); }
+
+        .desktop-search {
+            width: 100%;
+            max-width: 620px;
+            margin: 0 auto;
+            padding-top: 24px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-sizing: border-box;
+            z-index: 4;
+            position: relative;
+        }
+        .desktop-search .search-input-wrap {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .desktop-search input {
+            width: 100%;
+            padding: 14px 56px 14px 22px;
+            border: 2px solid var(--border-color);
+            border-radius: 999px;
+            background: var(--panel-bg);
+            color: var(--text-primary);
+            font-family: 'TTPaplane', monospace;
+            font-size: 17px;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.2s, background 0.2s;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .desktop-search input:focus { border-color: var(--accent); }
+        .desktop-search input::placeholder { color: var(--text-muted); }
+        .search-submit {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%) scale(0.6);
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 999px;
+            background: var(--accent);
+            color: var(--text-on-accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+        .search-submit.visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(-50%) scale(1);
+        }
+        .search-submit:hover { background: var(--accent-dark); }
+        .search-submit:active { transform: translateY(-50%) scale(0.9); }
+        .search-submit svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .bottom-panel {
+            position: absolute;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
+            z-index: 1;
+            overflow-y: auto; overflow-x: hidden;
+            padding: 30px 20px 200px;
+            display: flex; flex-direction: column; align-items: center;
+            -webkit-overflow-scrolling: touch;
+            opacity: 0; pointer-events: none;
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            will-change: opacity, transform;
+            transform: scale(1.05);
+            transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                        transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                        background 0.4s ease;
+        }
+        .bottom-panel.visible { opacity: 1; pointer-events: all; transform: scale(1); }
+
+        .bottom-panel.closing {
+            opacity: 0;
+            transform: scale(0.92);
+            transition: opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+                        transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+                        background 0.4s ease;
+        }
+
+        .bottom-panel .bottom-blur {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 110px;
+            pointer-events: none;
+            z-index: 22;
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .bottom-panel.visible .bottom-blur { opacity: 1; }
+
+        .bottom-panel .close-apps {
+            position: absolute; top: 16px; right: 20px;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: 'TTPaplane', monospace;
+            font-size: 30px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+            transition: color 0.2s ease, transform 0.15s ease;
+        }
+        .bottom-panel .close-apps:hover { color: var(--accent); }
+        .bottom-panel .close-apps:active { transform: scale(0.9); }
+
+        .bottom-panel h2 {
+            font-size: 26px; font-weight: 700; color: var(--text-primary);
+            margin-bottom: 24px; letter-spacing: -0.3px;
+            z-index: 3;
+        }
+
+        .icon-grid {
+            display: grid;
+            grid-template-columns: repeat(var(--apps-cols, 4), 1fr);
+            grid-auto-rows: minmax(0, auto);
+            gap: 20px 16px;
+            max-width: 520px; width: 100%;
+            z-index: 3;
+            position: relative;
+        }
+
+        .icon-item {
+            aspect-ratio: 1 / 1;
+            background: transparent;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: transform 0.2s ease; cursor: pointer;
+            padding: 6px;
+            border: none; outline: none;
+            max-width: 90px; max-height: 90px;
+            justify-self: center; width: 100%;
+            position: relative;
+            -webkit-tap-highlight-color: transparent;
+            opacity: 1;
+            transform: none;
+        }
+        .bottom-panel.visible .icon-item {
+            animation: iconRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes iconRise {
+            from { opacity: 0; transform: translateY(28px); filter: blur(8px); }
+            to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+        }
+        .icon-item:active { transform: scale(0.9); }
+        .icon-item img { width: 80%; height: 80%; object-fit: contain; }
+        .icon-item .icon-label {
+            font-size: 13px; color: var(--text-primary); margin-top: 2px;
+            text-align: center; line-height: 1.2;
+            font-family: 'TTPaplane', monospace;
+        }
+        .icon-item .icon-default { font-size: 40px; line-height: 1; color: var(--text-primary); }
+        .icon-item.html-app::after {
+            content: 'HTML'; position: absolute; top: 0; left: 0;
+            font-size: 10px; background: #4488ff; color: #fff;
+            padding: 1px 5px; border-radius: 2px;
+            font-weight: 700; letter-spacing: 0.5px;
+        }
+
+        .apps-search-bar {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            bottom: 20px;
+            width: calc(100% - 40px);
+            max-width: 620px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 60;
+            box-sizing: border-box;
+            pointer-events: auto;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .apps-search-bar.visible {
+            display: flex;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .apps-search-bar .search-input-wrap {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .apps-search-bar input {
+            width: 100%;
+            padding: 14px 56px 14px 22px;
+            border: 2px solid var(--border-color);
+            border-radius: 999px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'TTPaplane', monospace;
+            font-size: 17px;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        .apps-search-bar input:focus { border-color: var(--accent); }
+        .apps-search-bar input::placeholder { color: var(--text-muted); }
+        .apps-search-bar .search-submit {
+            background: var(--accent);
+            color: var(--text-on-accent);
+        }
+        .apps-search-bar .search-submit:hover { background: var(--accent-dark); }
+
+        .add-desktop-btn {
+            position: fixed;
+            left: 50%;
+            bottom: 84px;
+            transform: translateX(-50%) translateY(20px);
+            padding: 14px 26px;
+            border: none;
+            background: var(--accent);
+            color: var(--text-on-accent);
+            font-family: 'TTPaplane', monospace;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            cursor: pointer;
+            z-index: 65;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s;
+            box-shadow: 0 10px 30px rgba(204,0,0,0.4);
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+        .add-desktop-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0);
+        }
+        .add-desktop-btn:hover { background: var(--accent-dark); }
+        .add-desktop-btn:active { transform: translateX(-50%) translateY(0) scale(0.96); }
+
+        .picker-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            z-index: 2147483600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            opacity: 0;
+            transition: opacity 0.3s ease, backdrop-filter 0.3s ease, background 0.3s ease;
+        }
+        .picker-backdrop.visible {
+            opacity: 1;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+        .picker-modal {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            width: 100%;
+            max-width: 520px;
+            max-height: 80vh;
+            border: 2px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.45);
+            transform: scale(0.92) translateY(20px);
+            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+            overflow: hidden;
+            font-family: 'TTPaplane', monospace;
+            border-radius: 0;
+        }
+        .picker-backdrop.visible .picker-modal {
+            transform: scale(1) translateY(0);
+        }
+        .picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--header-bg);
+            color: var(--header-text);
+            border-bottom: 2px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .picker-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+        }
+        .picker-close {
+            width: 36px;
+            height: 36px;
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 26px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s ease, transform 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+        .picker-close:hover { color: var(--accent); }
+        .picker-close:active { transform: scale(0.9); }
+
+        .picker-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            gap: 14px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .picker-empty {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 40px 12px;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .picker-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 10px 6px 8px;
+            border: 2px solid transparent;
+            border-radius: 0;
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            background: transparent;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+            text-align: center;
+            font-family: 'TTPaplane', monospace;
+        }
+        .picker-item:hover {
+            border-color: var(--accent);
+            background: var(--bg-secondary);
+        }
+        .picker-item:active {
+            transform: scale(0.94);
+        }
+        .picker-item .picker-icon {
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 6px;
+        }
+        .picker-item .picker-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .picker-item .picker-icon-fallback {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-secondary);
+            color: var(--accent);
+            font-size: 26px;
+            font-weight: 700;
+            border-radius: 0;
+        }
+        .picker-item .picker-name {
+            font-size: 11px;
+            color: var(--text-primary);
+            text-align: center;
+            line-height: 1.2;
+            word-break: break-word;
+            max-width: 100%;
+        }
+
+        .loader {
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 20px; color: var(--text-muted); font-size: 18px;
+            grid-column: 1 / -1;
+        }
+        .loader .spinner {
+            width: 24px; height: 24px;
+            border: 3px solid var(--border-color); border-top: 3px solid var(--accent);
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .html-app-window {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 100001; background: var(--bg-primary);
+            display: flex; flex-direction: column;
+            padding-top: var(--livebar-h, 44px);
+            box-sizing: border-box;
+        }
+        .html-app-window iframe { flex: 1; width: 100%; border: none; background: var(--bg-primary); }
+        .html-app-close-btn {
+            position: fixed; top: calc(var(--livebar-h, 44px) + 16px); right: 16px;
+            width: 52px; height: 52px;
+            background: var(--accent); color: var(--text-on-accent); border: none;
+            font-size: 28px; cursor: pointer; z-index: 100002;
+            font-family: 'TTPaplane', monospace;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 20px rgba(204,0,0,0.4);
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.2s ease;
+        }
+        .html-app-close-btn:hover { background: var(--accent-dark); transform: scale(1.1); }
+
+        html.no-blur *,
+        html.no-blur *::before,
+        html.no-blur *::after {
+            animation: none !important;
+            transition: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+        html.no-blur .top-panel.editing .edit-title {
+            opacity: 1 !important;
+            transform: translateX(-50%) translateY(0) !important;
+        }
+        html.no-blur .top-panel.editing .edit-close {
+            opacity: 1 !important;
+            transform: translateY(0) !important;
+        }
+        html.no-blur .button-group.edit-mode .btn-remove {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+        }
+        html.no-blur .bottom-panel.visible { opacity: 1 !important; transform: none !important; }
+        html.no-blur .bottom-panel.visible .icon-item {
+            opacity: 1 !important;
+            transform: none !important;
+        }
+        html.no-blur .bottom-panel.visible .bottom-blur { opacity: 1 !important; }
+        html.no-blur .apps-search-bar.visible { opacity: 1 !important; transform: translateX(-50%) translateY(0) !important; }
+        html.no-blur .add-desktop-btn.visible { opacity: 1 !important; transform: translateX(-50%) translateY(0) !important; }
+        html.no-blur .app-background.blurred { filter: none !important; transform: none !important; }
+        html.no-blur .top-panel.swiped-down { opacity: 0 !important; pointer-events: none !important; }
+
+        @media (max-width: 500px) {
+            html, body { font-size: 18px; }
+            .btn-wrap { width: 66px; height: 66px; }
+            .button-group { gap: 14px 16px; max-width: 100%; padding: 0 8px; }
+            .bottom-panel { padding: 24px 16px 200px; }
+            .bottom-panel h2 { font-size: 22px; margin-bottom: 18px; }
+            .bottom-panel .close-apps { width: 36px; height: 36px; font-size: 26px; top: 14px; right: 16px; }
+            .icon-grid { gap: 14px 12px; max-width: 100%; }
+            .icon-item { padding: 4px; max-width: 72px; max-height: 72px; }
+            .icon-item .icon-label { font-size: 11px; }
+            .icon-item .icon-default { font-size: 32px; }
+            .top-panel { padding: 0 16px 20px 16px; }
+            .edit-title { font-size: 19px; top: 20px; }
+            .edit-close { top: 16px; right: 16px; width: 36px; height: 36px; font-size: 26px; }
+            .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 46px; height: 46px; font-size: 24px; }
+            .desktop-search { padding-top: 18px; max-width: 100%; }
+            .desktop-search input { padding: 12px 52px 12px 18px; font-size: 15px; }
+            .apps-search-bar input { padding: 12px 52px 12px 18px; font-size: 15px; }
+            .add-desktop-btn { padding: 12px 20px; font-size: 13px; bottom: 76px; }
+            .picker-modal { max-width: 100%; max-height: 85vh; }
+            .picker-body { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px; padding: 12px 14px 16px; }
+            .picker-item .picker-icon { width: 46px; height: 46px; }
+            .picker-item .picker-name { font-size: 10px; }
+        }
+    </style>
+
+    <script src="os-storage.js"></script>
+</head>
+<body>
+
+    <div id="osApp">
+        <div class="app-background" id="appBackground"></div>
+
+        <div class="top-panel" id="topPanel">
+            <div class="edit-title" id="editTitle">Редактирование</div>
+            <button class="edit-close" id="editClose" aria-label="Закрыть редактирование">✕</button>
+            <div class="button-group" id="buttonGroup">
+                <div class="loader" id="desktopLoader">
+                    <span class="spinner"></span>
+                    <span>Загрузка</span>
+                </div>
+            </div>
+
+            <div class="desktop-search" id="desktopSearchBar" style="display:none;">
+                <div class="search-input-wrap">
+                    <input type="text" id="desktopSearchInput" placeholder="Поиск в интернете..." autocomplete="off" />
+                    <button class="search-submit" id="desktopSearchBtn" aria-label="Найти">
+                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-panel" id="bottomPanel">
+            <button class="close-apps" id="closeAppsBtn" aria-label="Закрыть">✕</button>
+            <h2>Все приложения</h2>
+            <div class="icon-grid" id="iconGrid">
+                <div class="loader">
+                    <span class="spinner"></span>
+                    <span>Поиск</span>
+                </div>
+            </div>
+            <div class="bottom-blur" id="bottomBlur"></div>
+        </div>
+
+        <div class="apps-search-bar" id="appsSearchBar">
+            <div class="search-input-wrap">
+                <input type="text" id="appsSearchInput" placeholder="Поиск приложений..." autocomplete="off" />
+                <button class="search-submit" id="appsSearchBtn" aria-label="Найти">
+                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <button class="add-desktop-btn" id="addDesktopBtn">+ Добавить на главный экран</button>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+        var params = new URLSearchParams(window.location.search);
+        var token = params.get('t');
+        var cooopParam = params.get('cooop');
+        var cooopHash = (location.hash && location.hash.indexOf('#cooop=') === 0);
+        if ((!token || !token.startsWith('shnuk_')) && !cooopParam && !cooopHash) {
+            document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+            return;
+        }
+        setTimeout(function() {
+            try {
+                if (window.history && window.history.replaceState) {
+                    var cleanUrl = window.location.pathname;
+                    if (cooopParam) cleanUrl += '?cooop=' + encodeURIComponent(cooopParam);
+                    if (cooopHash) cleanUrl += location.hash;
+                    window.history.replaceState(null, '', cleanUrl);
+                }
+            } catch(e) {}
+        }, 1000);
+        const osApp = document.getElementById('osApp');
+
+        function waitForOSStorage() {
+            return new Promise(function(resolve) {
+                if (window.OSStorage) { resolve(true); return; }
+                let tries = 0;
+                const iv = setInterval(function() {
+                    tries++;
+                    if (window.OSStorage || tries > 50) {
+                        clearInterval(iv);
+                        resolve(!!window.OSStorage);
+                    }
+                }, 100);
+            });
+        }
+
+        function loadScriptWithFallback(src) {
+            return new Promise(function(resolve) {
+                const script = document.createElement('script');
+                script.src = src + '?t=' + Date.now();
+                script.async = false;
+                script.onload = function() { resolve(true); };
+                script.onerror = function() { resolve(false); };
+                document.head.appendChild(script);
+            });
+        }
+
+        async function launchOS() {
+            osApp.classList.add('visible');
+            osApp.style.display = 'block';
+
+            try {
+                if (localStorage.getItem('shnuk_blur_disabled') === 'true') {
+                    document.documentElement.classList.add('no-blur');
+                }
+            } catch(e) {}
+
+            await waitForOSStorage();
+
+            const scripts = [
+                'l10n.js',
+                'l.js',
+                'file-storage.js',
+                'system-v.js',
+                'onboarding.js',
+                'live-bar.js',
+                'windows.js',
+                'security.js',
+                'app-scanner.js',
+                'store.js',
+                'settings.js',
+                'cooop.js',
+                'cooop-messenger.js',
+                'my-shnuk.js',
+                'audio.js'
+            ];
+
+            for (let i = 0; i < scripts.length; i++) {
+                await loadScriptWithFallback(scripts[i]);
+            }
+
+            setTimeout(function() { checkSecurityAndStart(); }, 200);
+        }
+
+        async function checkSecurityAndStart() {
+            if (window.SharedFiles && window.SharedFiles.ready) {
+                try { await window.SharedFiles.ready(); } catch(e) {}
+            }
+
+            if (typeof window.Security !== 'undefined' && window.Security.hasSecurity()) {
+                if (!window.Security.isSessionUnlocked()) {
+                    osApp.style.display = 'none';
+                    window.Security.showLockScreen(function(unlocked) {
+                        if (unlocked) {
+                            osApp.style.display = 'block';
+                            osApp.classList.add('visible');
+                            if (typeof window.initOS === 'function') window.initOS();
+                        } else {
+                            document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+                        }
+                    });
+                    return;
+                }
+            }
+            if (typeof window.initOS === 'function') window.initOS();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', launchOS);
+        } else {
+            launchOS();
+        }
+    })();
+    </script>
+
+    <script>
+    window.initOS = function() {
+        'use strict';
+        if (typeof AppScanner === 'undefined') return;
+
+        try {
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(function() {
+                    var loaded = document.fonts.check("400 16px 'TTPaplane'");
+                    console.log('[Fonts] TTPaplane loaded:', loaded);
+                });
+            }
+        } catch(e) {}
+
+        const app = document.getElementById('osApp');
+        const appBackground = document.getElementById('appBackground');
+        const topPanel = document.getElementById('topPanel');
+        const editTitle = document.getElementById('editTitle');
+        const editClose = document.getElementById('editClose');
+        const buttonGroup = document.getElementById('buttonGroup');
+        const bottomPanel = document.getElementById('bottomPanel');
+        const iconGrid = document.getElementById('iconGrid');
+        const closeAppsBtn = document.getElementById('closeAppsBtn');
+        const desktopLoader = document.getElementById('desktopLoader');
+        const desktopSearchBar = document.getElementById('desktopSearchBar');
+        const desktopSearchInput = document.getElementById('desktopSearchInput');
+        const desktopSearchBtn = document.getElementById('desktopSearchBtn');
+        const appsSearchBar = document.getElementById('appsSearchBar');
+        const appsSearchInput = document.getElementById('appsSearchInput');
+        const appsSearchBtn = document.getElementById('appsSearchBtn');
+        const addDesktopBtn = document.getElementById('addDesktopBtn');
+
+        let isEditMode = false;
+        let dragState = null;
+        let isBottomVisible = false;
+        let isClosing = false;
+        let allApps = [];
+        let desktopApps = [];
+        let isAppAnimating = false;
+        let appsOrderSnapshot = null;
+        const DESKTOP_KEY = 'shnuk_desktop_apps';
+        const INSTALLED_KEY = 'shnuk_installed_apps';
+        const THEME_KEY = 'shnuk_theme';
+        const SCREEN_SETTINGS_KEY = 'shnuk_screen_settings';
+        const DEFAULT_DESKTOP = ['camera', 'settings', 'time', 'gamecenter'];
+
+        const SEARCH_ENGINES = {
+            google: 'https://www.google.com/search?q=',
+            yandex: 'https://yandex.ru/search/?text=',
+            duckduckgo: 'https://duckduckgo.com/?q=',
+            bing: 'https://www.bing.com/search?q='
+        };
+
+        const lastOpenIconRects = {};
+
+        const APP_DESTROY_MAP = {
+            'myShnukApp': 'MyShnuk',
+            'settingsApp': 'Settings',
+            'fileApp': 'FileApp',
+            'timeApp': 'Time',
+            'storeApp': 'Store',
+            'cameraApp': 'Camera',
+            'recorderApp': 'Recorder',
+            'cooopApp': 'Cooop',
+            'cooopMessengerApp': 'CooopMessenger',
+            'gameCenterApp': 'GameCenter',
+            'collApp': 'Collaris',
+            'browserApp': 'Browser'
+        };
+
+        const APP_DOM_MAP = {
+            'my-shnuk': 'myShnukApp',
+            'settings': 'settingsApp',
+            'file': 'fileApp',
+            'file2': 'fileApp',
+            'time': 'timeApp',
+            'store': 'storeApp',
+            'camera': 'cameraApp',
+            'recorder': 'recorderApp',
+            'cooop': 'cooopApp',
+            'cooop-messenger': 'cooopMessengerApp',
+            'gamecenter': 'gameCenterApp',
+            'coll': 'collApp',
+            'browser': 'browserApp'
+        };
+
+        function T(s) {
+            if (window.L10N && typeof window.L10N.t === 'function') return window.L10N.t(s);
+            return s;
+        }
+
+        function loadScreenSettings() {
+            const defaults = {
+                desktopSearch: false,
+                appsSearch: false,
+                searchEngine: 'google',
+                desktopCols: 4,
+                desktopRows: 2,
+                appsCols: 4,
+                appsRows: 3
+            };
+            try {
+                const raw = localStorage.getItem(SCREEN_SETTINGS_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    return Object.assign(defaults, parsed);
+                }
+            } catch(e) {}
+            return defaults;
+        }
+
+        function applyScreenSettings() {
+            const s = loadScreenSettings();
+            document.documentElement.style.setProperty('--desktop-cols', String(s.desktopCols));
+            document.documentElement.style.setProperty('--desktop-rows', String(s.desktopRows));
+            document.documentElement.style.setProperty('--apps-cols', String(s.appsCols));
+            document.documentElement.style.setProperty('--apps-rows', String(s.appsRows));
+
+            if (desktopSearchBar) {
+                desktopSearchBar.style.display = s.desktopSearch ? 'flex' : 'none';
+            }
+            if (appsSearchBar) {
+                const showAppsSearch = s.appsSearch && isBottomVisible;
+                appsSearchBar.classList.toggle('visible', showAppsSearch);
+            }
+            if (!s.appsSearch && appsSearchInput) {
+                appsSearchInput.value = '';
+                updateSearchSubmitVisibility(appsSearchInput, appsSearchBtn);
+                filterApps('');
+            }
+        }
+
+        function updateSearchSubmitVisibility(input, btn) {
+            if (!input || !btn) return;
+            const hasText = input.value.trim().length > 0;
+            btn.classList.toggle('visible', hasText);
+        }
+
+        function performSearch(query) {
+            if (!query) return;
+            const s = loadScreenSettings();
+            const base = SEARCH_ENGINES[s.searchEngine] || SEARCH_ENGINES.google;
+            try { window.open(base + encodeURIComponent(query), '_blank'); } catch(e) {}
+        }
+
+        function filterApps(query) {
+            const q = (query || '').trim().toLowerCase();
+            const items = iconGrid.querySelectorAll('.icon-item');
+            items.forEach(item => {
+                const name = item.dataset.appName || '';
+                if (!q || name.toLowerCase().indexOf(q) !== -1) item.style.display = '';
+                else item.style.display = 'none';
+            });
+        }
+
+        if (desktopSearchInput) {
+            desktopSearchInput.addEventListener('input', function() {
+                updateSearchSubmitVisibility(this, desktopSearchBtn);
+            });
+            desktopSearchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch(this.value.trim());
+                    this.value = '';
+                    updateSearchSubmitVisibility(this, desktopSearchBtn);
+                }
+            });
+        }
+        if (desktopSearchBtn) {
+            desktopSearchBtn.addEventListener('click', function() {
+                performSearch(desktopSearchInput.value.trim());
+                desktopSearchInput.value = '';
+                updateSearchSubmitVisibility(desktopSearchInput, desktopSearchBtn);
+            });
+        }
+        if (appsSearchInput) {
+            appsSearchInput.addEventListener('input', function() {
+                updateSearchSubmitVisibility(this, appsSearchBtn);
+                filterApps(this.value);
+            });
+            appsSearchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') filterApps(this.value);
+            });
+        }
+        if (appsSearchBtn) {
+            appsSearchBtn.addEventListener('click', function() {
+                filterApps(appsSearchInput.value);
+            });
+        }
+
+        window.addEventListener('shnuk:screen-settings-changed', function() { applyScreenSettings(); });
+        window.addEventListener('storage', function(e) { if (e.key === SCREEN_SETTINGS_KEY) applyScreenSettings(); });
+
+        function isFullscreen() {
+            return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+        }
+        function enterFullscreen() {
+            const el = document.documentElement;
+            try {
+                if (el.requestFullscreen) return el.requestFullscreen();
+                if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+                if (el.mozRequestFullScreen) return el.mozRequestFullScreen();
+                if (el.msRequestFullscreen) return el.msRequestFullscreen();
+            } catch(e) {}
+            return Promise.reject('not supported');
+        }
+        function ensureFullscreen() {
+            if (isFullscreen()) return;
+            let wantFullscreen = true;
+            try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
+            if (wantFullscreen) enterFullscreen().catch(function() {});
+        }
+
+        setInterval(ensureFullscreen, 1000);
+
+        document.addEventListener('fullscreenchange', function() {
+            if (!isFullscreen()) {
+                let wantFullscreen = true;
+                try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
+                if (wantFullscreen) setTimeout(ensureFullscreen, 100);
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', function() {
+            if (!isFullscreen()) {
+                let wantFullscreen = true;
+                try { wantFullscreen = localStorage.getItem('shnuk_fullscreen') !== 'false'; } catch(e) {}
+                if (wantFullscreen) setTimeout(ensureFullscreen, 100);
+            }
+        });
+
+        document.addEventListener('click', ensureFullscreen, { once: true });
+        document.addEventListener('touchstart', ensureFullscreen, { once: true });
+        document.addEventListener('keydown', ensureFullscreen, { once: true });
+
+        if ('wakeLock' in navigator) {
+            let wakeLock = null;
+            const requestWakeLock = async function() {
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+            };
+            requestWakeLock();
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && !wakeLock) requestWakeLock();
+            });
+        }
+
+        function applyTheme(themeId) {
+            const theme = themeId || 'day';
+            if (theme === 'day') document.documentElement.removeAttribute('data-theme');
+            else document.documentElement.setAttribute('data-theme', theme);
+        }
+
+        function applyWallpaperFromStorage() {
+            let url = null;
+            let themeId = 'day';
+            try { url = localStorage.getItem('app_wallpaper'); } catch(e) {}
+            try { themeId = localStorage.getItem(THEME_KEY) || 'day'; } catch(e) {}
+            if (!url) {
+                url = 'wall1.png';
+                try {
+                    localStorage.setItem('app_wallpaper', url);
+                    localStorage.setItem('shnuk_wallpaper', url);
+                    localStorage.setItem('shnuk_wallpaper_name', 'Яркий день');
+                } catch(e) {}
+            }
+            applyTheme(themeId);
+            appBackground.dataset.staticWallpaper = url;
+            appBackground.style.backgroundImage = 'url(\'' + url + '\')';
+        }
+
+        window.addEventListener('shnuk:wallpaper-changed', function() { applyWallpaperFromStorage(); });
+        window.addEventListener('shnuk:theme-changed', function() {
+            let themeId = 'day';
+            try { themeId = localStorage.getItem(THEME_KEY) || 'day'; } catch(e) {}
+            applyTheme(themeId);
+        });
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'app_wallpaper') applyWallpaperFromStorage();
+            if (e.key === THEME_KEY) {
+                let themeId = 'day';
+                try { themeId = localStorage.getItem(THEME_KEY) || 'day'; } catch(e) {}
+                applyTheme(themeId);
+            }
+        });
+
+        function getAppData(appId) { return allApps.find(a => a.id === appId); }
+        function getAppIcon(appId) { const a = getAppData(appId); return a && a.icon ? a.icon : null; }
+        function getAppName(appId) { const a = getAppData(appId); return a ? a.name : appId; }
+        function makeOrderSnapshot() { appsOrderSnapshot = allApps.map(a => a.id); }
+        function applyOrderSnapshot(apps) {
+            if (!appsOrderSnapshot || appsOrderSnapshot.length === 0) return apps;
+            const appMap = new Map();
+            apps.forEach(a => appMap.set(a.id, a));
+            const ordered = [];
+            for (const id of appsOrderSnapshot) {
+                if (appMap.has(id)) { ordered.push(appMap.get(id)); appMap.delete(id); }
+            }
+            for (const [, a] of appMap) ordered.push(a);
+            return ordered;
+        }
+
+        function findAppIconElement(appId) {
+            let el = document.querySelector('.btn[data-id="' + appId + '"]');
+            if (el) return el;
+            el = document.querySelector('.icon-item[data-app-id="' + appId + '"]');
+            if (el) return el;
+            return null;
+        }
+
+        function findOpenAppElement(appId) {
+            const domId = APP_DOM_MAP[appId];
+            if (domId) {
+                const el = document.getElementById(domId);
+                if (el && el.parentNode) return el;
+            }
+            const direct = document.getElementById(appId);
+            if (direct && direct.parentNode) return direct;
+            const guess = document.getElementById(appId + 'App');
+            if (guess && guess.parentNode) return guess;
+            return null;
+        }
+
+        function closeAllApps(keepAppId) {
+            const keys = Object.keys(APP_DOM_MAP);
+            keys.forEach(function(key) {
+                if (key === keepAppId) return;
+                const domId = APP_DOM_MAP[key];
+                const el = document.getElementById(domId);
+                if (!el) return;
+
+                const objName = APP_DESTROY_MAP[domId];
+                if (objName && window[objName] && typeof window[objName].destroy === 'function') {
+                    try {
+                        window[objName].destroy();
+                        return;
+                    } catch(e) {}
+                }
+
+                try { if (el.parentNode) el.parentNode.removeChild(el); } catch(e) {}
+            });
+        }
+
+        function bringToFront(el) {
+            if (!el) return;
+            try {
+                const currentZ = parseInt(el.style.zIndex, 10) || 99999;
+                el.style.zIndex = String(Math.max(currentZ, 99999) + 1);
+            } catch(e) {}
+        }
+
+        window.ShnukCloseAnimation = function(targetEl, appId, onDone) {
+            if (!targetEl) { if (onDone) onDone(); return; }
+            const startRect = targetEl.getBoundingClientRect();
+            if (startRect.width === 0 || startRect.height === 0) { if (onDone) onDone(); return; }
+
+            const openedFrom = window.__appOpenedFrom || 'desktop';
+            targetEl.style.transformOrigin = 'center center';
+            targetEl.style.willChange = 'transform, opacity, filter';
+            targetEl.style.pointerEvents = 'none';
+            targetEl.style.transition = 'none';
+
+            if (openedFrom === 'menu' || openedFrom === 'notification') {
+                const distanceY = window.innerHeight - startRect.top + 40;
+                const duration = 380;
+                const startTime = performance.now();
+                function animateMenu(now) {
+                    const t = Math.min((now - startTime) / duration, 1);
+                    const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                    const ty = distanceY * ease;
+                    const sc = 1 - 0.12 * ease;
+                    const blur = t * 12;
+                    const opacity = 1 - Math.pow(t, 1.6);
+                    targetEl.style.transform = 'translateY(' + ty + 'px) scale(' + sc + ')';
+                    targetEl.style.opacity = String(opacity);
+                    targetEl.style.filter = 'blur(' + blur + 'px)';
+                    if (t < 1) requestAnimationFrame(animateMenu);
+                    else {
+                        if (targetEl.parentNode) targetEl.parentNode.removeChild(targetEl);
+                        window.__appOpenedFrom = 'desktop';
+                        if (onDone) onDone();
+                    }
+                }
+                requestAnimationFrame(animateMenu);
+                return;
+            }
+
+            let iconEl = findAppIconElement(appId);
+            let iconOrigTransform = '';
+            let iconOrigTransition = '';
+            let iconOrigWillChange = '';
+            let iconOrigZIndex = '';
+            if (iconEl) {
+                iconOrigTransform = iconEl.style.transform || '';
+                iconOrigTransition = iconEl.style.transition || '';
+                iconOrigWillChange = iconEl.style.willChange || '';
+                iconOrigZIndex = iconEl.style.zIndex || '';
+                iconEl.style.willChange = 'transform';
+            }
+
+            let iconRect = null;
+            if (iconEl && iconEl.offsetParent !== null) iconRect = iconEl.getBoundingClientRect();
+            else if (lastOpenIconRects[appId]) iconRect = lastOpenIconRects[appId];
+            else iconRect = { left: window.innerWidth / 2 - 30, top: window.innerHeight / 2 - 30, width: 60, height: 60 };
+
+            const screenCx = window.innerWidth / 2;
+            const screenCy = window.innerHeight / 2;
+            const iconCx = iconRect.left + iconRect.width / 2;
+            const iconCy = iconRect.top + iconRect.height / 2;
+
+            const collapseDuration = 220;
+            const collapseStart = performance.now();
+            const startCx = startRect.left + startRect.width / 2;
+            const startCy = startRect.top + startRect.height / 2;
+            const collapseDx = screenCx - startCx;
+            const collapseDy = screenCy - startCy;
+            const collapseScaleX = 60 / startRect.width;
+            const collapseScaleY = 60 / startRect.height;
+
+            const whiteBox = document.createElement('div');
+            whiteBox.style.cssText = `
+                position: fixed; left: ${screenCx - 30}px; top: ${screenCy - 30}px;
+                width: 60px; height: 60px; background: #ffffff;
+                z-index: 100050; pointer-events: none;
+                will-change: transform, opacity, filter;
+                box-shadow: 0 0 40px rgba(255,255,255,.9), 0 0 80px rgba(255,255,255,.5);
+                border-radius: 2px; transform: scale(0.3); opacity: 0; filter: blur(10px);
+            `;
+            document.body.appendChild(whiteBox);
+
+            function animateCollapse(now) {
+                const t = Math.min((now - collapseStart) / collapseDuration, 1);
+                const ease = t * t * t;
+                const tx = collapseDx * ease;
+                const ty = collapseDy * ease;
+                const scx = 1 + (collapseScaleX - 1) * ease;
+                const scy = 1 + (collapseScaleY - 1) * ease;
+                const blur = ease * 14;
+                const opacity = 1 - ease * 0.6;
+                targetEl.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scx + ', ' + scy + ')';
+                targetEl.style.filter = 'blur(' + blur + 'px)';
+                targetEl.style.opacity = String(opacity);
+                whiteBox.style.transform = 'scale(' + (0.3 + 0.7 * ease) + ')';
+                whiteBox.style.opacity = String(ease);
+                whiteBox.style.filter = 'blur(' + (10 - 10 * ease) + 'px)';
+                if (t < 1) requestAnimationFrame(animateCollapse);
+                else {
+                    if (targetEl.parentNode) targetEl.parentNode.removeChild(targetEl);
+                    whiteBox.style.transform = 'scale(1)';
+                    whiteBox.style.opacity = '1';
+                    whiteBox.style.filter = 'blur(0px)';
+                    startFlight();
+                }
+            }
+
+            requestAnimationFrame(animateCollapse);
+
+            function startFlight() {
+                const flightDuration = 420;
+                const flightStart = performance.now();
+                const dx = iconCx - screenCx;
+                const dy = iconCy - screenCy;
+                function animateFlight(now) {
+                    const t = Math.min((now - flightStart) / flightDuration, 1);
+                    const ease = t * t * t;
+                    const tx = dx * ease;
+                    const ty = dy * ease;
+                    const scaleEnd = 60 / Math.max(iconRect.width, 1);
+                    const sc = 1 + (scaleEnd - 1) * ease * 0.5;
+                    const blur = (1 - ease) * 2;
+                    whiteBox.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + sc + ')';
+                    whiteBox.style.filter = 'blur(' + blur + 'px)';
+                    if (t < 1) requestAnimationFrame(animateFlight);
+                    else kickAndReturn();
+                }
+                requestAnimationFrame(animateFlight);
+            }
+
+            function kickAndReturn() {
+                whiteBox.style.transition = 'transform 30ms ease-out, opacity 30ms ease-out, filter 30ms ease-out';
+                whiteBox.style.transform += ' scale(1.6)';
+                whiteBox.style.opacity = '0';
+                whiteBox.style.filter = 'blur(20px)';
+                setTimeout(function() { if (whiteBox.parentNode) whiteBox.parentNode.removeChild(whiteBox); }, 40);
+                if (!iconEl) {
+                    window.__appOpenedFrom = 'desktop';
+                    if (onDone) onDone();
+                    return;
+                }
+                const dirX = iconCx - screenCx;
+                const dirY = iconCy - screenCy;
+                const len = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+                const nx = dirX / len;
+                const ny = dirY / len;
+                const kickX = -nx * 34;
+                const kickY = -ny * 34;
+                iconEl.style.transition = 'none';
+                iconEl.style.transform = 'translate(' + kickX + 'px, ' + kickY + 'px) rotate(' + (nx * 8) + 'deg) scale(1.15)';
+                const returnDuration = 380;
+                const returnStart = performance.now();
+                function animateReturn(now) {
+                    const t = Math.min((now - returnStart) / returnDuration, 1);
+                    const cosPart = Math.cos(t * Math.PI * 1.5);
+                    const ease = 1 - cosPart * Math.pow(1 - t, 2);
+                    const curX = kickX * (1 - ease);
+                    const curY = kickY * (1 - ease);
+                    const curRot = nx * 8 * (1 - ease);
+                    const curScale = 1 + 0.15 * (1 - ease);
+                    iconEl.style.transform = 'translate(' + curX + 'px, ' + curY + 'px) rotate(' + curRot + 'deg) scale(' + curScale + ')';
+                    if (t < 1) requestAnimationFrame(animateReturn);
+                    else {
+                        iconEl.style.transition = iconOrigTransition;
+                        iconEl.style.transform = iconOrigTransform;
+                        iconEl.style.willChange = iconOrigWillChange;
+                        iconEl.style.zIndex = iconOrigZIndex;
+                        window.__appOpenedFrom = 'desktop';
+                        if (onDone) onDone();
+                    }
+                }
+                requestAnimationFrame(animateReturn);
+            }
+        };
+
+        function openAppWithAnimation(appId, startRect, fromMenu) {
+            if (window.__cooopGuestActive) {
+                if (window.Win && window.Win.notify) window.Win.notify(T('В режиме Cooop приложения недоступны'), { type: 'info' });
+                return;
+            }
+            if (isAppAnimating) return;
+            const appData = getAppData(appId);
+            if (!appData) return;
+
+            const alreadyOpen = findOpenAppElement(appId);
+            if (alreadyOpen) {
+                bringToFront(alreadyOpen);
+                try {
+                    const prevTransition = alreadyOpen.style.transition;
+                    alreadyOpen.style.transition = 'filter 0.25s ease';
+                    alreadyOpen.style.filter = 'brightness(1.15)';
+                    setTimeout(function() {
+                        alreadyOpen.style.filter = '';
+                        alreadyOpen.style.transition = prevTransition;
+                    }, 250);
+                } catch(e) {}
+                return;
+            }
+
+            closeAllApps(appId);
+            isAppAnimating = true;
+            window.__appOpenedFrom = fromMenu ? 'menu' : 'desktop';
+
+            let iconPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            let iconRect = null;
+            if (startRect && (startRect.width > 0 || startRect.height > 0)) {
+                iconPos = { x: startRect.left + startRect.width / 2, y: startRect.top + startRect.height / 2 };
+                iconRect = { left: startRect.left, top: startRect.top, width: startRect.width, height: startRect.height };
+            } else {
+                const btn = document.querySelector('.btn[data-id="' + appId + '"]');
+                if (btn) {
+                    const r = btn.getBoundingClientRect();
+                    if (r.width > 0 || r.height > 0) {
+                        iconPos = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                        iconRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+                    }
+                }
+            }
+            if (iconRect) lastOpenIconRects[appId] = iconRect;
+
+            const backdrop = document.createElement('div');
+            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;background:rgba(0,0,0,0);backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);transition:all .3s cubic-bezier(.22,1,.36,1);pointer-events:none;';
+            document.body.appendChild(backdrop);
+            appBackground.classList.add('blurred');
+            requestAnimationFrame(() => {
+                backdrop.style.background = 'rgba(0,0,0,.5)';
+                backdrop.style.backdropFilter = 'blur(20px)';
+                backdrop.style.webkitBackdropFilter = 'blur(20px)';
+            });
+
+            const launchContainer = document.createElement('div');
+            launchContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;pointer-events:none;';
+            const flyIcon = document.createElement('div');
+            flyIcon.style.cssText = `
+                position:absolute;width:80px;height:80px;
+                display:flex;align-items:center;justify-content:center;
+                left:${iconPos.x - 40}px;top:${iconPos.y - 40}px;
+                filter:blur(0px);opacity:1;
+            `;
+            const iconSrc = getAppIcon(appId);
+            if (iconSrc) {
+                const img = document.createElement('img');
+                img.src = iconSrc;
+                img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+                flyIcon.appendChild(img);
+            } else {
+                flyIcon.textContent = getAppName(appId).charAt(0);
+                flyIcon.style.cssText += 'font-size:32px;font-weight:bold;color:#fff;';
+            }
+            launchContainer.appendChild(flyIcon);
+            document.body.appendChild(launchContainer);
+
+            const startX = iconPos.x - 40;
+            const startY = iconPos.y - 40;
+            const endX = window.innerWidth / 2 - 60;
+            const endY = window.innerHeight / 2 - 60;
+            const duration = 380;
+            const startTime = performance.now();
+
+            function animateIcon(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3);
+                const x = startX + (endX - startX) * ease;
+                const y = startY + (endY - startY) * ease;
+                const scale = 1 + progress * 0.5;
+                const blur = progress * 15;
+                flyIcon.style.left = x + 'px';
+                flyIcon.style.top = y + 'px';
+                flyIcon.style.transform = `scale(${scale})`;
+                flyIcon.style.filter = `blur(${blur}px)`;
+                flyIcon.style.opacity = 1 - progress * 0.5;
+                if (progress < 1) requestAnimationFrame(animateIcon);
+                else {
+                    setTimeout(() => {
+                        launchContainer.remove();
+                        backdrop.style.opacity = '0';
+                        setTimeout(() => backdrop.remove(), 300);
+                        appBackground.classList.remove('blurred');
+                        isAppAnimating = false;
+                        if (appData.type === 'html') openHtmlApp(appData);
+                        else {
+                            const script = document.createElement('script');
+                            script.src = appData.file + '?t=' + Date.now();
+                            script.onload = function() {
+                                if (typeof window[appData.id + 'Init'] === 'function') {
+                                    window[appData.id + 'Init']();
+                                } else if (typeof window[appData.id.replace(/-/g, '') + 'Init'] === 'function') {
+                                    window[appData.id.replace(/-/g, '') + 'Init']();
+                                }
+                            };
+                            document.head.appendChild(script);
+                        }
+                    }, 100);
+                }
+            }
+            requestAnimationFrame(animateIcon);
+        }
+
+        function openHtmlApp(appData) {
+            const container = document.createElement('div');
+            container.className = 'html-app-window';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'html-app-close-btn';
+            closeBtn.textContent = '✕';
+            closeBtn.addEventListener('click', function() {
+                window.ShnukCloseAnimation(container, appData.id, function() {
+                    if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
+                });
+            });
+            const iframe = document.createElement('iframe');
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
+            iframe.srcdoc = appData.html || '<html><body></body></html>';
+            container.appendChild(iframe);
+            document.body.appendChild(container);
+            document.body.appendChild(closeBtn);
+            const onEsc = function(e) {
+                if (e.key === 'Escape') {
+                    window.ShnukCloseAnimation(container, appData.id, function() {
+                        if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
+                    });
+                    document.removeEventListener('keydown', onEsc);
+                }
+            };
+            document.addEventListener('keydown', onEsc);
+        }
+
+        function loadApps() {
+            AppScanner.scan().then(function(apps) {
+                allApps = apps;
+                makeOrderSnapshot();
+                loadDesktop();
+                if (desktopLoader) desktopLoader.style.display = 'none';
+                renderDesktop();
+                renderAllApps();
+                applyScreenSettings();
+            }).catch(function(err) {
+                if (desktopLoader) desktopLoader.innerHTML = '<span style="color:#cc0000;">' + T('Ошибка') + '</span>';
+            });
+        }
+
+        function refreshApps() {
+            if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
+                AppScanner.rescan().then(function(apps) {
+                    allApps = applyOrderSnapshot(apps);
+                    const newIds = apps.filter(a => !appsOrderSnapshot.includes(a.id)).map(a => a.id);
+                    if (newIds.length > 0) appsOrderSnapshot = allApps.map(a => a.id);
+                    desktopApps = desktopApps.filter(id => allApps.some(a => a.id === id));
+                    saveDesktop();
+                    renderDesktop();
+                    renderAllApps();
+                });
+            }
+        }
+        window.refreshApps = refreshApps;
+        window.rescanApps = refreshApps;
+
+        function loadDesktop() {
+            let saved = null;
+            try { saved = localStorage.getItem(DESKTOP_KEY); } catch(e) {}
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    desktopApps = parsed.filter(id => allApps.some(a => a.id === id));
+                } catch(e) { desktopApps = []; }
+            }
+            if (desktopApps.length === 0 && allApps.length > 0) {
+                desktopApps = DEFAULT_DESKTOP.filter(id => allApps.some(a => a.id === id));
+                if (desktopApps.length < 4) {
+                    for (const a of allApps) {
+                        if (!desktopApps.includes(a.id) && desktopApps.length < 4) desktopApps.push(a.id);
+                    }
+                }
+                saveDesktop();
+            }
+        }
+
+        function saveDesktop() {
+            try {
+                localStorage.setItem(DESKTOP_KEY, JSON.stringify(desktopApps));
+                window.dispatchEvent(new CustomEvent('shnuk:desktop-changed'));
+            } catch(e) {}
+        }
+
+        function renderDesktop() {
+            buttonGroup.innerHTML = '';
+            if (desktopApps.length === 0) {
+                buttonGroup.innerHTML = '<div style="color:var(--text-muted);font-size:16px;text-align:center;width:100%;padding:20px;">' + T('Нет приложений') + '</div>';
+                return;
+            }
+            desktopApps.forEach(function(appId, index) {
+                const appData = getAppData(appId);
+                if (!appData) return;
+
+                const wrap = document.createElement('div');
+                wrap.className = 'btn-wrap';
+
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.dataset.id = appId;
+                btn.dataset.index = index;
+
+                const iconPath = getAppIcon(appId);
+                if (iconPath) {
+                    const img = document.createElement('img');
+                    img.src = iconPath;
+                    img.alt = getAppName(appId);
+                    btn.appendChild(img);
+                } else {
+                    const fallback = document.createElement('span');
+                    fallback.style.cssText = 'font-size:40px;color:var(--text-primary);font-weight:bold;';
+                    fallback.textContent = getAppName(appId).charAt(0);
+                    btn.appendChild(fallback);
+                }
+
+                btn.addEventListener('click', function(e) {
+                    if (isEditMode) return;
+                    if (dragState && dragState.moved) return;
+                    const rect = btn.getBoundingClientRect();
+                    openAppWithAnimation(appId, rect, false);
+                });
+                btn.addEventListener('mousedown', function(e) { if (isEditMode) startDrag(e, btn, appId); });
+                btn.addEventListener('touchstart', function(e) { if (isEditMode) startDrag(e, btn, appId); }, { passive: false });
+
+                wrap.appendChild(btn);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn-remove';
+                removeBtn.textContent = '✕';
+                removeBtn.title = T('Убрать с главного экрана');
+                removeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    removeFromDesktop(appId);
+                });
+                removeBtn.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+                removeBtn.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+
+                wrap.appendChild(removeBtn);
+                buttonGroup.appendChild(wrap);
+            });
+            buttonGroup.classList.toggle('edit-mode', isEditMode);
+        }
+
+        function removeFromDesktop(appId) {
+            desktopApps = desktopApps.filter(id => id !== appId);
+            saveDesktop();
+            renderDesktop();
+            renderAllApps();
+        }
+
+        function renderAllApps() {
+            iconGrid.innerHTML = '';
+            if (allApps.length === 0) {
+                iconGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);font-size:18px;">' + T('Нет приложений') + '</div>';
+                return;
+            }
+            const sortedApps = appsOrderSnapshot ? applyOrderSnapshot(allApps) : allApps;
+            let idx = 0;
+            sortedApps.forEach(function(a) {
+                const div = document.createElement('div');
+                div.className = 'icon-item';
+                if (desktopApps.includes(a.id)) div.classList.add('in-desktop');
+                if (a.type === 'html') div.classList.add('html-app');
+                div.dataset.appId = a.id;
+                div.dataset.appName = a.name;
+                div.style.animationDelay = (Math.min(idx, 24) * 0.025) + 's';
+                idx++;
+
+                if (a.icon) {
+                    const img = document.createElement('img');
+                    img.src = a.icon;
+                    img.alt = a.name;
+                    div.appendChild(img);
+                } else {
+                    const fallback = document.createElement('span');
+                    fallback.className = 'icon-default';
+                    fallback.textContent = a.name.charAt(0);
+                    div.appendChild(fallback);
+                }
+                const label = document.createElement('span');
+                label.className = 'icon-label';
+                label.textContent = a.name.length > 10 ? a.name.substring(0, 10) + '…' : a.name;
+                div.appendChild(label);
+
+                div.addEventListener('click', function(e) {
+                    if (!isBottomVisible) return;
+                    if (isAppAnimating) return;
+                    const rect = div.getBoundingClientRect();
+                    const appId = a.id;
+                    openAppWithAnimation(appId, rect, true);
+                    hideBottomPanel();
+                });
+                iconGrid.appendChild(div);
+            });
+            bottomPanel.classList.toggle('editing', isEditMode);
+            if (appsSearchInput) filterApps(appsSearchInput.value);
+        }
+
+        let pickerBackdrop = null;
+        let pickerEscHandler = null;
+
+        function closePicker() {
+            if (!pickerBackdrop) return;
+            const bd = pickerBackdrop;
+            pickerBackdrop = null;
+            bd.classList.remove('visible');
+            if (pickerEscHandler) {
+                document.removeEventListener('keydown', pickerEscHandler);
+                pickerEscHandler = null;
+            }
+            setTimeout(function() { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 300);
+        }
+
+        function openPicker() {
+            if (pickerBackdrop) return;
+            const appsNotOnDesktop = allApps.filter(a => !desktopApps.includes(a.id));
+            const bd = document.createElement('div');
+            bd.className = 'picker-backdrop';
+            pickerBackdrop = bd;
+            const modal = document.createElement('div');
+            modal.className = 'picker-modal';
+            const header = document.createElement('div');
+            header.className = 'picker-header';
+            const title = document.createElement('div');
+            title.className = 'picker-title';
+            title.textContent = T('Добавить на главный экран');
+            header.appendChild(title);
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'picker-close';
+            closeBtn.textContent = '✕';
+            closeBtn.setAttribute('aria-label', 'Закрыть');
+            closeBtn.addEventListener('click', function(e) { e.stopPropagation(); closePicker(); });
+            header.appendChild(closeBtn);
+            modal.appendChild(header);
+
+            const body = document.createElement('div');
+            body.className = 'picker-body';
+
+            if (appsNotOnDesktop.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'picker-empty';
+                empty.textContent = 'Все приложения уже на главном экране.';
+                body.appendChild(empty);
+            } else {
+                appsNotOnDesktop.forEach(function(appData) {
+                    const item = document.createElement('button');
+                    item.className = 'picker-item';
+                    item.type = 'button';
+                    const iconWrap = document.createElement('div');
+                    iconWrap.className = 'picker-icon';
+                    if (appData.icon) {
+                        const img = document.createElement('img');
+                        img.src = appData.icon;
+                        img.alt = appData.name;
+                        img.onerror = function() {
+                            const fb = document.createElement('div');
+                            fb.className = 'picker-icon-fallback';
+                            fb.textContent = appData.name.charAt(0);
+                            iconWrap.innerHTML = '';
+                            iconWrap.appendChild(fb);
+                        };
+                        iconWrap.appendChild(img);
+                    } else {
+                        const fb = document.createElement('div');
+                        fb.className = 'picker-icon-fallback';
+                        fb.textContent = appData.name.charAt(0);
+                        iconWrap.appendChild(fb);
+                    }
+                    item.appendChild(iconWrap);
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'picker-name';
+                    nameEl.textContent = appData.name.length > 12 ? appData.name.substring(0, 12) + '…' : appData.name;
+                    item.appendChild(nameEl);
+                    item.addEventListener('click', function(e) { e.stopPropagation(); pickAppForDesktop(appData.id); });
+                    body.appendChild(item);
+                });
+            }
+
+            modal.appendChild(body);
+            bd.appendChild(modal);
+            bd.addEventListener('click', function(e) { if (e.target === bd) closePicker(); });
+            document.body.appendChild(bd);
+            requestAnimationFrame(function() { bd.classList.add('visible'); });
+
+            pickerEscHandler = function(e) { if (e.key === 'Escape') closePicker(); };
+            document.addEventListener('keydown', pickerEscHandler);
+        }
+
+        function pickAppForDesktop(appId) {
+            if (!appId) return;
+            if (desktopApps.includes(appId)) { closePicker(); return; }
+            closePicker();
+            if (desktopApps.includes(appId)) return;
+            desktopApps.push(appId);
+            saveDesktop();
+            renderDesktop();
+            renderAllApps();
+            if (isEditMode) updateAddDesktopBtn();
+        }
+
+        function updateAddDesktopBtn() {
+            if (!addDesktopBtn) return;
+            if (isEditMode && isBottomVisible) addDesktopBtn.classList.add('visible');
+            else addDesktopBtn.classList.remove('visible');
+        }
+
+        function handleAddToDesktop(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            openPicker();
+        }
+
+        addDesktopBtn.addEventListener('click', handleAddToDesktop);
+        addDesktopBtn.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+        addDesktopBtn.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+
+        function startDrag(e, btn, appId) {
+            if (!isEditMode) return;
+            e.preventDefault();
+            if (dragState) return;
+            const rect = btn.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            dragState = {
+                appId: appId,
+                element: btn,
+                startX: touch.clientX,
+                startY: touch.clientY,
+                offsetX: touch.clientX - rect.left,
+                offsetY: touch.clientY - rect.top,
+                width: rect.width,
+                height: rect.height,
+                originIndex: desktopApps.indexOf(appId),
+                currentTargetId: null,
+                moved: false
+            };
+            btn.classList.add('dragging');
+            btn.style.position = 'fixed';
+            btn.style.left = rect.left + 'px';
+            btn.style.top = rect.top + 'px';
+            btn.style.width = rect.width + 'px';
+            btn.style.height = rect.height + 'px';
+            btn.style.zIndex = 1000;
+            btn.style.pointerEvents = 'none';
+            btn.style.transition = 'none';
+            document.addEventListener('mousemove', onDragMove, { passive: false });
+            document.addEventListener('mouseup', onDragEnd);
+            document.addEventListener('touchmove', onDragMove, { passive: false });
+            document.addEventListener('touchend', onDragEnd);
+            document.addEventListener('touchcancel', onDragEnd);
+        }
+
+        function onDragMove(e) {
+            if (!dragState) return;
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const dx = touch.clientX - dragState.startX;
+            const dy = touch.clientY - dragState.startY;
+            if (!dragState.moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) dragState.moved = true;
+            if (!dragState.moved) return;
+            const btn = dragState.element;
+            const newLeft = touch.clientX - dragState.offsetX;
+            const newTop = touch.clientY - dragState.offsetY;
+            btn.style.left = newLeft + 'px';
+            btn.style.top = newTop + 'px';
+            const centerX = touch.clientX;
+            const centerY = touch.clientY;
+            const buttons = buttonGroup.querySelectorAll('.btn');
+            let targetBtn = null;
+            let minDist = Infinity;
+            buttons.forEach(function(other) {
+                if (other === btn) return;
+                const r = other.getBoundingClientRect();
+                const cx = r.left + r.width / 2;
+                const cy = r.top + r.height / 2;
+                const dist = Math.sqrt((cx - centerX) ** 2 + (cy - centerY) ** 2);
+                if (dist < minDist) { minDist = dist; targetBtn = other; }
+            });
+            if (targetBtn && minDist < Math.max(dragState.width, dragState.height) * 1.2) {
+                const targetId = targetBtn.dataset.id;
+                if (targetId && targetId !== dragState.appId) dragState.currentTargetId = targetId;
+            } else dragState.currentTargetId = null;
+        }
+
+        function onDragEnd(e) {
+            if (!dragState) return;
+            document.removeEventListener('mousemove', onDragMove);
+            document.removeEventListener('mouseup', onDragEnd);
+            document.removeEventListener('touchmove', onDragMove);
+            document.removeEventListener('touchend', onDragEnd);
+            document.removeEventListener('touchcancel', onDragEnd);
+            const btn = dragState.element;
+            const targetId = dragState.currentTargetId;
+            if (targetId && dragState.moved) {
+                const fromIndex = desktopApps.indexOf(dragState.appId);
+                const toIndex = desktopApps.indexOf(targetId);
+                if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+                    desktopApps.splice(fromIndex, 1);
+                    desktopApps.splice(toIndex, 0, dragState.appId);
+                    saveDesktop();
+                }
+            }
+            btn.style.position = '';
+            btn.style.left = '';
+            btn.style.top = '';
+            btn.style.width = '';
+            btn.style.height = '';
+            btn.style.zIndex = '';
+            btn.style.pointerEvents = '';
+            btn.style.transition = '';
+            btn.classList.remove('dragging');
+            const wasMoved = dragState.moved;
+            dragState = null;
+            if (wasMoved) {
+                renderDesktop();
+                renderAllApps();
+                setTimeout(function() {
+                    const suppressClick = function(ev) { ev.stopPropagation(); ev.preventDefault(); };
+                    document.addEventListener('click', suppressClick, { capture: true, once: true });
+                }, 0);
+            }
+        }
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            topPanel.classList.toggle('editing', isEditMode);
+            bottomPanel.classList.toggle('editing', isEditMode);
+            renderDesktop();
+            renderAllApps();
+            updateAddDesktopBtn();
+        }
+
+        function showBottomPanel() {
+            if (isBottomVisible || isClosing) return;
+            isBottomVisible = true;
+            isClosing = false;
+            appBackground.classList.add('blurred');
+            topPanel.classList.add('swiped-down');
+            renderAllApps();
+
+            const s = loadScreenSettings();
+            if (s.appsSearch) appsSearchBar.classList.add('visible');
+            updateAddDesktopBtn();
+
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    bottomPanel.classList.add('visible');
+                    bottomPanel.classList.remove('closing');
+                });
+            });
+        }
+
+        function hideBottomPanel() {
+            if (!isBottomVisible) return;
+            isBottomVisible = false;
+            isClosing = true;
+            bottomPanel.classList.add('closing');
+            bottomPanel.classList.remove('visible');
+            appBackground.classList.remove('blurred');
+            topPanel.classList.remove('swiped-down');
+            appsSearchBar.classList.remove('visible');
+            if (addDesktopBtn) addDesktopBtn.classList.remove('visible');
+            closePicker();
+            setTimeout(function() {
+                bottomPanel.classList.remove('closing');
+                isClosing = false;
+            }, 300);
+        }
+
+        closeAppsBtn.addEventListener('click', hideBottomPanel);
+        editClose.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (isEditMode) toggleEditMode();
+        });
+
+        let longPressTimer = null;
+        let longPressStartX = 0;
+        let longPressStartY = 0;
+
+        const LONG_PRESS_MS = 1000;
+        const MOVE_TOLERANCE = 12;
+
+        function cancelLongPress() {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        }
+
+        function pointFromEvent(e) {
+            if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function isInteractiveTarget(target) {
+            if (!target || !(target instanceof Element)) return false;
+            if (target.closest('.btn-wrap')) return true;
+            if (target.closest('.edit-title')) return true;
+            if (target.closest('.edit-close')) return true;
+            if (target.closest('.desktop-search')) return true;
+            if (target.closest('.bottom-panel')) return true;
+            if (target.closest('.apps-search-bar')) return true;
+            if (target.closest('.add-desktop-btn')) return true;
+            if (target.closest('.picker-backdrop')) return true;
+            if (target.closest('.html-app-window')) return true;
+            if (target.closest('.win-backdrop')) return true;
+            if (target.closest('#obRoot')) return true;
+            return false;
+        }
+
+        function onLongPressStart(e) {
+            if (isEditMode) return;
+            if (isBottomVisible) return;
+            if (isInteractiveTarget(e.target)) return;
+            const p = pointFromEvent(e);
+            longPressStartX = p.x;
+            longPressStartY = p.y;
+            cancelLongPress();
+            longPressTimer = setTimeout(function() {
+                longPressTimer = null;
+                toggleEditMode();
+            }, LONG_PRESS_MS);
+        }
+
+        function onLongPressMove(e) {
+            if (!longPressTimer) return;
+            const p = pointFromEvent(e);
+            const dx = p.x - longPressStartX;
+            const dy = p.y - longPressStartY;
+            if (Math.abs(dx) > MOVE_TOLERANCE || Math.abs(dy) > MOVE_TOLERANCE) cancelLongPress();
+        }
+
+        function onLongPressEnd(e) { cancelLongPress(); }
+
+        appBackground.addEventListener('mousedown', onLongPressStart);
+        appBackground.addEventListener('mousemove', onLongPressMove);
+        appBackground.addEventListener('mouseup', onLongPressEnd);
+        appBackground.addEventListener('mouseleave', onLongPressEnd);
+        appBackground.addEventListener('touchstart', onLongPressStart, { passive: true });
+        appBackground.addEventListener('touchmove', onLongPressMove, { passive: true });
+        appBackground.addEventListener('touchend', onLongPressEnd, { passive: true });
+        appBackground.addEventListener('touchcancel', onLongPressEnd, { passive: true });
+
+        appBackground.addEventListener('click', function(e) {
+            if (isEditMode && !isInteractiveTarget(e.target)) toggleEditMode();
+        });
+
+        let startY = 0, isSwiping = false;
+        app.addEventListener('touchstart', function(e) { startY = e.touches[0].clientY; isSwiping = true; }, { passive: true });
+        app.addEventListener('touchmove', function(e) {
+            if (!isSwiping) return;
+            const deltaY = e.touches[0].clientY - startY;
+            if (deltaY < -60 && !isBottomVisible) { e.preventDefault(); showBottomPanel(); isSwiping = false; }
+            if (deltaY > 60 && isBottomVisible) { e.preventDefault(); hideBottomPanel(); isSwiping = false; }
+        }, { passive: false });
+        app.addEventListener('touchend', function() { isSwiping = false; }, { passive: true });
+        app.addEventListener('wheel', function(e) {
+            if (e.deltaY < -30 && !isBottomVisible) { e.preventDefault(); showBottomPanel(); }
+            else if (e.deltaY > 30 && isBottomVisible) { e.preventDefault(); hideBottomPanel(); }
+        }, { passive: false });
+
+        let lastInstalledHash = '';
+        try { lastInstalledHash = localStorage.getItem(INSTALLED_KEY) || ''; } catch(e) {}
+        setInterval(function() {
+            let installedRaw = '';
+            try { installedRaw = localStorage.getItem(INSTALLED_KEY) || ''; } catch(e) {}
+            if (installedRaw !== lastInstalledHash) {
+                lastInstalledHash = installedRaw;
+                refreshApps();
+            }
+        }, 2000);
+
+        applyWallpaperFromStorage();
+        applyScreenSettings();
+
+        window.addEventListener('shnuk:desktop-changed', function() {
+            try { loadDesktop(); } catch(e) {}
+            try { renderDesktop(); } catch(e) {}
+            try { renderAllApps(); } catch(e) {}
+        });
+
+        window.addEventListener('shnuk:files-changed', function() {
+            try { renderDesktop(); } catch(e) {}
+        });
+
+        loadApps();
+        setTimeout(ensureFullscreen, 500);
+        if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
+    };
+    </script>
+
+    <script>
+    (function() {
+        var PRELOAD_IMAGES = [
+            'wall1.png', 'wall2.png', 'wall3.png',
+            'camera.png', 'settings.png', 'time.png',
+            'gamecenter.png', 'file.png', 'store.png',
+            'recording.png', 'cooop.png', 'games.png', 'coll.png', 'myshnuk.png'
+        ];
+        PRELOAD_IMAGES.forEach(function(src) {
+            try { var img = new Image(); img.src = src; } catch(e) {}
+        });
+    })();
+    </script>
+
+</body>
+</html>
