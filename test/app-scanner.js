@@ -6,17 +6,14 @@
     const FORCE_MODE = true;
 
     const APP_LIST = [
-        { id: 'my-shnuk', name: 'My Shnuk', icon: 'myshnuk.png' },
         { id: 'settings', name: 'Настройки', icon: 'settings.png' },
         { id: 'time', name: 'Часы', icon: 'time.png' },
         { id: 'file', name: 'Файлы', icon: 'file.png' },
-        { id: 'store', name: 'Store', icon: 'store.png' },
         { id: 'camera', name: 'Камера', icon: 'camera.png' },
         { id: 'recorder', name: 'Звукозапись', icon: 'recording.png' },
         { id: 'cooop', name: 'Cooop', icon: 'cooop.png' },
         { id: 'gamecenter', name: 'Game Center', icon: 'games.png' },
-        { id: 'coll', name: 'Collaris', icon: 'coll.png' },
-        { id: 'cooop-messenger', name: 'cooop-messenger', icon: 'coll.png' }
+        { id: 'coll', name: 'Collaris', icon: 'coll.png' }
     ];
 
     const BASE_PATH = './';

@@ -13,28 +13,9 @@
     const WALLPAPER_NAME_KEY = 'shnuk_wallpaper_name';
     const FULLSCREEN_KEY = 'shnuk_fullscreen';
     const APP_WALLPAPER_KEY = 'app_wallpaper';
-    const COOOP_KEEP_FLAG = 'cooop_keep_after_download';
-    const COOOP_UNLOCK_FLAG = 'cooop_keep_unlocked';
+    const SCREEN_SETTINGS_KEY = 'shnuk_screen_settings';
 
     const FONT_MAIN = "'TTPaplane', monospace";
-
-    const COOOP_CODES = [
-        'shnuk7k2m9x',
-        'a4shnukp8q1',
-        'z9rshnuk3v6',
-        'shnukm5t0wy',
-        'q2shnuk8n4j',
-        'shnukx6b1r7',
-        'c8shnuk5z3k',
-        'shnuk9f4d2s',
-        'v1shnuk7h6p',
-        'shnuk3y8q5m',
-        't6shnuk2w9a',
-        'shnukr4j7x1',
-        'b5shnuk9c8n',
-        'shnuk2p6v3z',
-        'm7shnuk1s5d'
-    ];
 
     const themes = [
         { id: 'day', name: 'Яркий день', file: 'wall1.png', desc: 'Светлая палитра' },
@@ -52,6 +33,39 @@
             prompt: (msg, def) => Promise.resolve(null),
             notify: () => {}
         };
+    }
+
+    // ============================================
+    // НАСТРОЙКИ ЭКРАНА
+    // ============================================
+
+    function loadScreenSettings() {
+        const defaults = {
+            desktopSearch: false,
+            appsSearch: false,
+            searchEngine: 'google',
+            desktopCols: 4,
+            desktopRows: 2,
+            appsCols: 4,
+            appsRows: 3
+        };
+        try {
+            const raw = localStorage.getItem(SCREEN_SETTINGS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                return Object.assign(defaults, parsed);
+            }
+        } catch(e) {}
+        return defaults;
+    }
+
+    function saveScreenSettings(s) {
+        try {
+            localStorage.setItem(SCREEN_SETTINGS_KEY, JSON.stringify(s));
+        } catch(e) {}
+        try {
+            window.dispatchEvent(new CustomEvent('shnuk:screen-settings-changed', { detail: s }));
+        } catch(e) {}
     }
 
     function isFullscreen() {
@@ -161,6 +175,7 @@
         }
 
         renderThemes();
+        renderScreenSettings();
         notifyWallpaperChanged();
         notifyThemeChanged(theme.id);
     }
@@ -230,9 +245,7 @@
 
             item.addEventListener('click', function(e) {
                 e.stopPropagation();
-                if (carousel.dataset.justExpanded === '1') {
-                    return;
-                }
+                if (carousel.dataset.justExpanded === '1') return;
                 if (!carousel.classList.contains('expanded')) {
                     carousel.classList.add('expanded');
                     if (isTouchDevice()) {
@@ -288,6 +301,212 @@
                 carousel.classList.remove('expanded');
             }
         });
+    }
+
+    // ============================================
+    // ДРУГИЕ НАСТРОЙКИ ЭКРАНА
+    // ============================================
+
+    function renderScreenSettings() {
+        const container = document.getElementById('screenSettingsContainer');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const title = document.createElement('div');
+        title.className = 'settings-section-title';
+        title.style.marginTop = '36px';
+        title.textContent = 'Другие настройки экрана';
+        container.appendChild(title);
+
+        const s = loadScreenSettings();
+
+        container.appendChild(makeToggleRow(
+            'Строка поиска на главном',
+            'Поиск в интернете прямо с рабочего стола',
+            !!s.desktopSearch,
+            function(v) {
+                s.desktopSearch = v;
+                saveScreenSettings(s);
+            }
+        ));
+
+        container.appendChild(makeSelectRow(
+            'Поисковик',
+            'Куда отправлять запрос',
+            [
+                { value: 'google', label: 'Google' },
+                { value: 'yandex', label: 'Яндекс' },
+                { value: 'duckduckgo', label: 'DuckDuckGo' },
+                { value: 'bing', label: 'Bing' }
+            ],
+            s.searchEngine || 'google',
+            function(v) {
+                s.searchEngine = v;
+                saveScreenSettings(s);
+            }
+        ));
+
+        container.appendChild(makeToggleRow(
+            'Поиск в меню приложений',
+            'Фильтровать приложения по названию',
+            !!s.appsSearch,
+            function(v) {
+                s.appsSearch = v;
+                saveScreenSettings(s);
+            }
+        ));
+
+        container.appendChild(makeGridRow(
+            'Ряды и столбцы на главном',
+            'desktopCols',
+            'desktopRows',
+            s,
+            2, 6,
+            1, 5,
+            function() { saveScreenSettings(s); }
+        ));
+
+        container.appendChild(makeGridRow(
+            'Ряды и столбцы в меню',
+            'appsCols',
+            'appsRows',
+            s,
+            2, 6,
+            1, 6,
+            function() { saveScreenSettings(s); }
+        ));
+    }
+
+    function makeToggleRow(label, sub, active, onChange) {
+        const row = document.createElement('div');
+        row.className = 'toggle-row' + (active ? ' active' : '');
+        row.innerHTML = `
+            <div class="tr-left">
+                <div>
+                    <div class="tr-text">${label}</div>
+                    <div class="tr-sub">${sub}</div>
+                </div>
+            </div>
+            <div class="tr-switch"></div>
+        `;
+        row.addEventListener('click', function() {
+            const newVal = !row.classList.contains('active');
+            row.classList.toggle('active', newVal);
+            onChange(newVal);
+        });
+        return row;
+    }
+
+    function makeSelectRow(label, sub, options, value, onChange) {
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 22px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            margin-bottom: 18px;
+            gap: 16px;
+            flex-wrap: wrap;
+        `;
+
+        const left = document.createElement('div');
+        left.innerHTML = `
+            <div style="font-size:21px;font-weight:700;color:var(--text-primary);">${label}</div>
+            <div style="font-size:15px;color:var(--text-muted);margin-top:2px;">${sub}</div>
+        `;
+        row.appendChild(left);
+
+        const sel = document.createElement('select');
+        sel.style.cssText = `
+            padding: 10px 14px;
+            border: 2px solid var(--border-color);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: ${FONT_MAIN};
+            font-size: 18px;
+            outline: none;
+            cursor: pointer;
+            min-width: 160px;
+            transition: border-color 0.2s;
+        `;
+        sel.addEventListener('focus', function() { sel.style.borderColor = 'var(--accent)'; });
+        sel.addEventListener('blur', function() { sel.style.borderColor = 'var(--border-color)'; });
+        options.forEach(function(o) {
+            const opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.label;
+            sel.appendChild(opt);
+        });
+        sel.value = value;
+        sel.addEventListener('change', function() { onChange(this.value); });
+        row.appendChild(sel);
+
+        return row;
+    }
+
+    function makeGridRow(label, keyCols, keyRows, s, minCols, maxCols, minRows, maxRows, onChange) {
+        const row = document.createElement('div');
+        row.style.cssText = `
+            padding: 18px 22px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            margin-bottom: 18px;
+        `;
+
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size:21px;font-weight:700;color:var(--text-primary);margin-bottom:14px;';
+        title.textContent = label;
+        row.appendChild(title);
+
+        const inner = document.createElement('div');
+        inner.style.cssText = 'display:flex;gap:28px;flex-wrap:wrap;';
+
+        function makeField(subLabel, key, min, max) {
+            const field = document.createElement('div');
+            field.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;font-weight:600;';
+            lbl.textContent = subLabel;
+            field.appendChild(lbl);
+
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.min = String(min);
+            inp.max = String(max);
+            inp.value = s[key];
+            inp.style.cssText = `
+                width: 84px;
+                padding: 10px;
+                border: 2px solid var(--border-color);
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                font-family: ${FONT_MAIN};
+                font-size: 20px;
+                text-align: center;
+                outline: none;
+                box-sizing: border-box;
+                transition: border-color 0.2s;
+            `;
+            inp.addEventListener('focus', function() { inp.style.borderColor = 'var(--accent)'; });
+            inp.addEventListener('blur', function() { inp.style.borderColor = 'var(--border-color)'; });
+            inp.addEventListener('input', function() {
+                let v = parseInt(this.value, 10);
+                if (isNaN(v)) return;
+                v = Math.max(min, Math.min(max, v));
+                s[key] = v;
+                onChange();
+            });
+            field.appendChild(inp);
+            return field;
+        }
+
+        inner.appendChild(makeField('Столбцы', keyCols, minCols, maxCols));
+        inner.appendChild(makeField('Ряды', keyRows, minRows, maxRows));
+
+        row.appendChild(inner);
+        return row;
     }
 
     function openThemeApply(themeId) {
@@ -363,99 +582,6 @@
             }
         };
         document.addEventListener('keydown', onEsc);
-    }
-
-    function renderCooopSettings() {
-        const container = document.getElementById('cooopSettingsContent');
-        if (!container) return;
-
-        let unlocked = false;
-        let keep = false;
-        try { unlocked = localStorage.getItem(COOOP_UNLOCK_FLAG) === 'true'; } catch(e) {}
-        try { keep = localStorage.getItem(COOOP_KEEP_FLAG) === 'true'; } catch(e) {}
-
-        if (!unlocked) {
-            container.innerHTML = `
-                <div class="cooop-section">
-                    <div class="cooop-section-title">Специальный доступ</div>
-                    <div class="cooop-desc">Введите один из специальных кодов, чтобы открыть расширенные настройки Cooop Share.</div>
-                    <div class="cooop-code-row">
-                        <input type="text" id="cooopCodeInput" class="cooop-input" placeholder="Специальный код" autocomplete="off" spellcheck="false" />
-                        <button class="cooop-btn" id="cooopUnlockBtn">Разблокировать</button>
-                    </div>
-                    <div class="cooop-hint" id="cooopCodeHint"></div>
-                </div>
-            `;
-
-            const input = document.getElementById('cooopCodeInput');
-            const btn = document.getElementById('cooopUnlockBtn');
-            const hint = document.getElementById('cooopCodeHint');
-
-            function tryUnlock() {
-                const code = (input.value || '').trim();
-                if (!code) {
-                    hint.textContent = 'Введите код';
-                    hint.style.color = 'var(--accent)';
-                    return;
-                }
-                if (COOOP_CODES.indexOf(code) !== -1) {
-                    try { localStorage.setItem(COOOP_UNLOCK_FLAG, 'true'); } catch(e) {}
-                    hint.textContent = 'Доступ открыт';
-                    hint.style.color = '#4CAF50';
-                    setTimeout(renderCooopSettings, 600);
-                } else {
-                    hint.textContent = 'Неверный код';
-                    hint.style.color = 'var(--accent)';
-                    input.value = '';
-                }
-            }
-
-            btn.addEventListener('click', tryUnlock);
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') tryUnlock();
-            });
-            return;
-        }
-
-        container.innerHTML = `
-            <div class="cooop-section">
-                <div class="cooop-section-title">Расширенные настройки</div>
-                <div class="toggle-row ${keep ? 'active' : ''}" id="cooopKeepToggle">
-                    <div class="tr-left">
-                        <div>
-                            <div class="tr-text">Не удалять после скачивания</div>
-                            <div class="tr-sub">Файл останется на сервере после первого скачивания</div>
-                        </div>
-                    </div>
-                    <div class="tr-switch"></div>
-                </div>
-                <div class="cooop-desc">При включении ссылка останется рабочей после того, как получатель скачает файл.</div>
-                <div class="cooop-lock-row">
-                    <button class="cooop-btn-secondary" id="cooopRelockBtn">Заблокировать настройки</button>
-                </div>
-            </div>
-        `;
-
-        const toggle = document.getElementById('cooopKeepToggle');
-        if (toggle) {
-            toggle.addEventListener('click', function() {
-                const nowActive = !toggle.classList.contains('active');
-                toggle.classList.toggle('active', nowActive);
-                try { localStorage.setItem(COOOP_KEEP_FLAG, nowActive ? 'true' : 'false'); } catch(e) {}
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify(nowActive ? 'Файлы не будут удаляться' : 'Файлы будут удаляться после скачивания', { type: 'success' });
-                }
-            });
-        }
-
-        const relock = document.getElementById('cooopRelockBtn');
-        if (relock) {
-            relock.addEventListener('click', function() {
-                try { localStorage.removeItem(COOOP_UNLOCK_FLAG); } catch(e) {}
-                try { localStorage.setItem(COOOP_KEEP_FLAG, 'false'); } catch(e) {}
-                renderCooopSettings();
-            });
-        }
     }
 
     async function renderSystemInfo() {
@@ -1016,11 +1142,11 @@
                 }
                 .settings-icon-btn {
                     background: none; border: none; cursor: pointer;
-                    padding: 8px; color: var(--text-secondary); transition: color 0.2s, border-radius 0.25s;
+                    padding: 8px; color: var(--text-secondary); transition: color 0.2s;
                     display: flex; align-items: center; justify-content: center;
                     width: 46px; height: 46px;
                 }
-                .settings-icon-btn:hover { color: var(--accent); border-radius: 9999px; }
+                .settings-icon-btn:hover { color: var(--accent); }
                 .settings-icon-btn svg { display: block; width: 28px; height: 28px; }
 
                 .settings-dropdown {
@@ -1036,11 +1162,6 @@
                     overflow-y: auto;
                     animation: menuFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
                     border: 2px solid var(--border-color);
-                    border-radius: 0;
-                    transition: border-radius 0.25s ease;
-                }
-                .settings-dropdown:hover {
-                    border-radius: 9999px;
                 }
                 .settings-dropdown.closing {
                     animation: menuFadeOut 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -1055,15 +1176,13 @@
                     border: 2px solid var(--border-color);
                     cursor: pointer;
                     font-size: 20px;
-                    transition: all 0.2s, border-radius 0.25s;
+                    transition: all 0.2s;
                     text-align: left;
-                    border-radius: 0;
                 }
                 .settings-dropdown button:last-child { margin-bottom: 0; }
                 .settings-dropdown button:hover {
                     background: var(--bg-tertiary);
                     border-color: var(--accent);
-                    border-radius: 9999px;
                 }
                 .settings-dropdown button.active {
                     background: var(--accent);
@@ -1071,10 +1190,39 @@
                     border-color: var(--accent);
                 }
 
-                .settings-section {
-                    max-width: 720px; margin: 0 auto 40px; display: none;
+                .settings-stage {
+                    position: relative;
+                    width: 100%;
+                    max-width: 720px;
+                    margin: 0 auto;
                 }
-                .settings-section.active { display: block; }
+
+                .settings-section-view {
+                    width: 100%;
+                    display: none;
+                    transition: filter 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                                opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                                transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+                    will-change: filter, opacity, transform;
+                }
+                .settings-section-view.active {
+                    display: block;
+                }
+                .settings-section-view.entering {
+                    opacity: 0;
+                    filter: blur(18px);
+                    transform: scale(0.94);
+                }
+                .settings-section-view.entered {
+                    opacity: 1;
+                    filter: blur(0);
+                    transform: scale(1);
+                }
+                .settings-section-view.leaving {
+                    opacity: 0;
+                    filter: blur(18px);
+                    transform: scale(0.94);
+                }
 
                 .settings-section-title {
                     font-size: 19px; font-weight: 700; color: var(--text-muted);
@@ -1107,22 +1255,16 @@
                     height: 320px;
                     margin-left: -125px;
                     margin-top: -160px;
-                    border-radius: 4px;
                     overflow: hidden;
                     background: var(--bg-secondary);
                     transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
                                 opacity 0.4s ease,
                                 filter 0.4s ease,
-                                box-shadow 0.4s ease,
-                                border-radius 0.25s ease;
+                                box-shadow 0.4s ease;
                     will-change: transform, opacity;
                     cursor: pointer;
                     border: 3px solid transparent;
                     box-sizing: border-box;
-                }
-                .theme-carousel-item:hover {
-                    border-color: var(--accent);
-                    border-radius: 32px;
                 }
 
                 .theme-carousel-item img {
@@ -1167,7 +1309,6 @@
                     display: none;
                     align-items: center;
                     justify-content: center;
-                    border-radius: 50%;
                     pointer-events: none;
                 }
                 .theme-carousel-item .theme-check svg {
@@ -1217,6 +1358,10 @@
                     z-index: 3;
                     filter: blur(0);
                     box-shadow: 0 14px 40px rgba(0,0,0,0.3);
+                }
+
+                .theme-carousel-item:hover {
+                    border-color: var(--accent);
                 }
 
                 @media (max-width: 600px) {
@@ -1271,15 +1416,11 @@
                     border: 2px solid var(--border-color);
                     box-shadow: 0 20px 60px rgba(0,0,0,0.4);
                     transform: scale(0.94) translateY(10px);
-                    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.25s ease;
+                    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
                     display: flex;
                     flex-direction: column;
                     max-height: calc(100% - 40px);
                     overflow: hidden;
-                    border-radius: 0;
-                }
-                .theme-apply-modal:hover {
-                    border-radius: 32px;
                 }
                 .theme-apply-overlay.visible .theme-apply-modal {
                     transform: scale(1) translateY(0);
@@ -1308,13 +1449,11 @@
                     padding: 4px 12px;
                     cursor: pointer;
                     line-height: 1;
-                    transition: all 0.2s ease, border-radius 0.25s ease;
-                    border-radius: 0;
+                    transition: all 0.2s ease;
                 }
                 .theme-apply-close:hover {
                     background: var(--accent);
                     color: var(--text-on-accent);
-                    border-radius: 9999px;
                 }
 
                 .theme-apply-name {
@@ -1342,12 +1481,8 @@
                     font-weight: 700;
                     letter-spacing: 0.5px;
                     cursor: pointer;
-                    transition: all 0.2s ease, border-radius 0.25s ease;
+                    transition: all 0.2s ease;
                     border: 2px solid transparent;
-                    border-radius: 0;
-                }
-                .theme-apply-btn:hover {
-                    border-radius: 9999px;
                 }
                 .theme-apply-btn.primary {
                     background: var(--accent);
@@ -1368,78 +1503,6 @@
                     color: var(--accent);
                 }
 
-                .cooop-section {
-                    background: var(--bg-secondary); padding: 22px;
-                    margin-bottom: 18px; border: 2px solid var(--border-color);
-                    transition: border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .cooop-section:hover {
-                    border-radius: 32px;
-                }
-                .cooop-section-title {
-                    font-size: 20px; font-weight: 700; color: var(--text-primary);
-                    margin-bottom: 14px;
-                }
-                .cooop-desc {
-                    font-size: 16px; color: var(--text-secondary);
-                    line-height: 1.5; margin-bottom: 16px;
-                }
-                .cooop-code-row {
-                    display: flex; gap: 10px; flex-wrap: wrap;
-                }
-                .cooop-input {
-                    flex: 1; min-width: 180px;
-                    padding: 14px 16px;
-                    border: 2px solid var(--border-color);
-                    font-size: 20px;
-                    outline: none;
-                    box-sizing: border-box;
-                    background: var(--bg-primary);
-                    color: var(--text-primary);
-                    transition: border-color 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .cooop-input:focus { border-color: var(--accent); }
-                .cooop-input:hover { border-radius: 9999px; }
-                .cooop-btn {
-                    padding: 14px 26px;
-                    border: 2px solid var(--accent);
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                    cursor: pointer;
-                    font-size: 20px;
-                    font-weight: 700;
-                    transition: all 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .cooop-btn:hover {
-                    background: var(--accent-dark);
-                    border-radius: 9999px;
-                }
-                .cooop-btn-secondary {
-                    padding: 12px 22px;
-                    border: 2px solid var(--border-color);
-                    background: var(--bg-primary);
-                    color: var(--text-primary);
-                    cursor: pointer;
-                    font-size: 19px;
-                    transition: all 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .cooop-btn-secondary:hover {
-                    border-color: var(--accent);
-                    color: var(--accent);
-                    border-radius: 9999px;
-                }
-                .cooop-hint {
-                    font-size: 16px; margin-top: 10px;
-                    min-height: 22px; color: var(--text-muted);
-                }
-                .cooop-lock-row {
-                    margin-top: 16px;
-                }
-
                 .system-image-wrap {
                     display: flex;
                     justify-content: center;
@@ -1458,11 +1521,6 @@
 
                 .system-info {
                     background: var(--bg-secondary); padding: 18px 22px; margin-bottom: 26px;
-                    transition: border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .system-info:hover {
-                    border-radius: 32px;
                 }
                 .system-info .info-row {
                     display: flex; justify-content: space-between;
@@ -1478,11 +1536,6 @@
                 .action-card {
                     background: var(--bg-secondary); padding: 22px;
                     margin-bottom: 18px; border: 2px solid var(--border-color);
-                    transition: border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .action-card:hover {
-                    border-radius: 32px;
                 }
                 .action-card .action-title {
                     font-size: 22px; font-weight: 700;
@@ -1497,20 +1550,16 @@
                     background: var(--accent); color: var(--text-on-accent);
                     cursor: pointer;
                     font-size: 20px; font-weight: 700;
-                    transition: all 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
+                    transition: all 0.2s;
                 }
                 .action-card button:hover {
-                    background: var(--accent-dark);
-                    transform: scale(1.02);
-                    border-radius: 9999px;
+                    background: var(--accent-dark); transform: scale(1.02);
                 }
                 .action-card button.danger {
                     background: var(--accent); border-color: var(--accent); color: var(--text-on-accent);
                 }
                 .action-card button.danger:hover {
                     background: var(--accent-dark); border-color: var(--accent-dark);
-                    border-radius: 9999px;
                 }
                 .action-card.danger-card {
                     border-color: var(--border-color); background: var(--bg-hover);
@@ -1521,13 +1570,10 @@
                     justify-content: space-between;
                     padding: 18px 22px; background: var(--bg-secondary);
                     border: 2px solid var(--border-color); margin-bottom: 18px;
-                    cursor: pointer;
-                    transition: all 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
+                    cursor: pointer; transition: all 0.2s;
                 }
                 .toggle-row:hover {
                     border-color: var(--accent); background: var(--bg-hover);
-                    border-radius: 32px;
                 }
                 .toggle-row .tr-left {
                     display: flex; align-items: center; gap: 12px;
@@ -1540,24 +1586,20 @@
                 }
                 .toggle-row .tr-switch {
                     width: 54px; height: 32px; background: var(--border-color);
-                    border-radius: 16px; position: relative;
-                    transition: background 0.3s, border-radius 0.25s; flex-shrink: 0;
+                    position: relative;
+                    transition: background 0.3s; flex-shrink: 0;
                 }
                 .toggle-row .tr-switch::after {
                     content: ''; position: absolute;
                     top: 2px; left: 2px;
                     width: 28px; height: 28px;
-                    background: var(--bg-primary); border-radius: 50%;
-                    transition: transform 0.3s, border-radius 0.25s;
+                    background: var(--bg-primary);
+                    transition: transform 0.3s;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
                 .toggle-row.active .tr-switch { background: var(--accent); }
                 .toggle-row.active .tr-switch::after {
                     transform: translateX(22px);
-                }
-                .toggle-row:hover .tr-switch,
-                .toggle-row:hover .tr-switch::after {
-                    border-radius: 9999px;
                 }
 
                 .security-status {
@@ -1565,11 +1607,6 @@
                     padding: 18px 22px;
                     margin-bottom: 26px;
                     border: 2px solid var(--border-color);
-                    transition: border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .security-status:hover {
-                    border-radius: 32px;
                 }
                 .security-status-row {
                     display: flex;
@@ -1589,13 +1626,9 @@
                     cursor: pointer;
                     font-size: 20px;
                     font-weight: 700;
-                    transition: all 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
+                    transition: all 0.2s;
                 }
-                .security-btn:hover {
-                    background: var(--accent-dark);
-                    border-radius: 9999px;
-                }
+                .security-btn:hover { background: var(--accent-dark); }
                 .security-btn.danger {
                     background: var(--bg-primary);
                     color: var(--accent);
@@ -1603,7 +1636,6 @@
                 .security-btn.danger:hover {
                     background: var(--accent);
                     color: var(--text-on-accent);
-                    border-radius: 9999px;
                 }
 
                 .security-section {
@@ -1611,11 +1643,6 @@
                     padding: 22px;
                     margin-bottom: 18px;
                     border: 2px solid var(--border-color);
-                    transition: border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                .security-section:hover {
-                    border-radius: 32px;
                 }
                 .security-section-title {
                     font-size: 20px;
@@ -1633,11 +1660,8 @@
                     box-sizing: border-box;
                     background: var(--bg-primary);
                     color: var(--text-primary);
-                    transition: border-color 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
                 }
                 .security-input:focus { border-color: var(--accent); }
-                .security-input:hover { border-radius: 9999px; }
 
                 .security-choice-row {
                     display: flex;
@@ -1655,14 +1679,12 @@
                     color: var(--text-primary);
                     text-align: left;
                     cursor: pointer;
-                    transition: all 0.2s ease, border-radius 0.25s ease;
+                    transition: all 0.2s ease;
                     font-family: inherit;
-                    border-radius: 0;
                 }
                 .security-choice-btn:hover {
                     border-color: var(--accent);
                     background: var(--bg-hover);
-                    border-radius: 9999px;
                 }
                 .security-choice-btn:active {
                     transform: scale(0.99);
@@ -1695,13 +1717,11 @@
                     cursor: pointer;
                     font-size: 18px;
                     font-family: inherit;
-                    transition: all 0.2s, border-radius 0.25s ease;
-                    border-radius: 0;
+                    transition: all 0.2s;
                 }
                 .security-back-btn:hover {
                     border-color: var(--accent);
                     color: var(--accent);
-                    border-radius: 9999px;
                 }
                 .security-subheader-title {
                     font-size: 24px;
@@ -1719,11 +1739,6 @@
                     border: 2px solid var(--border-color);
                     touch-action: none;
                     cursor: crosshair;
-                    transition: border-radius 0.25s ease;
-                    border-radius: 0;
-                }
-                #patternCanvas:hover {
-                    border-radius: 24px;
                 }
                 .pattern-hint {
                     text-align: center;
@@ -1750,7 +1765,6 @@
                     .toggle-row { padding: 16px 18px; }
                     .toggle-row .tr-text { font-size: 19px; }
                     .security-section { padding: 18px; }
-                    .cooop-section { padding: 18px; }
                     .theme-apply-modal { max-width: 100%; }
                     .security-choice-btn { padding: 18px 20px; }
                     .security-choice-btn .scb-title { font-size: 20px; }
@@ -1785,16 +1799,13 @@
                 <div class="settings-section-view" id="viewTheme">
                     <div class="settings-section-title">Темы оформления</div>
                     <div class="theme-grid" id="themeGrid"></div>
+
+                    <div id="screenSettingsContainer"></div>
                 </div>
 
                 <div class="settings-section-view" id="viewSecurity">
                     <div class="settings-section-title">Защита системы</div>
                     <div id="securityContent"></div>
-                </div>
-
-                <div class="settings-section-view" id="viewCooop">
-                    <div class="settings-section-title">Cooop Share</div>
-                    <div id="cooopSettingsContent"></div>
                 </div>
 
                 <div class="settings-section-view" id="viewSystem">
@@ -1834,7 +1845,6 @@
 
         function getViewByTab(tab) {
             if (tab === 'security') return document.getElementById('viewSecurity');
-            if (tab === 'cooop') return document.getElementById('viewCooop');
             if (tab === 'system') return document.getElementById('viewSystem');
             return document.getElementById('viewTheme');
         }
@@ -1845,8 +1855,10 @@
                 securityPage = 'menu';
                 renderSecurity();
             }
-            else if (tab === 'theme') renderThemes();
-            else if (tab === 'cooop') renderCooopSettings();
+            else if (tab === 'theme') {
+                renderThemes();
+                renderScreenSettings();
+            }
         }
 
         function switchSection(sectionId) {
@@ -1919,7 +1931,6 @@
             const sections = [
                 { id: 'theme', name: 'Темы' },
                 { id: 'security', name: 'Безопасность' },
-                { id: 'cooop', name: 'Cooop Share' },
                 { id: 'system', name: 'Система' }
             ];
 
@@ -2071,7 +2082,7 @@
             setTimeout(function() {
                 const container = document.getElementById('settingsApp');
                 if (!container) return;
-                const tabIds = ['theme', 'security', 'cooop', 'system'];
+                const tabIds = ['theme', 'security', 'system'];
                 tabIds.forEach(id => {
                     const v = document.getElementById('view' + id.charAt(0).toUpperCase() + id.slice(1));
                     if (!v) return;
@@ -2090,8 +2101,10 @@
                     securityPage = 'menu';
                     renderSecurity();
                 }
-                else if (sectionId === 'theme') renderThemes();
-                else if (sectionId === 'cooop') renderCooopSettings();
+                else if (sectionId === 'theme') {
+                    renderThemes();
+                    renderScreenSettings();
+                }
             }, 400);
         },
         selectTheme: function(id) {

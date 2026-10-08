@@ -1,427 +1,836 @@
-// onboarding.js — Первоначальное обучение
+// onboarding.js — Первоначальная настройка системы
 
 (function() {
     'use strict';
 
-    const STORAGE_KEY = 'shnuk_onboarding_done';
+    const DONE_KEY = 'shnuk_onboarding_done';
+    const LANG_KEY = 'shnuk_lang';
+    const BLUR_OFF_KEY = 'shnuk_blur_disabled';
+    const SOUND_OFF_KEY = 'shnuk_sound_disabled';
+    const SOUND_TARGETS_KEY = 'shnuk_sound_disabled_targets';
 
-    let startOverlay = null;
-    let tooltip = null;
-    let finalCard = null;
-    let stepIndex = 0;
-    let steps = [];
-    let actionListener = null;
+    let root = null;
+    let selectedLang = 'ru';
+    let isFinishing = false;
 
-    function isDone() {
-        try { return localStorage.getItem(STORAGE_KEY) === 'true'; }
-        catch(e) { return false; }
+    const LANGS = {
+        ru: {
+            label: 'Русский',
+            pickLangTitle: 'Язык системы',
+            pickLangDesc: 'Выберите язык, на котором будет говорить Shnuk OS.',
+            blurTitle: 'Размытие и анимации',
+            blurDesc: 'Настройте визуальные эффекты системы.',
+            blurAllLabel: 'Отключить размытие и анимации',
+            blurAllSub: 'Убрать размытие фона и все переходы',
+            soundTitle: 'Звуки',
+            soundDesc: 'Управление звуковыми эффектами системы.',
+            soundAllLabel: 'Отключить все звуки',
+            soundAllSub: 'Полностью выключить системные сигналы',
+            soundTargetsLabel: 'Отключить отдельные звуки',
+            soundTargetsSub: 'Настроить по отдельности',
+            next: 'Далее',
+            finish: 'Начать работу',
+            back: 'Назад',
+            targetSoundWindow: 'Окна',
+            targetSoundNotify: 'Уведомления',
+            targetSoundError: 'Ошибки'
+        },
+        en: {
+            label: 'English',
+            pickLangTitle: 'System language',
+            pickLangDesc: 'Choose the language of Shnuk OS.',
+            blurTitle: 'Blur and animations',
+            blurDesc: 'Configure system visual effects.',
+            blurAllLabel: 'Disable blur and animations',
+            blurAllSub: 'Remove background blur and all transitions',
+            soundTitle: 'Sounds',
+            soundDesc: 'System sound effects management.',
+            soundAllLabel: 'Disable all sounds',
+            soundAllSub: 'Turn off all system signals',
+            soundTargetsLabel: 'Disable specific sounds',
+            soundTargetsSub: 'Configure individually',
+            next: 'Next',
+            finish: 'Get started',
+            back: 'Back',
+            targetSoundWindow: 'Windows',
+            targetSoundNotify: 'Notifications',
+            targetSoundError: 'Errors'
+        },
+        zh: {
+            label: '中文',
+            pickLangTitle: '系统语言',
+            pickLangDesc: '选择 Shnuk OS 的语言。',
+            blurTitle: '模糊与动画',
+            blurDesc: '配置系统的视觉效果。',
+            blurAllLabel: '关闭模糊与动画',
+            blurAllSub: '移除背景模糊和所有过渡效果',
+            soundTitle: '声音',
+            soundDesc: '系统音效管理。',
+            soundAllLabel: '关闭所有声音',
+            soundAllSub: '关闭所有系统提示音',
+            soundTargetsLabel: '关闭某些声音',
+            soundTargetsSub: '逐项配置',
+            next: '下一步',
+            finish: '开始使用',
+            back: '返回',
+            targetSoundWindow: '窗口',
+            targetSoundNotify: '通知',
+            targetSoundError: '错误'
+        },
+        meme: {
+            label: 'Мемный',
+            pickLangTitle: 'Клута языка',
+            pickLangDesc: 'Выбели язык, на котолом будет говолить Shnuk OS.',
+            blurTitle: 'Клута и анимации',
+            blurDesc: 'Настлойте визуальные эффекты системы.',
+            blurAllLabel: 'Отключить клута и анимации',
+            blurAllSub: 'Ублать клута фона и все пелеходы',
+            soundTitle: 'Пельмени',
+            soundDesc: 'Уплавление звуковыми эффектами системы.',
+            soundAllLabel: 'Отключить все пельмени',
+            soundAllSub: 'Полностью выключить системные сигналы',
+            soundTargetsLabel: 'Отключить отдельные пельмени',
+            soundTargetsSub: 'Настлоить по отдельности',
+            next: 'Далее',
+            finish: 'Охаешеньки, начать',
+            back: 'Назад',
+            targetSoundWindow: 'Окна',
+            targetSoundNotify: 'Уведомления',
+            targetSoundError: 'Ошибки'
+        }
+    };
+
+    function getLang() { return LANGS[selectedLang] || LANGS.ru; }
+    function tr(k) { const l = getLang(); return l[k] || k; }
+
+    function saveLang(lang) { try { localStorage.setItem(LANG_KEY, lang); } catch(e) {} }
+    function saveBlurAll(off) {
+        try {
+            if (off) localStorage.setItem(BLUR_OFF_KEY, 'true');
+            else localStorage.removeItem(BLUR_OFF_KEY);
+        } catch(e) {}
     }
-
-    function markDone() {
-        try { localStorage.setItem(STORAGE_KEY, 'true'); } catch(e) {}
+    function saveSoundAll(off) {
+        try {
+            if (off) localStorage.setItem(SOUND_OFF_KEY, 'true');
+            else localStorage.removeItem(SOUND_OFF_KEY);
+        } catch(e) {}
     }
+    function saveSoundTargets(map) { try { localStorage.setItem(SOUND_TARGETS_KEY, JSON.stringify(map)); } catch(e) {} }
+
+    // ============================================
+    // СТИЛИ
+    // ============================================
 
     function injectStyles() {
         if (document.getElementById('onboardingStyles')) return;
-        const style = document.createElement('style');
-        style.id = 'onboardingStyles';
-        style.textContent = `
-            @keyframes obPulse { 0%,100% { transform: translateX(0); } 50% { transform: translateX(8px); } }
-            @keyframes obSlideUp {
-                from { transform: translateX(-50%) translateY(30px); opacity: 0; filter: blur(10px); }
-                to { transform: translateX(-50%) translateY(0); opacity: 1; filter: blur(0); }
-            }
-            @keyframes obFadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes obFadeOut { from { opacity: 1; } to { opacity: 0; } }
-            @keyframes obScaleIn {
-                from { transform: translate(-50%, -50%) scale(0.9); opacity: 0; filter: blur(20px); }
-                to { transform: translate(-50%, -50%) scale(1); opacity: 1; filter: blur(0); }
-            }
-            @keyframes obTapPulse {
-                0%,100% { transform: scale(1); opacity: 1; }
-                50% { transform: scale(1.25); opacity: 0.6; }
-            }
-
-            #obStartOverlay {
+        const st = document.createElement('style');
+        st.id = 'onboardingStyles';
+        st.textContent = `
+            #obRoot {
                 position: fixed;
                 top: 0; left: 0;
-                width: 100%; height: 100%;
-                background: var(--bg-primary, #ffffff);
+                width: 100vw; height: 100vh;
+                background: #000000;
                 z-index: 2147483647;
-                display: flex;
+                font-family: 'TTPaplane', monospace;
+                color: #ffffff;
+                overflow: hidden;
+                -webkit-tap-highlight-color: transparent;
+                user-select: none;
+                -webkit-user-select: none;
+                opacity: 0;
+                animation: obRootFadeIn 0.4s ease forwards;
+            }
+
+            #obRoot, #obRoot * {
+                font-family: 'TTPaplane', monospace !important;
+            }
+
+            @keyframes obRootFadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes obRootFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+            @keyframes obBlurIn {
+                from { opacity: 0; filter: blur(24px); transform: scale(0.96); }
+                to   { opacity: 1; filter: blur(0);   transform: scale(1); }
+            }
+            @keyframes obBlurOut {
+                from { opacity: 1; filter: blur(0);    transform: scale(1); }
+                to   { opacity: 0; filter: blur(24px); transform: scale(0.96); }
+            }
+            @keyframes obLogoIn {
+                from { opacity: 0; filter: blur(24px); transform: scale(0.94); }
+                to   { opacity: 1; filter: blur(0);    transform: scale(1); }
+            }
+
+            .ob-step {
+                position: absolute;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                display: none;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                font-family: 'ST-SimpleSquare', monospace;
-                opacity: 0;
-                transition: opacity 0.4s ease;
-            }
-            #obStartOverlay.visible { opacity: 1; }
-            #obStartOverlay .ob-logo {
-                width: 160px;
-                height: 160px;
-                object-fit: contain;
-                margin-bottom: 60px;
-            }
-            #obStartOverlay .ob-arrow {
-                position: absolute;
-                bottom: 80px;
-                right: 60px;
-                width: 64px;
-                height: 64px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                background: var(--bg-primary, #ffffff);
-                border: 2px solid var(--text-primary, #1a1a1a);
-                color: var(--text-primary, #1a1a1a);
-                transition: background 0.2s, transform 0.2s, color 0.2s;
-                animation: obPulse 1.6s ease-in-out infinite;
-                -webkit-tap-highlight-color: transparent;
-                padding: 0;
-            }
-            #obStartOverlay .ob-arrow:hover {
-                background: var(--bg-secondary, #f5f5f5);
-            }
-            #obStartOverlay .ob-arrow:active { transform: scale(0.94); }
-            #obStartOverlay .ob-arrow svg {
-                width: 32px;
-                height: 32px;
-                display: block;
-                color: inherit;
-                stroke: currentColor;
-            }
-            #obStartOverlay .ob-arrow svg line,
-            #obStartOverlay .ob-arrow svg polyline,
-            #obStartOverlay .ob-arrow svg path {
-                stroke: currentColor;
-            }
-
-            #obTooltip {
-                position: fixed;
-                left: 50%;
-                bottom: 30px;
-                transform: translateX(-50%) translateY(30px);
-                width: calc(100% - 32px);
-                max-width: 400px;
-                background: var(--text-primary, #141414);
-                color: var(--bg-primary, #ffffff);
-                border: 2px solid var(--accent, #cc0000);
-                box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-                padding: 18px 22px;
-                z-index: 2147483646;
-                font-family: 'ST-SimpleSquare', monospace;
+                padding: 40px 24px;
                 box-sizing: border-box;
                 opacity: 0;
+                filter: blur(24px);
+                transform: scale(0.96);
+            }
+            .ob-step.active {
+                display: flex !important;
+                opacity: 1;
+                filter: blur(0);
+                transform: scale(1);
+                animation: obBlurIn 0.55s cubic-bezier(.22,1,.36,1);
+            }
+            .ob-step.leaving {
+                display: flex !important;
+                opacity: 0;
+                filter: blur(24px);
+                transform: scale(0.96);
+                animation: obBlurOut 0.45s cubic-bezier(.22,1,.36,1);
                 pointer-events: none;
-                isolation: isolate;
             }
-            #obTooltip.visible {
-                animation: obSlideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-                pointer-events: auto;
-            }
-            #obTooltip .ob-title {
-                font-size: 17px;
-                font-weight: 700;
-                margin-bottom: 6px;
-                color: var(--bg-primary, #ffffff);
-            }
-            #obTooltip .ob-desc {
-                font-size: 13px;
-                line-height: 1.5;
-                color: var(--bg-primary, #dddddd);
-                margin-bottom: 12px;
-            }
-            #obTooltip .ob-hint {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 12px;
-                color: var(--accent, #ff6666);
-                font-weight: 600;
-                letter-spacing: 0.5px;
-                padding: 6px 12px;
-                border: 2px dashed var(--accent, #cc0000);
-                background: rgba(204, 0, 0, 0.15);
-            }
-            #obTooltip .ob-hint .dot {
-                width: 8px; height: 8px;
-                border-radius: 50%;
-                background: var(--accent, #cc0000);
-                animation: obTapPulse 1.2s ease-in-out infinite;
-                flex-shrink: 0;
-            }
-            #obTooltip .ob-dots {
-                display: flex;
-                gap: 6px;
-                margin-top: 10px;
+
+            #obWelcome {
                 justify-content: center;
+                align-items: center;
             }
-            #obTooltip .ob-dot {
-                width: 6px; height: 6px;
-                border-radius: 50%;
-                background: var(--text-muted, #555);
-                transition: background 0.3s, transform 0.3s;
+            #obWelcome .ob-logo-text {
+                font-family: 'TTPaplane', monospace;
+                font-weight: 700;
+                font-size: 48px;
+                line-height: 1;
+                letter-spacing: 0.08em;
+                color: #ffffff;
+                text-align: center;
+                user-select: none;
+                -webkit-user-select: none;
+                pointer-events: none;
+                white-space: nowrap;
+                text-shadow:
+                    0 0 18px rgba(255,255,255,0.10),
+                    0 0 48px rgba(255,255,255,0.06);
+                animation: obLogoIn 0.9s cubic-bezier(.22,1,.36,1) both;
             }
-            #obTooltip .ob-dot.active {
-                background: var(--accent, #cc0000);
-                transform: scale(1.3);
-            }
-            #obTooltip .ob-skip {
+
+            .ob-arrow-btn {
                 position: absolute;
-                top: 8px; right: 12px;
+                bottom: 60px;
+                right: 60px;
+                width: 80px;
+                height: 80px;
                 background: none;
                 border: none;
+                padding: 0;
                 cursor: pointer;
-                font-size: 11px;
-                color: var(--text-muted, #888);
-                font-family: 'ST-SimpleSquare', monospace;
-                padding: 4px 8px;
+                color: #ffffff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                -webkit-tap-highlight-color: transparent;
+                outline: none;
+                transition: transform .25s cubic-bezier(.22,1,.36,1), opacity .25s ease;
+                opacity: 0.85;
+                z-index: 5;
             }
-            #obTooltip .ob-skip:hover { color: var(--accent, #cc0000); }
+            .ob-arrow-btn:hover { opacity: 1; transform: translateX(6px); }
+            .ob-arrow-btn:active { transform: translateX(6px) scale(0.94); }
+            .ob-arrow-btn svg {
+                width: 52px;
+                height: 52px;
+                display: block;
+                stroke: currentColor;
+                fill: none;
+                stroke-width: 2.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
 
-            #obFinalCard {
-                position: fixed;
-                top: 50%; left: 50%;
-                transform: translate(-50%, -50%) scale(0.9);
-                width: calc(100% - 40px);
-                max-width: 400px;
-                background: var(--bg-primary, #ffffff);
-                border: 2px solid var(--accent, #cc0000);
-                box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-                padding: 40px 24px;
-                z-index: 2147483646;
-                text-align: center;
-                font-family: 'ST-SimpleSquare', monospace;
-                color: var(--text-primary, #1a1a1a);
+            .ob-content {
+                width: 100%;
+                max-width: 640px;
+                display: flex;
+                flex-direction: column;
+                gap: 22px;
                 box-sizing: border-box;
-                opacity: 0;
-                pointer-events: none;
-                isolation: isolate;
             }
-            #obFinalCard.visible {
-                animation: obScaleIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-                pointer-events: auto;
-            }
-            #obFinalCard .ob-final-title {
-                font-size: 26px;
+
+            .ob-title {
+                font-size: 34px;
                 font-weight: 700;
-                margin-bottom: 10px;
-                color: var(--text-primary, #1a1a1a);
+                letter-spacing: 0.6px;
+                text-align: left;
+                color: #ffffff;
+                margin: 0;
             }
-            #obFinalCard .ob-final-desc {
-                font-size: 14px;
-                line-height: 1.6;
-                color: var(--text-secondary, #555);
-                margin-bottom: 24px;
-            }
-            #obFinalCard .ob-final-btn {
-                padding: 14px 40px;
-                border: 2px solid var(--accent, #cc0000);
-                background: var(--accent, #cc0000);
-                color: var(--text-on-accent, #ffffff);
-                cursor: pointer;
-                font-family: 'ST-SimpleSquare', monospace;
+
+            .ob-subtitle {
                 font-size: 15px;
-                font-weight: 600;
-                transition: all 0.2s;
+                color: rgba(255,255,255,0.6);
+                line-height: 1.55;
+                margin-top: -12px;
+            }
+
+            .ob-lang-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            .ob-lang-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 18px 22px;
+                border: 2px solid rgba(255,255,255,0.18);
+                background: rgba(255,255,255,0.03);
+                cursor: pointer;
+                font-family: 'TTPaplane', monospace;
+                color: #ffffff;
+                font-size: 20px;
+                text-align: left;
+                transition: all .2s ease;
+                -webkit-tap-highlight-color: transparent;
+                outline: none;
+            }
+            .ob-lang-item:hover {
+                border-color: rgba(255,255,255,0.5);
+                background: rgba(255,255,255,0.08);
+            }
+            .ob-lang-item.selected {
+                border-color: #ffffff;
+                background: rgba(255,255,255,0.14);
+            }
+            .ob-lang-name { font-weight: 700; letter-spacing: 0.3px; }
+            .ob-lang-mark {
+                width: 20px;
+                height: 20px;
+                border: 2px solid rgba(255,255,255,0.4);
+                border-radius: 50%;
+                position: relative;
+                flex-shrink: 0;
+                transition: all .2s ease;
+            }
+            .ob-lang-item.selected .ob-lang-mark {
+                border-color: #ffffff;
+                background: #ffffff;
+            }
+            .ob-lang-item.selected .ob-lang-mark::after {
+                content: '';
+                position: absolute;
+                inset: 4px;
+                border-radius: 50%;
+                background: #000000;
+            }
+
+            .ob-toggle-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 20px 22px;
+                border: 2px solid rgba(255,255,255,0.18);
+                background: rgba(255,255,255,0.03);
+                cursor: pointer;
+                transition: all .2s ease;
                 -webkit-tap-highlight-color: transparent;
             }
-            #obFinalCard .ob-final-btn:hover { background: var(--accent-dark, #990000); }
-            #obFinalCard .ob-final-btn:active { transform: scale(0.96); }
-        `;
-        document.head.appendChild(style);
-    }
-
-    function buildStartOverlay() {
-        injectStyles();
-        if (startOverlay) return;
-        startOverlay = document.createElement('div');
-        startOverlay.id = 'obStartOverlay';
-        startOverlay.innerHTML = `
-            <img src="icoon.png" alt="Shnuk OS" class="ob-logo" onerror="this.style.display='none'" />
-            <button class="ob-arrow" id="obStartArrow" type="button" aria-label="Далее">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                    <polyline points="12 5 19 12 12 19"/>
-                </svg>
-            </button>
-        `;
-        document.body.appendChild(startOverlay);
-
-        document.getElementById('obStartArrow').addEventListener('click', function() {
-            startOverlay.style.opacity = '0';
-            setTimeout(function() {
-                if (startOverlay && startOverlay.parentNode) {
-                    startOverlay.parentNode.removeChild(startOverlay);
-                }
-                startOverlay = null;
-                startSteps();
-            }, 400);
-        });
-
-        requestAnimationFrame(function() {
-            if (startOverlay) startOverlay.classList.add('visible');
-        });
-    }
-
-    function buildSteps() {
-        steps = [
-            {
-                id: 'menu',
-                title: 'Меню приложений',
-                desc: 'Свайпните снизу вверх по рабочему столу, чтобы открыть список всех приложений.',
-                hint: 'Свайпните вверх'
+            .ob-toggle-row:hover {
+                border-color: rgba(255,255,255,0.4);
+                background: rgba(255,255,255,0.06);
             }
-        ];
-    }
+            .ob-toggle-text {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                min-width: 0;
+            }
+            .ob-toggle-label {
+                font-size: 20px;
+                font-weight: 700;
+                color: #ffffff;
+                letter-spacing: 0.3px;
+            }
+            .ob-toggle-sub {
+                font-size: 13px;
+                color: rgba(255,255,255,0.55);
+                line-height: 1.4;
+            }
+            .ob-switch {
+                width: 54px;
+                height: 32px;
+                background: rgba(255,255,255,0.18);
+                position: relative;
+                flex-shrink: 0;
+                transition: background .25s ease;
+            }
+            .ob-switch::after {
+                content: '';
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 28px;
+                height: 28px;
+                background: #ffffff;
+                transition: transform .25s ease;
+            }
+            .ob-toggle-row.active .ob-switch { background: #ffffff; }
+            .ob-toggle-row.active .ob-switch::after {
+                transform: translateX(22px);
+                background: #000000;
+            }
 
-    function ensureTooltip() {
-        injectStyles();
-        if (tooltip) return tooltip;
-        tooltip = document.createElement('div');
-        tooltip.id = 'obTooltip';
-        document.body.appendChild(tooltip);
-        return tooltip;
-    }
+            .ob-subpanel {
+                display: none;
+                flex-direction: column;
+                gap: 10px;
+                padding: 14px 16px;
+                border: 2px solid rgba(255,255,255,0.12);
+                background: rgba(255,255,255,0.02);
+                margin-top: 8px;
+            }
+            .ob-subpanel.visible { display: flex; }
+            .ob-subpanel-title {
+                font-size: 12px;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                color: rgba(255,255,255,0.5);
+                margin-bottom: 4px;
+            }
+            .ob-sub-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 14px;
+                padding: 10px 4px;
+                font-size: 16px;
+                color: rgba(255,255,255,0.9);
+            }
+            .ob-sub-switch {
+                width: 46px;
+                height: 26px;
+                background: rgba(255,255,255,0.18);
+                position: relative;
+                flex-shrink: 0;
+                transition: background .25s ease;
+                cursor: pointer;
+            }
+            .ob-sub-switch::after {
+                content: '';
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 22px;
+                height: 22px;
+                background: #ffffff;
+                transition: transform .25s ease;
+            }
+            .ob-sub-switch.on { background: #ffffff; }
+            .ob-sub-switch.on::after {
+                transform: translateX(20px);
+                background: #000000;
+            }
+            .ob-sub-switch.disabled {
+                opacity: 0.35;
+                pointer-events: none;
+            }
 
-    function renderTooltip() {
-        const step = steps[stepIndex];
-        const el = ensureTooltip();
-        el.innerHTML = `
-            <button class="ob-skip" id="obSkip">Пропустить</button>
-            <div class="ob-title">${step.title}</div>
-            <div class="ob-desc">${step.desc}</div>
-            <div class="ob-hint">
-                <span class="dot"></span>
-                <span>${step.hint}</span>
-            </div>
-            <div class="ob-dots">
-                ${steps.map((_, i) => `<div class="ob-dot${i === stepIndex ? ' active' : ''}"></div>`).join('')}
-            </div>
-        `;
-        el.classList.remove('visible');
-        void el.offsetWidth;
-        el.classList.add('visible');
+            .ob-nav {
+                position: absolute;
+                left: 24px;
+                right: 24px;
+                bottom: 40px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 16px;
+                max-width: 640px;
+                margin: 0 auto;
+                pointer-events: auto;
+                z-index: 6;
+            }
 
-        const skip = el.querySelector('#obSkip');
-        if (skip) {
-            skip.addEventListener('click', function() {
-                skipAll();
-            });
-        }
-    }
+            .ob-btn {
+                padding: 16px 34px;
+                border: 2px solid rgba(255,255,255,0.6);
+                background: none;
+                color: #ffffff;
+                font-family: 'TTPaplane', monospace;
+                font-size: 16px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                cursor: pointer;
+                transition: all .2s ease;
+                -webkit-tap-highlight-color: transparent;
+                outline: none;
+            }
+            .ob-btn:hover {
+                background: #ffffff;
+                color: #000000;
+                border-color: #ffffff;
+            }
+            .ob-btn:active { transform: scale(0.96); }
+            .ob-btn.primary {
+                background: #ffffff;
+                color: #000000;
+                border-color: #ffffff;
+            }
+            .ob-btn.primary:hover {
+                background: rgba(255,255,255,0.85);
+                border-color: rgba(255,255,255,0.85);
+            }
+            .ob-btn.ghost {
+                border-color: rgba(255,255,255,0.25);
+                color: rgba(255,255,255,0.65);
+            }
+            .ob-btn.ghost:hover {
+                background: rgba(255,255,255,0.08);
+                color: #ffffff;
+                border-color: rgba(255,255,255,0.5);
+            }
 
-    function clearActionListener() {
-        if (actionListener) {
-            try { actionListener(); } catch(e) {}
-            actionListener = null;
-        }
-    }
+            /* Если системный no-blur активен — не даём ему портить анимации самого онбординга. */
+            html.no-blur #obRoot,
+            html.no-blur #obRoot *,
+            html.no-blur #obRoot *::before,
+            html.no-blur #obRoot *::after {
+                animation: revert !important;
+                transition: revert !important;
+                filter: revert !important;
+                backdrop-filter: revert !important;
+                -webkit-backdrop-filter: revert !important;
+            }
+            html.no-blur #obRoot .ob-step.active {
+                animation: obBlurIn 0.55s cubic-bezier(.22,1,.36,1) !important;
+            }
+            html.no-blur #obRoot .ob-step.leaving {
+                animation: obBlurOut 0.45s cubic-bezier(.22,1,.36,1) !important;
+            }
+            html.no-blur #obRoot .ob-logo-text {
+                animation: obLogoIn 0.9s cubic-bezier(.22,1,.36,1) both !important;
+            }
 
-    function renderStep() {
-        clearActionListener();
-        renderTooltip();
-        setTimeout(function() {
-            attachStepAction(steps[stepIndex].id);
-        }, 50);
-    }
-
-    function attachStepAction(stepId) {
-        if (stepId === 'menu') {
-            const check = function() {
-                const bp = document.getElementById('bottomPanel');
-                if (bp && bp.classList.contains('visible')) {
-                    clearActionListener();
-                    setTimeout(completeStep, 800);
-                    return true;
+            @media (max-width: 500px) {
+                #obWelcome .ob-logo-text {
+                    font-size: 34px;
+                    letter-spacing: 0.06em;
                 }
-                return false;
-            };
-            if (check()) return;
-            const obs = new MutationObserver(function() { check(); });
-            obs.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
-            actionListener = function() { obs.disconnect(); };
-        }
-    }
-
-    function completeStep() {
-        clearActionListener();
-        if (stepIndex >= steps.length - 1) {
-            showFinalCard();
-            return;
-        }
-        stepIndex++;
-        renderStep();
-    }
-
-    function showFinalCard() {
-        clearActionListener();
-        if (tooltip && tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
-        tooltip = null;
-
-        injectStyles();
-        finalCard = document.createElement('div');
-        finalCard.id = 'obFinalCard';
-        finalCard.innerHTML = `
-            <div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-                <svg viewBox="0 0 80 80" fill="none" width="80" height="80">
-                    <circle cx="40" cy="40" r="34" stroke="var(--accent, #cc0000)" stroke-width="3"/>
-                    <path d="M25 40 L35 50 L55 30" stroke="var(--accent, #cc0000)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </div>
-            <div class="ob-final-title">Готово!</div>
-            <div class="ob-final-desc">Вы освоили основные жесты и элементы системы.</div>
-            <button class="ob-final-btn" id="obFinalBtn">Начать работу</button>
+                .ob-arrow-btn {
+                    bottom: 40px;
+                    right: 30px;
+                    width: 68px;
+                    height: 68px;
+                }
+                .ob-arrow-btn svg { width: 44px; height: 44px; }
+                .ob-title { font-size: 26px; }
+                .ob-lang-item { padding: 16px 18px; font-size: 18px; }
+                .ob-toggle-row { padding: 16px 18px; }
+                .ob-toggle-label { font-size: 17px; }
+                .ob-toggle-sub { font-size: 12px; }
+                .ob-nav { left: 16px; right: 16px; bottom: 24px; gap: 10px; }
+                .ob-btn { padding: 14px 24px; font-size: 14px; }
+            }
         `;
-        document.body.appendChild(finalCard);
+        document.head.appendChild(st);
+    }
 
-        requestAnimationFrame(function() {
-            if (finalCard) finalCard.classList.add('visible');
+    let blurAll = false;
+    let soundAll = false;
+    let soundTargets = {};
+
+    // ============================================
+    // СОЗДАНИЕ UI
+    // ============================================
+
+    function createRoot() {
+        if (root) return;
+        injectStyles();
+        root = document.createElement('div');
+        root.id = 'obRoot';
+        root.innerHTML = `
+            <div class="ob-step active" id="obWelcome">
+                <div class="ob-logo-text">Shnuk OS</div>
+                <button class="ob-arrow-btn" id="obArrowBtn" aria-label="Далее">
+                    <svg viewBox="0 0 24 24"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+            </div>
+
+            <div class="ob-step" id="obLang">
+                <div class="ob-content">
+                    <h1 class="ob-title" id="obLangTitle"></h1>
+                    <div class="ob-subtitle" id="obLangDesc"></div>
+                    <div class="ob-lang-list" id="obLangList"></div>
+                </div>
+                <div class="ob-nav">
+                    <button class="ob-btn ghost" id="obLangBack"></button>
+                    <button class="ob-btn primary" id="obLangNext"></button>
+                </div>
+            </div>
+
+            <div class="ob-step" id="obBlur">
+                <div class="ob-content">
+                    <h1 class="ob-title" id="obBlurTitle"></h1>
+                    <div class="ob-subtitle" id="obBlurDesc"></div>
+                    <div class="ob-toggle-row" id="obBlurAllRow">
+                        <div class="ob-toggle-text">
+                            <div class="ob-toggle-label" id="obBlurAllLabel"></div>
+                            <div class="ob-toggle-sub" id="obBlurAllSub"></div>
+                        </div>
+                        <div class="ob-switch"></div>
+                    </div>
+                </div>
+                <div class="ob-nav">
+                    <button class="ob-btn ghost" id="obBlurBack"></button>
+                    <button class="ob-btn primary" id="obBlurNext"></button>
+                </div>
+            </div>
+
+            <div class="ob-step" id="obSound">
+                <div class="ob-content">
+                    <h1 class="ob-title" id="obSoundTitle"></h1>
+                    <div class="ob-subtitle" id="obSoundDesc"></div>
+                    <div class="ob-toggle-row" id="obSoundAllRow">
+                        <div class="ob-toggle-text">
+                            <div class="ob-toggle-label" id="obSoundAllLabel"></div>
+                            <div class="ob-toggle-sub" id="obSoundAllSub"></div>
+                        </div>
+                        <div class="ob-switch"></div>
+                    </div>
+                    <div class="ob-toggle-row" id="obSoundTargetsRow">
+                        <div class="ob-toggle-text">
+                            <div class="ob-toggle-label" id="obSoundTargetsLabel"></div>
+                            <div class="ob-toggle-sub" id="obSoundTargetsSub"></div>
+                        </div>
+                        <div class="ob-switch"></div>
+                    </div>
+                    <div class="ob-subpanel" id="obSoundSubpanel">
+                        <div class="ob-subpanel-title">—</div>
+                        <div class="ob-sub-row">
+                            <span id="obSoundWinLabel"></span>
+                            <div class="ob-sub-switch on" data-key="window"></div>
+                        </div>
+                        <div class="ob-sub-row">
+                            <span id="obSoundNotifyLabel"></span>
+                            <div class="ob-sub-switch on" data-key="notify"></div>
+                        </div>
+                        <div class="ob-sub-row">
+                            <span id="obSoundErrorLabel"></span>
+                            <div class="ob-sub-switch on" data-key="error"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="ob-nav">
+                    <button class="ob-btn ghost" id="obSoundBack"></button>
+                    <button class="ob-btn primary" id="obSoundNext"></button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(root);
+
+        root.querySelector('#obArrowBtn').addEventListener('click', function() {
+            gotoStep('lang');
         });
 
-        document.getElementById('obFinalBtn').addEventListener('click', finish);
+        renderLangList();
+
+        root.querySelector('#obLangBack').addEventListener('click', function() { gotoStep('welcome'); });
+        root.querySelector('#obLangNext').addEventListener('click', function() { gotoStep('blur'); });
+
+        root.querySelector('#obBlurAllRow').addEventListener('click', function() {
+            blurAll = !blurAll;
+            this.classList.toggle('active', blurAll);
+        });
+        root.querySelector('#obBlurBack').addEventListener('click', function() { gotoStep('lang'); });
+        root.querySelector('#obBlurNext').addEventListener('click', function() { gotoStep('sound'); });
+
+        root.querySelector('#obSoundAllRow').addEventListener('click', function() {
+            soundAll = !soundAll;
+            this.classList.toggle('active', soundAll);
+            updateSoundUI();
+        });
+        root.querySelector('#obSoundTargetsRow').addEventListener('click', function() {
+            const visible = !document.getElementById('obSoundSubpanel').classList.contains('visible');
+            document.getElementById('obSoundSubpanel').classList.toggle('visible', visible);
+            this.classList.toggle('active', visible);
+        });
+        root.querySelectorAll('#obSoundSubpanel .ob-sub-switch').forEach(sw => {
+            sw.addEventListener('click', function() {
+                if (soundAll) return;
+                const key = this.dataset.key;
+                const isOn = !this.classList.contains('on');
+                this.classList.toggle('on', isOn);
+                if (!isOn) soundTargets[key] = true;
+                else delete soundTargets[key];
+            });
+        });
+        root.querySelector('#obSoundBack').addEventListener('click', function() { gotoStep('blur'); });
+        root.querySelector('#obSoundNext').addEventListener('click', function() { finish(); });
+
+        applyLangToStaticText();
     }
 
-    function skipAll() {
-        finish();
+    function renderLangList() {
+        const list = document.getElementById('obLangList');
+        if (!list) return;
+        list.innerHTML = '';
+        ['ru', 'en', 'zh', 'meme'].forEach(function(code) {
+            const data = LANGS[code];
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'ob-lang-item' + (selectedLang === code ? ' selected' : '');
+            item.dataset.code = code;
+            item.innerHTML = `
+                <span class="ob-lang-name">${data.label}</span>
+                <span class="ob-lang-mark"></span>
+            `;
+            item.addEventListener('click', function() {
+                selectedLang = code;
+                renderLangList();
+                applyLangToStaticText();
+            });
+            list.appendChild(item);
+        });
+    }
+
+    function applyLangToStaticText() {
+        const setText = function(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setText('obLangTitle', tr('pickLangTitle'));
+        setText('obLangDesc', tr('pickLangDesc'));
+        setText('obLangBack', tr('back'));
+        setText('obLangNext', tr('next'));
+        setText('obBlurTitle', tr('blurTitle'));
+        setText('obBlurDesc', tr('blurDesc'));
+        setText('obBlurAllLabel', tr('blurAllLabel'));
+        setText('obBlurAllSub', tr('blurAllSub'));
+        setText('obBlurBack', tr('back'));
+        setText('obBlurNext', tr('next'));
+        setText('obSoundTitle', tr('soundTitle'));
+        setText('obSoundDesc', tr('soundDesc'));
+        setText('obSoundAllLabel', tr('soundAllLabel'));
+        setText('obSoundAllSub', tr('soundAllSub'));
+        setText('obSoundTargetsLabel', tr('soundTargetsLabel'));
+        setText('obSoundTargetsSub', tr('soundTargetsSub'));
+        setText('obSoundWinLabel', tr('targetSoundWindow'));
+        setText('obSoundNotifyLabel', tr('targetSoundNotify'));
+        setText('obSoundErrorLabel', tr('targetSoundError'));
+        setText('obSoundBack', tr('back'));
+        setText('obSoundNext', tr('finish'));
+    }
+
+    function updateSoundUI() {
+        const subSwitches = document.querySelectorAll('#obSoundSubpanel .ob-sub-switch');
+        subSwitches.forEach(function(sw) {
+            sw.classList.toggle('disabled', soundAll);
+            if (soundAll) sw.classList.remove('on');
+            else {
+                const key = sw.dataset.key;
+                sw.classList.toggle('on', !soundTargets[key]);
+            }
+        });
+    }
+
+    function gotoStep(id) {
+        const steps = root.querySelectorAll('.ob-step');
+        let oldEl = null;
+        steps.forEach(function(el) { if (el.classList.contains('active')) oldEl = el; });
+        const newEl = root.querySelector('#ob' + id.charAt(0).toUpperCase() + id.slice(1));
+        if (!newEl || newEl === oldEl) return;
+
+        if (oldEl) {
+            oldEl.classList.remove('active');
+            oldEl.classList.add('leaving');
+            setTimeout(function() {
+                oldEl.classList.remove('leaving');
+                oldEl.style.display = 'none';
+            }, 450);
+        }
+
+        newEl.style.display = 'flex';
+        newEl.classList.remove('leaving');
+        newEl.classList.add('active');
     }
 
     function finish() {
-        clearActionListener();
-        if (tooltip && tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
-        tooltip = null;
-        if (finalCard) {
-            finalCard.classList.remove('visible');
+        if (isFinishing) return;
+        isFinishing = true;
+
+        saveLang(selectedLang);
+        saveBlurAll(blurAll);
+        saveSoundAll(soundAll);
+        saveSoundTargets(soundTargets);
+        try { localStorage.setItem(DONE_KEY, 'true'); } catch(e) {}
+
+        if (root) {
+            root.style.animation = 'obRootFadeOut 0.45s ease forwards';
             setTimeout(function() {
-                if (finalCard && finalCard.parentNode) finalCard.parentNode.removeChild(finalCard);
-                finalCard = null;
-            }, 400);
+                if (root && root.parentNode) root.parentNode.removeChild(root);
+                root = null;
+
+                try {
+                    if (blurAll) document.documentElement.classList.add('no-blur');
+                    else document.documentElement.classList.remove('no-blur');
+                } catch(e) {}
+
+                try {
+                    window.dispatchEvent(new CustomEvent('shnuk:lang-changed', { detail: { lang: selectedLang } }));
+                    window.dispatchEvent(new CustomEvent('shnuk:blur-settings-changed', { detail: { blurDisabled: blurAll } }));
+                    window.dispatchEvent(new CustomEvent('shnuk:sound-settings-changed', { detail: { soundDisabled: soundAll, targets: soundTargets } }));
+                } catch(e) {}
+            }, 460);
+        } else {
+            try {
+                if (blurAll) document.documentElement.classList.add('no-blur');
+                else document.documentElement.classList.remove('no-blur');
+            } catch(e) {}
+            try {
+                window.dispatchEvent(new CustomEvent('shnuk:lang-changed', { detail: { lang: selectedLang } }));
+                window.dispatchEvent(new CustomEvent('shnuk:blur-settings-changed', { detail: { blurDisabled: blurAll } }));
+                window.dispatchEvent(new CustomEvent('shnuk:sound-settings-changed', { detail: { soundDisabled: soundAll, targets: soundTargets } }));
+            } catch(e) {}
         }
-        if (startOverlay && startOverlay.parentNode) {
-            startOverlay.parentNode.removeChild(startOverlay);
-            startOverlay = null;
-        }
-        markDone();
     }
 
-    function startSteps() {
-        buildSteps();
-        stepIndex = 0;
-        renderStep();
+    function isDone() {
+        try { return localStorage.getItem(DONE_KEY) === 'true'; }
+        catch(e) { return false; }
     }
 
     function show() {
-        buildStartOverlay();
+        if (root) return;
+        if (isDone()) return;
+        createRoot();
+    }
+
+    function reset() {
+        try {
+            localStorage.removeItem(DONE_KEY);
+            localStorage.removeItem(LANG_KEY);
+            localStorage.removeItem(BLUR_OFF_KEY);
+            localStorage.removeItem(SOUND_OFF_KEY);
+            localStorage.removeItem(SOUND_TARGETS_KEY);
+        } catch(e) {}
     }
 
     window.Onboarding = {
         isDone: isDone,
         show: show,
-        reset: function() {
-            try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
-        }
+        reset: reset
     };
+
+    function bootstrap() {
+        setTimeout(function() {
+            try { show(); } catch(e) {}
+        }, 80);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrap);
+    } else {
+        bootstrap();
+    }
 
 })();

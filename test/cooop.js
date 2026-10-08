@@ -5,10 +5,11 @@
 
     const MAX_FILE_SIZE = 4 * 1024 * 1024;
     const FONT_MAIN = "'TTPaplane', monospace";
-    const LINK_BASE = location.origin + location.pathname;
+    const LINK_BASE = location.origin + location.pathname.replace(/[^/]*$/, '') + 'cooop.html';
 
     let isOpen = false;
     let mode = 'menu';
+    let pendingHashParse = null;
 
     function log() {
         try { console.log.apply(console, ['[Cooop]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
@@ -72,7 +73,7 @@
     }
 
     // ============================================
-    // СЖАТИЕ — важно: используем deflate-raw
+    // СЖАТИЕ
     // ============================================
 
     function supportsCompression() {
@@ -82,12 +83,10 @@
     async function compressBytes(bytes) {
         if (!supportsCompression()) return null;
         try {
-            // Используем deflate-raw, чтобы не было zlib-заголовков
             let cs;
             try {
                 cs = new CompressionStream('deflate-raw');
             } catch(e) {
-                // Fallback для браузеров без deflate-raw
                 cs = new CompressionStream('deflate');
             }
             const writer = cs.writable.getWriter();
@@ -116,9 +115,9 @@
         }
     }
 
-    async function decompressBytes(bytes, streamType) {
+    async function decompressBytes(bytes) {
         if (!supportsCompression()) return null;
-        const types = streamType ? [streamType] : ['deflate-raw', 'deflate', 'gzip'];
+        const types = ['deflate-raw', 'deflate', 'gzip'];
         for (const t of types) {
             try {
                 const ds = new DecompressionStream(t);
@@ -143,7 +142,6 @@
                 }
                 return out;
             } catch(e) {
-                // Пробуем следующий тип
                 continue;
             }
         }
@@ -209,11 +207,6 @@
     // УПАКОВКА
     // ============================================
 
-    // Методы:
-    //   'd'  — только deflate
-    //   'r'  — только RLE
-    //   'dr' — deflate, потом RLE
-    //   'n'  — без сжатия
     async function packFile(bytes) {
         const deflated = await compressBytes(bytes);
         const rleOnly = rleEncode(bytes);
@@ -227,7 +220,6 @@
         candidates.push({ data: rleOnly, method: 'r' });
         candidates.push({ data: bytes, method: 'n' });
 
-        // Выбираем минимальный
         let best = candidates[0];
         for (const c of candidates) {
             if (c.data.length < best.data.length) best = c;
@@ -237,8 +229,6 @@
     }
 
     async function unpackFile(bytes, method) {
-        // Пробуем строго указанный метод, но с fallback на другие,
-        // если что-то не получилось.
         const tryOrder = [method, 'dr', 'd', 'r', 'n'];
 
         for (const m of tryOrder) {
@@ -253,7 +243,6 @@
                     if (!dec) continue;
                     data = dec;
                 }
-                // Проверка: если результат разумный, возвращаем
                 if (data && data.length > 0) return data;
             } catch(e) {
                 continue;
@@ -279,7 +268,6 @@
     }
 
     function base64UrlDecode(str) {
-        // Убираем все пробелы и переносы — часто появляются при копировании
         let b64 = String(str).replace(/\s+/g, '');
         b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
         while (b64.length % 4) b64 += '=';
@@ -302,11 +290,9 @@
 
     function parseLink(hash) {
         if (!hash) return null;
-        let payload = null;
         const idx = hash.indexOf('#cooop=');
         if (idx === -1) return null;
-        payload = hash.substring(idx + 7);
-        // Убираем возможные пробелы и переносы
+        let payload = hash.substring(idx + 7);
         payload = payload.replace(/\s+/g, '');
         const parts = payload.split('|');
         if (parts.length !== 4) return null;
@@ -318,6 +304,53 @@
                 b64: parts[3]
             };
         } catch(e) {
+            return null;
+        }
+    }
+
+    // ============================================
+    // ПОДЕЛИТЬСЯ (для файлового менеджера)
+    // ============================================
+
+    async function shareFile(fileData) {
+        if (!fileData || !fileData.name) return null;
+        if (!fileData.data) return null;
+
+        try {
+            let bytes;
+            if (fileData.data.indexOf('data:') === 0) {
+                const commaIdx = fileData.data.indexOf(',');
+                if (commaIdx === -1) return null;
+                const header = fileData.data.substring(5, commaIdx);
+                const body = fileData.data.substring(commaIdx + 1);
+                const isBase64 = /;\s*base64/i.test(header);
+                if (isBase64) {
+                    const binary = atob(body);
+                    bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                } else {
+                    let text = body;
+                    try { text = decodeURIComponent(body); } catch(e) {}
+                    bytes = new TextEncoder().encode(text);
+                }
+            } else {
+                bytes = new TextEncoder().encode(fileData.data);
+            }
+
+            if (bytes.length > MAX_FILE_SIZE) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify(
+                        'Файл ' + formatSize(bytes.length) + ' — больше лимита ' + formatSize(MAX_FILE_SIZE),
+                        { type: 'error', duration: 5000 }
+                    );
+                }
+                return null;
+            }
+
+            const packed = await packFile(bytes);
+            return buildLink(fileData.name, fileData.type || 'application/octet-stream', packed);
+        } catch(e) {
+            log('shareFile error', e);
             return null;
         }
     }
@@ -341,6 +374,7 @@
             }
 
             const blob = new Blob([unpacked], { type: parsed.mime });
+
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -352,30 +386,64 @@
                 if (a.parentNode) a.parentNode.removeChild(a);
             }, 500);
 
-            if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
+            try {
                 const reader = new FileReader();
                 reader.onload = async function() {
                     const dataUrl = reader.result;
-                    const ext = (parsed.name.split('.').pop() || '').toLowerCase();
-                    if (window.SharedFiles.ready) {
-                        try { await window.SharedFiles.ready(); } catch(e) {}
-                    }
-                    await window.SharedFiles.add({
-                        id: 'cooop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
-                        name: parsed.name,
-                        size: blob.size,
-                        type: parsed.mime,
-                        data: dataUrl,
-                        date: new Date().toISOString(),
-                        extension: ext,
-                        parentId: null,
-                        isFolder: false
-                    });
-                    if (window.Win && window.Win.notify) {
-                        window.Win.notify('Файл сохранён в Файлы: ' + parsed.name, { type: 'success' });
+                    if (!dataUrl) return;
+
+                    if (window.FileApp && typeof window.FileApp.saveToCooopDownloads === 'function') {
+                        const ok = await window.FileApp.saveToCooopDownloads({
+                            name: parsed.name,
+                            type: parsed.mime,
+                            size: blob.size,
+                            data: dataUrl
+                        });
+                        if (ok) {
+                            if (window.Win && window.Win.notify) {
+                                window.Win.notify('Файл сохранён в Cooop Downloads', { type: 'success' });
+                            }
+                        }
+                    } else if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
+                        if (window.SharedFiles.ready) {
+                            try { await window.SharedFiles.ready(); } catch(e) {}
+                        }
+                        const all = window.SharedFiles.get() || [];
+                        let folder = all.find(f => f.isFolder && f.parentId === null && f.name === 'Cooop Downloads');
+                        if (!folder) {
+                            folder = {
+                                id: 'folder_cooop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                                name: 'Cooop Downloads',
+                                isFolder: true,
+                                parentId: null,
+                                date: new Date().toISOString(),
+                                size: 0,
+                                type: 'folder',
+                                data: '',
+                                extension: ''
+                            };
+                            await window.SharedFiles.add(folder);
+                        }
+                        const ext = (parsed.name.split('.').pop() || '').toLowerCase();
+                        await window.SharedFiles.add({
+                            id: 'cooop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
+                            name: parsed.name,
+                            size: blob.size,
+                            type: parsed.mime,
+                            data: dataUrl,
+                            date: new Date().toISOString(),
+                            extension: ext,
+                            parentId: folder.id,
+                            isFolder: false
+                        });
+                        if (window.Win && window.Win.notify) {
+                            window.Win.notify('Файл сохранён в Cooop Downloads', { type: 'success' });
+                        }
                     }
                 };
                 reader.readAsDataURL(blob);
+            } catch(e) {
+                log('save to filemanager error', e);
             }
 
             if (onStatus) onStatus('Файл: ' + parsed.name + ' (' + formatSize(unpacked.length) + ')');
@@ -395,25 +463,25 @@
     function openCooop() {
         if (isOpen) {
             const ex = document.getElementById('cooopApp');
-            if (ex) { ex.style.display = 'flex'; ex.style.opacity = '1'; return; }
+            if (ex) { ex.style.display = 'flex'; return; }
         }
         createUI();
     }
 
     function closeCooop() {
         isOpen = false;
-        document.removeEventListener('keydown', onKeyDown);
-
         const el = document.getElementById('cooopApp');
         if (!el) return;
-
-        if (window.ShnukCloseAnimation) {
-            window.ShnukCloseAnimation(el, 'cooop', function() {
-                el.remove();
-            });
+        if (location.pathname.indexOf('cooop.html') !== -1) {
+            el.innerHTML = '';
         } else {
-            el.style.opacity = '0';
-            setTimeout(() => el.remove(), 250);
+            if (window.ShnukCloseAnimation) {
+                window.ShnukCloseAnimation(el, 'cooop', function() {
+                    el.remove();
+                });
+            } else {
+                el.remove();
+            }
         }
     }
 
@@ -658,25 +726,11 @@
     // АВТОСКАЧИВАНИЕ ПО HASH
     // ============================================
 
-    async function checkHashOnLoad() {
+    function checkHashOnLoad() {
         if (!location.hash || location.hash.indexOf('#cooop=') !== 0) return;
         const parsed = parseLink(location.hash);
         if (!parsed) return;
-
-        setTimeout(async function() {
-            openCooop();
-            switchScreen('receive');
-            const input = document.getElementById('cooopInputLink');
-            if (input) input.value = location.href;
-            const status = document.getElementById('cooopRecvStatus');
-            if (status) status.textContent = 'Файл: ' + parsed.name;
-            if (window.Win && window.Win.notify) {
-                window.Win.notify('Получен файл: ' + parsed.name, { type: 'info' });
-            }
-            await downloadFromParsed(parsed, function(s) {
-                if (status) status.textContent = s;
-            });
-        }, 600);
+        pendingHashParse = parsed;
     }
 
     // ============================================
@@ -684,15 +738,18 @@
     // ============================================
 
     function createUI() {
-        if (document.getElementById('cooopApp')) {
-            document.getElementById('cooopApp').style.display = 'flex';
+        let root = document.getElementById('cooopApp');
+        if (root) {
+            root.style.display = 'flex';
+            isOpen = true;
             return;
         }
-        isOpen = true;
 
-        const app = document.createElement('div');
-        app.id = 'cooopApp';
-        app.style.cssText = `
+        injectStyles();
+
+        root = document.createElement('div');
+        root.id = 'cooopApp';
+        root.style.cssText = `
             position: fixed;
             top: var(--livebar-h, 44px);
             left: 0;
@@ -710,249 +767,6 @@
             overflow: hidden;
         `;
 
-        if (!document.getElementById('cooopStyles')) {
-            const style = document.createElement('style');
-            style.id = 'cooopStyles';
-            style.textContent = `
-                @keyframes cooopFadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-                #cooopApp, #cooopApp * {
-                    font-family: ${FONT_MAIN} !important;
-                }
-
-                .cooop-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 16px 20px;
-                    background: var(--header-bg);
-                    border-bottom: 2px solid var(--border-color);
-                    flex-shrink: 0;
-                    color: var(--header-text);
-                }
-                .cooop-header h1 {
-                    font-size: 20px;
-                    font-weight: 600;
-                    margin: 0;
-                }
-                .cooop-header-actions button {
-                    background: var(--bg-primary);
-                    border: 2px solid var(--accent);
-                    color: var(--accent);
-                    font-size: 18px;
-                    padding: 4px 12px;
-                    cursor: pointer;
-                    font-family: inherit;
-                    transition: all 0.2s ease;
-                }
-                .cooop-header-actions button:hover {
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                }
-
-                .cooop-content {
-                    position: relative;
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 24px;
-                    isolation: isolate;
-                }
-
-                .cooop-menu {
-                    max-width: 640px;
-                    margin: 0 auto;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 20px;
-                }
-                .cooop-menu-btn {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                    padding: 32px 28px;
-                    border: 2px solid var(--border-color);
-                    background: var(--bg-secondary);
-                    color: var(--text-primary);
-                    cursor: pointer;
-                    text-align: left;
-                    transition: all 0.2s ease;
-                    font-family: inherit;
-                }
-                .cooop-menu-btn:hover {
-                    border-color: var(--accent);
-                    background: var(--bg-primary);
-                }
-                .cooop-menu-btn.send:hover { border-color: #4CAF50; }
-                .cooop-menu-btn.receive:hover { border-color: #3366cc; }
-                .cooop-menu-title {
-                    font-size: 20px;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                }
-                .cooop-menu-desc {
-                    font-size: 13px;
-                    color: var(--text-muted);
-                    line-height: 1.5;
-                }
-
-                .cooop-section {
-                    max-width: 640px;
-                    margin: 0 auto 24px;
-                    background: var(--bg-secondary);
-                    border: 2px solid var(--border-color);
-                    padding: 20px;
-                    box-sizing: border-box;
-                }
-                .cooop-section-title {
-                    font-size: 15px;
-                    font-weight: 700;
-                    color: var(--text-primary);
-                    margin-bottom: 10px;
-                    letter-spacing: 0.3px;
-                }
-                .cooop-desc {
-                    font-size: 12px;
-                    color: var(--text-muted);
-                    line-height: 1.5;
-                    margin-bottom: 12px;
-                }
-                .cooop-desc b {
-                    color: var(--text-primary);
-                    font-weight: 700;
-                }
-
-                .cooop-file-select {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 10px;
-                    padding: 32px 20px;
-                    border: 2px dashed var(--border-color);
-                    cursor: pointer;
-                    transition: border-color 0.2s;
-                    background: var(--bg-primary);
-                }
-                .cooop-file-select:hover {
-                    border-color: var(--accent);
-                }
-                .cooop-file-select-icon {
-                    width: 48px;
-                    height: 48px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                    font-size: 28px;
-                    font-weight: 700;
-                }
-                .cooop-file-select-text {
-                    font-size: 13px;
-                    color: var(--text-muted);
-                }
-                .cooop-file-info {
-                    margin-top: 12px;
-                    font-size: 13px;
-                    color: var(--text-primary);
-                    padding: 10px 12px;
-                    background: var(--bg-primary);
-                    border: 2px solid var(--border-color);
-                    word-break: break-all;
-                }
-
-                .cooop-link {
-                    width: 100%;
-                    min-height: 120px;
-                    padding: 12px;
-                    border: 2px solid var(--border-color);
-                    background: var(--bg-primary);
-                    color: var(--text-primary);
-                    font-family: 'Courier New', monospace;
-                    font-size: 11px;
-                    line-height: 1.4;
-                    resize: vertical;
-                    box-sizing: border-box;
-                    outline: none;
-                    margin-bottom: 12px;
-                    word-break: break-all;
-                    -webkit-user-select: text;
-                    user-select: text;
-                }
-                .cooop-link:focus {
-                    border-color: var(--accent);
-                }
-
-                .cooop-hint {
-                    font-size: 12px;
-                    color: var(--accent);
-                    line-height: 1.4;
-                    margin-bottom: 12px;
-                    padding: 8px 10px;
-                    background: var(--bg-hover);
-                    border-left: 3px solid var(--accent);
-                }
-
-                .cooop-btn {
-                    display: block;
-                    width: 100%;
-                    padding: 14px 20px;
-                    border: none;
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                    cursor: pointer;
-                    font-family: inherit;
-                    font-size: 14px;
-                    font-weight: 700;
-                    letter-spacing: 1px;
-                    transition: background 0.2s;
-                }
-                .cooop-btn:hover {
-                    background: var(--accent-dark);
-                }
-                .cooop-btn-secondary {
-                    display: block;
-                    width: 100%;
-                    padding: 12px 20px;
-                    border: 2px solid var(--border-color);
-                    background: var(--bg-primary);
-                    color: var(--text-primary);
-                    cursor: pointer;
-                    font-family: inherit;
-                    font-size: 13px;
-                    font-weight: 600;
-                    transition: all 0.2s;
-                }
-                .cooop-btn-secondary:hover {
-                    border-color: var(--accent);
-                    color: var(--accent);
-                }
-
-                .cooop-status {
-                    font-size: 13px;
-                    color: var(--text-muted);
-                    word-break: break-all;
-                    min-height: 18px;
-                }
-
-                .cooop-back-row {
-                    max-width: 640px;
-                    margin: 0 auto 24px;
-                }
-
-                @media (max-width: 500px) {
-                    .cooop-content { padding: 16px; }
-                    .cooop-menu-btn { padding: 22px 20px; }
-                    .cooop-menu-title { font-size: 17px; }
-                    .cooop-menu-desc { font-size: 12px; }
-                    .cooop-section { padding: 16px; }
-                    .cooop-section-title { font-size: 14px; }
-                    .cooop-link { font-size: 10px; min-height: 100px; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
         const header = document.createElement('div');
         header.className = 'cooop-header';
         header.innerHTML = `
@@ -966,27 +780,299 @@
         content.className = 'cooop-content';
         content.id = 'cooopContent';
 
-        app.appendChild(header);
-        app.appendChild(content);
-        document.body.appendChild(app);
+        root.appendChild(header);
+        root.appendChild(content);
+        document.body.appendChild(root);
 
         document.getElementById('cooopCloseBtn').addEventListener('click', closeCooop);
         document.addEventListener('keydown', onKeyDown);
 
-        switchScreen('menu');
+        isOpen = true;
+
+        if (pendingHashParse) {
+            switchScreen('receive');
+            const input = document.getElementById('cooopInputLink');
+            if (input) input.value = location.href;
+            const status = document.getElementById('cooopRecvStatus');
+            if (status) status.textContent = 'Файл: ' + pendingHashParse.name;
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Получен файл: ' + pendingHashParse.name, { type: 'info' });
+            }
+            downloadFromParsed(pendingHashParse, function(s) {
+                if (status) status.textContent = s;
+            });
+        } else {
+            switchScreen('menu');
+        }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', checkHashOnLoad);
-    } else {
-        checkHashOnLoad();
+    function injectStyles() {
+        if (document.getElementById('cooopStyles')) return;
+        const style = document.createElement('style');
+        style.id = 'cooopStyles';
+        style.textContent = `
+            @keyframes cooopFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+            #cooopApp, #cooopApp * {
+                font-family: ${FONT_MAIN} !important;
+            }
+
+            .cooop-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 16px 20px;
+                background: var(--header-bg);
+                border-bottom: 2px solid var(--border-color);
+                flex-shrink: 0;
+                color: var(--header-text);
+            }
+            .cooop-header h1 {
+                font-size: 20px;
+                font-weight: 600;
+                margin: 0;
+            }
+            .cooop-header-actions button {
+                background: var(--bg-primary);
+                border: 2px solid var(--accent);
+                color: var(--accent);
+                font-size: 18px;
+                padding: 4px 12px;
+                cursor: pointer;
+                font-family: inherit;
+                transition: all 0.2s ease;
+            }
+            .cooop-header-actions button:hover {
+                background: var(--accent);
+                color: var(--text-on-accent);
+            }
+
+            .cooop-content {
+                position: relative;
+                flex: 1;
+                overflow-y: auto;
+                padding: 24px;
+                isolation: isolate;
+            }
+
+            .cooop-menu {
+                max-width: 640px;
+                margin: 0 auto;
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .cooop-menu-btn {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 32px 28px;
+                border: 2px solid var(--border-color);
+                background: var(--bg-secondary);
+                color: var(--text-primary);
+                cursor: pointer;
+                text-align: left;
+                transition: all 0.2s ease;
+                font-family: inherit;
+            }
+            .cooop-menu-btn:hover {
+                border-color: var(--accent);
+                background: var(--bg-primary);
+            }
+            .cooop-menu-btn.send:hover { border-color: #4CAF50; }
+            .cooop-menu-btn.receive:hover { border-color: #3366cc; }
+            .cooop-menu-title {
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+            .cooop-menu-desc {
+                font-size: 13px;
+                color: var(--text-muted);
+                line-height: 1.5;
+            }
+
+            .cooop-section {
+                max-width: 640px;
+                margin: 0 auto 24px;
+                background: var(--bg-secondary);
+                border: 2px solid var(--border-color);
+                padding: 20px;
+                box-sizing: border-box;
+            }
+            .cooop-section-title {
+                font-size: 15px;
+                font-weight: 700;
+                color: var(--text-primary);
+                margin-bottom: 10px;
+                letter-spacing: 0.3px;
+            }
+            .cooop-desc {
+                font-size: 12px;
+                color: var(--text-muted);
+                line-height: 1.5;
+                margin-bottom: 12px;
+            }
+            .cooop-desc b {
+                color: var(--text-primary);
+                font-weight: 700;
+            }
+
+            .cooop-file-select {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                padding: 32px 20px;
+                border: 2px dashed var(--border-color);
+                cursor: pointer;
+                transition: border-color 0.2s;
+                background: var(--bg-primary);
+            }
+            .cooop-file-select:hover {
+                border-color: var(--accent);
+            }
+            .cooop-file-select-icon {
+                width: 48px;
+                height: 48px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: var(--accent);
+                color: var(--text-on-accent);
+                font-size: 28px;
+                font-weight: 700;
+            }
+            .cooop-file-select-text {
+                font-size: 13px;
+                color: var(--text-muted);
+            }
+            .cooop-file-info {
+                margin-top: 12px;
+                font-size: 13px;
+                color: var(--text-primary);
+                padding: 10px 12px;
+                background: var(--bg-primary);
+                border: 2px solid var(--border-color);
+                word-break: break-all;
+            }
+
+            .cooop-link {
+                width: 100%;
+                min-height: 120px;
+                padding: 12px;
+                border: 2px solid var(--border-color);
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                line-height: 1.4;
+                resize: vertical;
+                box-sizing: border-box;
+                outline: none;
+                margin-bottom: 12px;
+                word-break: break-all;
+                -webkit-user-select: text;
+                user-select: text;
+            }
+            .cooop-link:focus {
+                border-color: var(--accent);
+            }
+
+            .cooop-hint {
+                font-size: 12px;
+                color: var(--accent);
+                line-height: 1.4;
+                margin-bottom: 12px;
+                padding: 8px 10px;
+                background: var(--bg-hover);
+                border-left: 3px solid var(--accent);
+            }
+
+            .cooop-btn {
+                display: block;
+                width: 100%;
+                padding: 14px 20px;
+                border: none;
+                background: var(--accent);
+                color: var(--text-on-accent);
+                cursor: pointer;
+                font-family: inherit;
+                font-size: 14px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                transition: background 0.2s;
+            }
+            .cooop-btn:hover {
+                background: var(--accent-dark);
+            }
+            .cooop-btn-secondary {
+                display: block;
+                width: 100%;
+                padding: 12px 20px;
+                border: 2px solid var(--border-color);
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                cursor: pointer;
+                font-family: inherit;
+                font-size: 13px;
+                font-weight: 600;
+                transition: all 0.2s;
+            }
+            .cooop-btn-secondary:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+
+            .cooop-status {
+                font-size: 13px;
+                color: var(--text-muted);
+                word-break: break-all;
+                min-height: 18px;
+            }
+
+            .cooop-back-row {
+                max-width: 640px;
+                margin: 0 auto 24px;
+            }
+
+            @media (max-width: 500px) {
+                .cooop-content { padding: 16px; }
+                .cooop-menu-btn { padding: 22px 20px; }
+                .cooop-menu-title { font-size: 17px; }
+                .cooop-menu-desc { font-size: 12px; }
+                .cooop-section { padding: 16px; }
+                .cooop-section-title { font-size: 14px; }
+                .cooop-link { font-size: 10px; min-height: 100px; }
+            }
+        `;
+        document.head.appendChild(style);
     }
-    window.addEventListener('hashchange', checkHashOnLoad);
+
+    checkHashOnLoad();
+
+    window.addEventListener('hashchange', function() {
+        if (!location.hash || location.hash.indexOf('#cooop=') !== 0) return;
+        const parsed = parseLink(location.hash);
+        if (!parsed) return;
+        pendingHashParse = parsed;
+        if (isOpen) {
+            downloadFromParsed(parsed, function(s) {
+                const status = document.getElementById('cooopRecvStatus');
+                if (status) status.textContent = s;
+            });
+        }
+    });
 
     window.Cooop = {
         destroy: destroy,
         open: openCooop,
+        shareFile: shareFile,
         MAX_FILE_SIZE: MAX_FILE_SIZE
+    };
+    window.CooopShare = {
+        shareFile: shareFile
     };
     window.cooopInit = function() { openCooop(); };
 

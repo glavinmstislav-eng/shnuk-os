@@ -473,6 +473,273 @@
         return arr;
     }
 
+    // ============================================
+    // ПОИСК / СОЗДАНИЕ ПАПКИ COOOP DOWNLOADS
+    // ============================================
+
+    async function getOrCreateCooopFolder() {
+        // Ищем папку с именем "Cooop Downloads" в корне
+        let folder = allItems.find(f => f.isFolder && f.parentId === null && f.name === 'Cooop Downloads');
+        if (folder) return folder;
+
+        folder = {
+            id: 'folder_cooop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            name: 'Cooop Downloads',
+            isFolder: true,
+            parentId: null,
+            date: new Date().toISOString(),
+            size: 0,
+            type: 'folder',
+            data: '',
+            extension: ''
+        };
+        await putItem(folder);
+        return folder;
+    }
+
+    // Публичный API для сохранения файла в Cooop Downloads
+    async function saveToCooopDownloads(fileData) {
+        if (!fileData || !fileData.name) return false;
+        await loadAll();
+        const folder = await getOrCreateCooopFolder();
+        if (!folder) return false;
+
+        const item = {
+            id: 'cooop_file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            name: fileData.name,
+            size: fileData.size || 0,
+            type: fileData.type || 'application/octet-stream',
+            data: fileData.data,
+            date: new Date().toISOString(),
+            extension: (fileData.name.split('.').pop() || '').toLowerCase(),
+            parentId: folder.id,
+            isFolder: false
+        };
+
+        const ok = await putItem(item);
+        if (ok) {
+            renderFiles();
+            updateStorageInfo();
+        }
+        return ok;
+    }
+
+    // ============================================
+    // ПОДЕЛИТЬСЯ (Cooop)
+    // ============================================
+
+    function loadCooopShareScript() {
+        return new Promise(function(resolve) {
+            if (window.CooopShare && typeof window.CooopShare.shareFile === 'function') {
+                resolve(true);
+                return;
+            }
+            const existing = document.querySelector('script[data-cooop-share]');
+            if (existing) {
+                const check = setInterval(function() {
+                    if (window.CooopShare) { clearInterval(check); resolve(true); }
+                }, 50);
+                setTimeout(function() { clearInterval(check); resolve(!!window.CooopShare); }, 3000);
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'cooop-share.js?t=' + Date.now();
+            s.dataset.cooopShare = '1';
+            s.onload = function() {
+                resolve(!!(window.CooopShare && typeof window.CooopShare.shareFile === 'function'));
+            };
+            s.onerror = function() { resolve(false); };
+            document.head.appendChild(s);
+        });
+    }
+
+    async function shareFileWithCooop(fileId) {
+        const file = allItems.find(f => f.id === fileId);
+        if (!file) {
+            if (window.Win && window.Win.notify) window.Win.notify('Файл не найден', { type: 'error' });
+            return;
+        }
+        if (file.isFolder) {
+            if (window.Win && window.Win.notify) window.Win.notify('Нельзя поделиться папкой', { type: 'error' });
+            return;
+        }
+
+        if (window.Win && window.Win.notify) {
+            window.Win.notify('Готовим ссылку...', { type: 'info', duration: 2000 });
+        }
+
+        const ok = await loadCooopShareScript();
+        if (!ok) {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Не удалось загрузить модуль Cooop Share', { type: 'error' });
+            }
+            return;
+        }
+
+        try {
+            const result = await window.CooopShare.shareFile(file);
+            if (result) {
+                showShareLinkDialog(result);
+            }
+        } catch(e) {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Ошибка: ' + e.message, { type: 'error' });
+            }
+        }
+    }
+
+    function showShareLinkDialog(link) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 100002;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px; box-sizing: border-box;
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            width: 100%; max-width: 460px;
+            border: 2px solid var(--border-color);
+            padding: 24px; box-sizing: border-box;
+            font-family: ${FONT_MAIN};
+        `;
+
+        modal.innerHTML = `
+            <div style="font-size:20px;font-weight:700;margin-bottom:14px;letter-spacing:0.4px;">
+                Ссылка на файл
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
+                Отправьте эту ссылку любому. При открытии файл распакуется и скачается.
+            </div>
+            <textarea readonly id="cooopShareLinkField" style="
+                width:100%;min-height:100px;padding:10px;
+                border:2px solid var(--border-color);
+                background:var(--bg-primary);color:var(--text-primary);
+                font-family:'Courier New',monospace;font-size:11px;
+                line-height:1.4;box-sizing:border-box;outline:none;
+                word-break:break-all;margin-bottom:14px;
+                -webkit-user-select:text;user-select:text;
+            "></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="cooopShareCopyBtn" style="
+                    flex:1;min-width:120px;
+                    padding:12px 20px;border:none;
+                    background:var(--accent);color:var(--text-on-accent);
+                    cursor:pointer;font-family:${FONT_MAIN};
+                    font-size:14px;font-weight:700;letter-spacing:1px;
+                ">СКОПИРОВАТЬ</button>
+                <button id="cooopShareOpenBtn" style="
+                    flex:1;min-width:120px;
+                    padding:12px 20px;border:2px solid var(--border-color);
+                    background:var(--bg-primary);color:var(--text-primary);
+                    cursor:pointer;font-family:${FONT_MAIN};
+                    font-size:14px;font-weight:600;
+                ">ОТКРЫТЬ</button>
+                <button id="cooopShareCloseBtn" style="
+                    width:100%;padding:10px 20px;
+                    border:2px solid var(--border-color);
+                    background:var(--bg-primary);color:var(--text-primary);
+                    cursor:pointer;font-family:${FONT_MAIN};
+                    font-size:13px;font-weight:600;
+                ">ЗАКРЫТЬ</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const field = document.getElementById('cooopShareLinkField');
+        field.value = link;
+
+        field.addEventListener('click', function() {
+            field.focus();
+            field.setSelectionRange(0, field.value.length);
+        });
+
+        document.getElementById('cooopShareCopyBtn').addEventListener('click', async function() {
+            const ok = await copyText(link, field);
+            if (ok) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Ссылка скопирована', { type: 'success' });
+                }
+            } else {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Текст выделен — скопируйте вручную', { type: 'info', duration: 4000 });
+                }
+            }
+        });
+
+        document.getElementById('cooopShareOpenBtn').addEventListener('click', function() {
+            window.open(link, '_blank');
+        });
+
+        document.getElementById('cooopShareCloseBtn').addEventListener('click', function() {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        });
+
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }
+        });
+    }
+
+    // Хелпер копирования — используется в диалоге и в Cooop
+    async function copyText(text, field) {
+        if (!text) return false;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                let done = false;
+                const p = navigator.clipboard.writeText(text).then(function() {
+                    done = true;
+                    return true;
+                }).catch(function() {
+                    done = true;
+                    return false;
+                });
+                const timeout = new Promise(function(resolve) {
+                    setTimeout(function() { if (!done) resolve(false); }, 1200);
+                });
+                const ok = await Promise.race([p, timeout]);
+                if (ok) return true;
+            }
+        } catch(e) {}
+
+        // Fallback: временный textarea
+        try {
+            const tmp = document.createElement('textarea');
+            tmp.value = text;
+            tmp.setAttribute('readonly', '');
+            tmp.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+            document.body.appendChild(tmp);
+            tmp.focus();
+            tmp.setSelectionRange(0, text.length);
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+            document.body.removeChild(tmp);
+            if (ok) return true;
+        } catch(e) {}
+
+        // Ручное выделение
+        if (field) {
+            try {
+                field.focus();
+                field.setSelectionRange(0, field.value.length);
+            } catch(e) {}
+        }
+        return false;
+    }
+
+    // ============================================
+    // UI
+    // ============================================
+
     function openFiles() {
         syncItemsFromStorage();
 
@@ -894,7 +1161,8 @@
                     box-shadow: 0 2px 12px rgba(0,0,0,0.08);
                 }
                 .file-item:hover .file-delete-btn,
-                .file-item:hover .file-rename-btn { opacity: 1; }
+                .file-item:hover .file-rename-btn,
+                .file-item:hover .file-share-btn { opacity: 1; }
                 .file-item.selected {
                     border-color: var(--accent) !important;
                     background: var(--bg-hover);
@@ -967,6 +1235,24 @@
                     z-index: 5;
                 }
                 .file-rename-btn:hover { transform: scale(1.1); background: #2266dd; }
+
+                .file-share-btn {
+                    position: absolute; bottom: -8px; left: 50%;
+                    transform: translateX(-50%);
+                    width: 28px; height: 28px;
+                    background: #4CAF50; color: #ffffff;
+                    border: 2px solid var(--bg-primary);
+                    border-radius: 50%;
+                    font-size: 14px;
+                    line-height: 24px;
+                    text-align: center; cursor: pointer;
+                    opacity: 0;
+                    transition: opacity 0.2s, transform 0.2s;
+                    font-family: ${FONT_MAIN};
+                    box-shadow: 0 2px 8px rgba(76,175,80,0.3);
+                    z-index: 5;
+                }
+                .file-share-btn:hover { transform: translateX(-50%) scale(1.1); background: #3d8b40; }
 
                 .empty-folder {
                     grid-column: 1/-1;
@@ -1090,8 +1376,13 @@
                 .preview-actions-row button.edit-text:hover {
                     background: #4CAF50; color: #ffffff;
                 }
+                .preview-actions-row button.share-btn {
+                    border-color: #4488ff; color: #4488ff;
+                }
+                .preview-actions-row button.share-btn:hover {
+                    background: #4488ff; color: #ffffff;
+                }
 
-                /* Кнопка закрытия превью — без фона и рамки */
                 .preview-close-bottom {
                     width: 56px; height: 56px;
                     background: none;
@@ -1206,6 +1497,7 @@
                     .file-item .file-name { font-size: 10px; }
                     .file-delete-btn { width: 24px; height: 24px; font-size: 14px; line-height: 20px; top: -6px; right: -6px; }
                     .file-rename-btn { width: 24px; height: 24px; font-size: 12px; line-height: 20px; top: -6px; left: -6px; }
+                    .file-share-btn { width: 24px; height: 24px; font-size: 12px; line-height: 20px; bottom: -6px; }
                     .preview-nav { font-size: 24px; padding: 12px; }
                     .preview-actions-row { flex-wrap: wrap; gap: 6px; }
                     .preview-actions-row button { font-size: 11px; padding: 6px 14px; }
@@ -1362,6 +1654,7 @@
         const canCreateFolder = hasRootFile();
         const hasSelection = !!getSelectedItem();
         const hasClipboard = !!clipboard && Array.isArray(clipboard.items) && clipboard.items.length > 0;
+        const selectedIsFile = hasSelection && !getSelectedItem().isFolder;
 
         menuDropdown = document.createElement('div');
         menuDropdown.className = 'file-menu-dropdown';
@@ -1395,6 +1688,12 @@
                 icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>'
             },
             { sep: true },
+            {
+                id: 'share',
+                label: 'Поделиться ссылкой',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>',
+                disabled: !selectedIsFile
+            },
             {
                 id: 'copy',
                 label: 'Копировать',
@@ -1472,6 +1771,10 @@
         else if (id === 'upload-multiple') uploadFiles(true);
         else if (id === 'new-text') createTextFile();
         else if (id === 'new-folder') createFolderPrompt();
+        else if (id === 'share') {
+            const sel = getSelectedItem();
+            if (sel && !sel.isFolder) shareFileWithCooop(sel.id);
+        }
         else if (id === 'copy') copySelected(false);
         else if (id === 'cut') copySelected(true);
         else if (id === 'paste') pasteFromClipboard();
@@ -1770,6 +2073,15 @@
                 renameItemPrompt(item);
             });
 
+            const shareBtn = document.createElement('button');
+            shareBtn.className = 'file-share-btn';
+            shareBtn.textContent = '↑';
+            shareBtn.title = 'Поделиться';
+            shareBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                shareFileWithCooop(item.id);
+            });
+
             let badge = '';
             if (isFolder) badge = '<span class="file-badge folder-badge">ПАПКА</span>';
             else if (isImage) badge = '<span class="file-badge">IMG</span>';
@@ -1782,6 +2094,7 @@
             `;
             el.appendChild(deleteBtn);
             el.appendChild(renameBtn);
+            if (!isFolder) el.appendChild(shareBtn);
 
             el.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -1990,6 +2303,7 @@
         actions.innerHTML = `
             ${isImage ? `<button class="set-wallpaper" data-file-id="${file.id}">Установить как обои</button>` : ''}
             ${canEdit ? `<button class="edit-text" data-file-id="${file.id}">Редактировать</button>` : ''}
+            <button class="share-btn" data-file-id="${file.id}">Поделиться</button>
             <button data-file-id="${file.id}" class="download-btn">Скачать</button>
             <button data-file-id="${file.id}" class="delete-btn">Удалить</button>
         `;
@@ -2001,6 +2315,7 @@
                 else if (this.classList.contains('download-btn')) downloadFile(fileId);
                 else if (this.classList.contains('delete-btn')) deleteFileFromPreview(fileId);
                 else if (this.classList.contains('edit-text')) openEditor(fileId);
+                else if (this.classList.contains('share-btn')) shareFileWithCooop(fileId);
             });
         });
 
@@ -2286,7 +2601,9 @@
             if (!name) return;
             const f = allItems.find(x => x.name === name && !x.isFolder);
             if (f) openFile(f);
-        }
+        },
+        saveToCooopDownloads: saveToCooopDownloads,
+        getOrCreateCooopFolder: getOrCreateCooopFolder
     };
     window.fileInit = function() { openFiles(); };
 

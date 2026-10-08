@@ -61,11 +61,19 @@
             const ex = document.getElementById('timeApp');
             if (ex) { ex.style.display = 'flex'; ex.style.opacity = '1'; return; }
         }
+        // При открытии всегда начинаем с главного экрана
+        currentPanel = 'main';
+        isTransitioning = false;
         createUI();
     }
 
     function closeTime() {
         isOpen = false;
+
+        // Возвращаемся на главную — при следующем открытии покажется она
+        currentPanel = 'main';
+        isTransitioning = false;
+
         if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
         document.removeEventListener('keydown', onKeyDown);
 
@@ -86,6 +94,11 @@
 
     function destroy() {
         isOpen = false;
+
+        // Сбрасываем состояние навигации
+        currentPanel = 'main';
+        isTransitioning = false;
+
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
         if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
@@ -289,7 +302,6 @@
                     background: transparent;
                 }
 
-                /* Общий контейнер для всех панелей — анимация переключения */
                 .time-stage {
                     position: relative;
                     width: 100%;
@@ -670,11 +682,6 @@
         }
 
         function switchPanel(id) {
-            if (id === currentPanel && document.getElementById(getViewByPanelId(id))) {
-                // уже на этой панели
-                const active = getViewByPanel(id);
-                if (active && active.classList.contains('active')) return;
-            }
             if (isTransitioning) return;
             if (id === currentPanel) {
                 updateMenuActive();
@@ -689,7 +696,6 @@
             currentPanel = id;
             updateMenuActive();
 
-            // Если старой панели нет — просто показываем новую
             if (!oldView || !oldView.classList.contains('active')) {
                 newView.style.display = 'flex';
                 newView.classList.add('active');
@@ -704,7 +710,6 @@
                 return;
             }
 
-            // Старая панель: blur + fade + scale-down
             oldView.classList.remove('entered');
             oldView.classList.add('leaving');
 
@@ -713,7 +718,6 @@
                 oldView.classList.remove('leaving');
                 oldView.style.display = 'none';
 
-                // Новая панель: показываем и анимируем появление
                 newView.style.display = 'flex';
                 newView.classList.add('active');
                 newView.classList.add('entering');
@@ -728,13 +732,6 @@
                     });
                 });
             }, 300);
-        }
-
-        function getViewByPanelId(id) {
-            if (id === 'timer') return 'viewTimer';
-            if (id === 'stopwatch') return 'viewStopwatch';
-            if (id === 'alarm') return 'viewAlarm';
-            return 'viewMain';
         }
 
         let menuDropdown = null;

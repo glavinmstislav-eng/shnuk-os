@@ -32,16 +32,6 @@
             installed: false
         },
         {
-            id: 'dvizuha',
-            name: 'Dvizuha',
-            description: 'Стратегия на карте: стройте ПВО, защищайте фронт, запускайте дроны, уничтожьте столицу врага.',
-            icon: null,
-            file: 'dviz.js',
-            initFn: 'dvizInit',
-            destroyFn: 'Dviz',
-            installed: false
-        },
-        {
             id: 'cheese-chess',
             name: 'Cheese Chess',
             description: 'Шахматы. Белые — мыши, чёрные — куски сыра.',
@@ -109,8 +99,6 @@
         setInstalled(installed);
     }
 
-    // Отключает все backdrop-filter на странице во время игры,
-    // чтобы размытие из-под других приложений не влияло на игровой канвас
     function enterGameMode() {
         document.documentElement.classList.add('gc-playing');
         if (!document.getElementById('gcPlayingStyles')) {

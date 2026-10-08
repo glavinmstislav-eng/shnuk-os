@@ -11,15 +11,37 @@
     let isSeeking = false;
     let isDraggingSlider = false;
 
+    // Позиции воспроизведения по id файла (в памяти сессии)
+    const playbackPositions = {};
+
     const FONT_MAIN = "'TTPaplane', monospace";
 
     function warn() {
         try { console.warn.apply(console, ['[Audio]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
     }
 
+    function savePlaybackPosition() {
+        if (!currentFile || !currentFile.id || !audioEl) return;
+        try {
+            const t = audioEl.currentTime;
+            if (isFinite(t) && t > 0) {
+                playbackPositions[currentFile.id] = t;
+            } else if (t === 0) {
+                delete playbackPositions[currentFile.id];
+            }
+        } catch(e) {}
+    }
+
+    function getSavedPosition(fileId) {
+        if (!fileId) return 0;
+        const v = playbackPositions[fileId];
+        return (typeof v === 'number' && isFinite(v)) ? v : 0;
+    }
+
     function openAudio(fileData) {
         const old = document.getElementById('audioApp');
         if (old) {
+            savePlaybackPosition();
             stopPlayback();
             if (old.parentNode) old.parentNode.removeChild(old);
         }
@@ -32,6 +54,7 @@
         isOpen = false;
         isClosing = true;
 
+        savePlaybackPosition();
         stopPlayback();
         const el = document.getElementById('audioApp');
         if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -42,6 +65,7 @@
     function destroy() {
         isOpen = false;
         isClosing = true;
+        savePlaybackPosition();
         stopPlayback();
         const el = document.getElementById('audioApp');
         if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -50,8 +74,8 @@
 
     function stopPlayback() {
         if (audioEl) {
+            try { audioEl.pause(); } catch(e) {}
             try {
-                audioEl.pause();
                 audioEl.onerror = null;
                 audioEl.onloadedmetadata = null;
                 audioEl.ontimeupdate = null;
@@ -151,8 +175,6 @@
     // ВОЛНА
     // ============================================
 
-    // Создаём штук 5 синусоид-линий под прогрессом. Каждая чуть смещена
-    // по фазе — получается «дышащая» волна, которая плавно движется.
     function createWaveLayer(container) {
         const canvas = document.createElement('canvas');
         canvas.className = 'audio-wave-canvas';
@@ -191,7 +213,6 @@
         function draw() {
             animId = requestAnimationFrame(draw);
 
-            // Плавно подтягиваем opacity
             currentOpacity += (targetOpacity - currentOpacity) * 0.08;
             if (Math.abs(currentOpacity - targetOpacity) < 0.005) {
                 currentOpacity = targetOpacity;
@@ -206,7 +227,6 @@
             const t = (performance.now() - startTime) / 1000;
             const accent = hexToRgb(getAccent());
 
-            // Рисуем 3 слоя волны с разной амплитудой и скоростью
             const layers = [
                 { amp: h * 0.18, freq: 0.035, speed: 1.4, opacity: 0.6, phase: 0 },
                 { amp: h * 0.24, freq: 0.028, speed: 1.1, opacity: 0.4, phase: 1.6 },
@@ -215,12 +235,11 @@
 
             const centerY = h / 2;
 
-            layers.forEach(function(layer, i) {
+            layers.forEach(function(layer) {
                 ctx.beginPath();
                 const baseOpacity = layer.opacity * currentOpacity;
 
                 for (let x = 0; x <= w; x += 2) {
-                    // Две бегущие волны с разной частотой
                     const wave1 = Math.sin((x + t * 60 * layer.speed) * layer.freq);
                     const wave2 = Math.sin((x - t * 40 * layer.speed) * layer.freq * 1.7 + layer.phase) * 0.5;
                     const y = centerY + (wave1 + wave2) * layer.amp;
@@ -271,6 +290,8 @@
             if (window.Win && window.Win.notify) window.Win.notify('Файл не выбран', { type: 'error' });
             return;
         }
+
+        const savedPos = getSavedPosition(file.id);
 
         const app = document.createElement('div');
         app.id = 'audioApp';
@@ -566,7 +587,6 @@
         sliderWrap.className = 'audio-slider-wrap';
         sliderWrap.id = 'audioSliderWrap';
 
-        // Волна под слайдером
         const waveCanvas = createWaveLayer(sliderWrap);
         const wave = initWaveAnimation(waveCanvas);
 
@@ -631,6 +651,19 @@
             }
         });
 
+        function applySavedPosition() {
+            if (savedPos > 0 && isFinite(audioEl.duration) && audioEl.duration > 0) {
+                const target = Math.min(savedPos, audioEl.duration - 0.3);
+                if (target > 0) {
+                    try { audioEl.currentTime = target; } catch(e) {}
+                    const pct = (target / audioEl.duration) * 100;
+                    updateSliderVisual(pct);
+                    const cur = document.getElementById('audioCurrentTime');
+                    if (cur) cur.textContent = formatTime(target);
+                }
+            }
+        }
+
         function applyPendingSeek() {
             if (pendingSeekPct === null) return;
             if (!audioEl || !isFinite(audioEl.duration) || audioEl.duration <= 0) return;
@@ -649,9 +682,10 @@
                 const onTimeUpdate = function() {
                     audioEl.removeEventListener('timeupdate', onTimeUpdate);
                     if (audioEl.duration === Infinity || isNaN(audioEl.duration)) return;
-                    try { audioEl.currentTime = 0; } catch(e) {}
+                    try { audioEl.currentTime = savedPos > 0 ? savedPos : 0; } catch(e) {}
                     if (total) total.textContent = formatTime(audioEl.duration);
                     applyPendingSeek();
+                    applySavedPosition();
                 };
                 audioEl.addEventListener('timeupdate', onTimeUpdate);
                 try {
@@ -660,6 +694,7 @@
             } else {
                 if (total) total.textContent = formatTime(audioEl.duration);
                 applyPendingSeek();
+                applySavedPosition();
             }
         });
 
@@ -685,13 +720,14 @@
             knob.classList.remove('spinning');
             knob.classList.remove('playing');
             wave.setActive(false);
+            if (currentFile && currentFile.id) {
+                delete playbackPositions[currentFile.id];
+            }
         });
 
         audioEl.addEventListener('play', function() {
             setPlayIcon(true);
-            // Плавное включение волны
             wave.setActive(true);
-            // Рисунок внутри прогресса — плавное появление через CSS
             progress.classList.add('wave-active');
             knob.classList.add('spinning');
             knob.classList.add('playing');
@@ -799,7 +835,6 @@
             }
         }
 
-        // При уничтожении окна — уничтожаем анимацию
         app.__waveDestroy = function() {
             wave.destroy();
         };

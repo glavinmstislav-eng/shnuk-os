@@ -39,6 +39,32 @@
 
     const FONT_MAIN = "'TTPaplane', monospace";
 
+    // ============================================
+    // АНИМАЦИИ (как в настройках)
+    // ============================================
+
+    function animationEnabled() {
+        return window.L && typeof window.L.blurIn === 'function' && typeof window.L.blurOut === 'function';
+    }
+
+    function blurIn(el) {
+        if (!el) return Promise.resolve();
+        if (animationEnabled()) return window.L.blurIn(el, 420);
+        el.style.opacity = '1';
+        return Promise.resolve();
+    }
+
+    function blurOut(el) {
+        if (!el) return Promise.resolve();
+        if (animationEnabled()) return window.L.blurOut(el, 340);
+        el.style.opacity = '0';
+        return new Promise(function(resolve) { setTimeout(resolve, 340); });
+    }
+
+    // ============================================
+    // ОТКРЫТИЕ / ЗАКРЫТИЕ
+    // ============================================
+
     function openRecorder() {
         if (window.LiveBar && typeof window.LiveBar.resume === 'function') {
             window.LiveBar.resume('recorder');
@@ -51,31 +77,43 @@
     }
 
     function closeRecorder() {
+        const el = document.getElementById('recorderApp');
+        if (!el) {
+            isOpen = false;
+            return;
+        }
+
         isOpen = false;
 
+        // Если идёт запись или пауза — не трогаем ни MediaRecorder,
+        // ни LiveBar. Просто анимированно скрываем окно.
+        const recordingActive = isRecording;
+
+        if (animId) {
+            cancelAnimationFrame(animId);
+            animId = null;
+        }
+
+        if (recordingActive) {
+            blurOut(el).then(function() {
+                if (el.parentNode) el.parentNode.removeChild(el);
+            });
+            return;
+        }
+
+        // Полное закрытие: остановка записи, стрима, анализа, LiveBar
         if (window.LiveBar && typeof window.LiveBar.suspend === 'function') {
             window.LiveBar.suspend('recorder');
         }
-
         stopRecording(true);
         stopStream();
         stopAudioAnalysis();
-        if (animId) { cancelAnimationFrame(animId); animId = null; }
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         document.removeEventListener('keydown', onKeyDown);
 
-        const el = document.getElementById('recorderApp');
-        if (!el) return;
-
-        if (window.ShnukCloseAnimation) {
-            window.ShnukCloseAnimation(el, 'recorder', function() {
-                el.remove();
-            });
-        } else {
-            el.style.opacity = '0';
-            setTimeout(function() {
-                if (el.parentNode) el.parentNode.removeChild(el);
-            }, 180);
-        }
+        blurOut(el).then(function() {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        });
     }
 
     function destroy() {
@@ -150,13 +188,14 @@
     }
 
     function updateTimer() {
+        if (!isRecording || isPaused) return;
+        recordingElapsed = Date.now() - recordingStartTime;
+
         const el = document.getElementById('recorderTimer');
-        if (el && isRecording && !isPaused) {
-            recordingElapsed = Date.now() - recordingStartTime;
-            el.textContent = formatTime(recordingElapsed);
-            if (window.LiveBar) {
-                window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: false });
-            }
+        if (el) el.textContent = formatTime(recordingElapsed);
+
+        if (window.LiveBar) {
+            window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: false });
         }
     }
 
@@ -189,6 +228,29 @@
         }
     }
 
+    function createMediaRecorder(mediaStream) {
+        const mimeType = pickMimeType();
+        let rec;
+        try {
+            rec = mimeType
+                ? new MediaRecorder(mediaStream, { mimeType: mimeType })
+                : new MediaRecorder(mediaStream);
+        } catch(e) {
+            rec = new MediaRecorder(mediaStream);
+        }
+        pendingMimeType = rec.mimeType || mimeType || 'audio/webm';
+
+        rec.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+        rec.onerror = function(e) {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Ошибка записи: ' + (e.error ? e.error.name : ''), { type: 'error' });
+            }
+        };
+        return rec;
+    }
+
     async function startRecording() {
         if (isRecording) return;
 
@@ -201,37 +263,18 @@
 
             startAudioAnalysis(stream);
 
-            const mimeType = pickMimeType();
-            try {
-                mediaRecorder = mimeType
-                    ? new MediaRecorder(stream, { mimeType: mimeType })
-                    : new MediaRecorder(stream);
-            } catch(e) {
-                mediaRecorder = new MediaRecorder(stream);
-            }
+            mediaRecorder = createMediaRecorder(stream);
 
-            pendingMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
-
-            if (!isPaused) {
-                chunks = [];
-                levelsHistory = [];
-                viewPosition = 0;
-            } else {
-                isPaused = false;
-            }
-
-            mediaRecorder.ondataavailable = function(e) {
-                if (e.data && e.data.size > 0) chunks.push(e.data);
-            };
-            mediaRecorder.onerror = function(e) {
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify('Ошибка записи: ' + (e.error ? e.error.name : ''), { type: 'error' });
-                }
-            };
+            chunks = [];
+            levelsHistory = [];
+            viewPosition = 0;
+            recordingElapsed = 0;
 
             mediaRecorder.start(1000);
             isRecording = true;
-            recordingStartTime = Date.now() - recordingElapsed;
+            isPaused = false;
+            recordingStartTime = Date.now();
+            if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(updateTimer, 100);
             lastLevelSampleTime = performance.now();
 
@@ -242,7 +285,7 @@
                 window.LiveBar.set({
                     type: 'recording',
                     appId: 'recorder',
-                    payload: { elapsed: recordingElapsed / 1000, paused: false }
+                    payload: { elapsed: 0, paused: false }
                 });
             }
         } catch(e) {
@@ -265,25 +308,81 @@
         if (window.LiveBar) window.LiveBar.clear();
     }
 
-    // Остановка через кнопку «СТОП» — пауза без сохранения,
-    // чтобы можно было либо продолжить, либо сохранить.
-    function stopAndPause() {
+    // Пауза без сохранения: рекордер остаётся жив, можно продолжить
+    function pauseRecording() {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             try { mediaRecorder.pause(); } catch(e) {}
         }
         isPaused = true;
         recordingElapsed = Date.now() - recordingStartTime;
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-        if (window.LiveBar) window.LiveBar.clear();
+        const timerEl = document.getElementById('recorderTimer');
+        if (timerEl) timerEl.textContent = formatTime(recordingElapsed);
+
+        // Live bar не сбрасываем — показываем состояние паузы
+        if (window.LiveBar) {
+            window.LiveBar.update({ elapsed: recordingElapsed / 1000, paused: true });
+        }
         updateUI();
     }
 
-    async function saveRecording() {
-        if (chunks.length === 0) {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                stopRecording(false);
-                await new Promise(function(r) { setTimeout(r, 500); });
+    async function resumeRecording() {
+        try {
+            if (!stream || !stream.active) {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                startAudioAnalysis(stream);
+                mediaRecorder = createMediaRecorder(stream);
+            } else {
+                if (!analyser) {
+                    startAudioAnalysis(stream);
+                }
             }
+
+            if (mediaRecorder && mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+            } else if (mediaRecorder && mediaRecorder.state === 'recording') {
+                // уже идёт
+            } else {
+                mediaRecorder = createMediaRecorder(stream);
+                mediaRecorder.start(1000);
+            }
+
+            isRecording = true;
+            isPaused = false;
+            recordingStartTime = Date.now() - recordingElapsed;
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 100);
+            lastLevelSampleTime = performance.now();
+
+            updateUI();
+            startDrawLoop();
+
+            if (window.LiveBar) {
+                window.LiveBar.set({
+                    type: 'recording',
+                    appId: 'recorder',
+                    payload: { elapsed: recordingElapsed / 1000, paused: false }
+                });
+            }
+        } catch(e) {
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Не удалось продолжить запись', { type: 'error' });
+            }
+        }
+    }
+
+    async function saveRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            await new Promise(function(resolve) {
+                const rec = mediaRecorder;
+                const done = function() {
+                    rec.onstop = null;
+                    resolve();
+                };
+                rec.onstop = done;
+                try { rec.stop(); } catch(e) { done(); return; }
+                setTimeout(done, 600);
+            });
         }
 
         if (chunks.length === 0) {
@@ -345,6 +444,8 @@
             viewPosition = 0;
             isRecording = false;
             isPaused = false;
+            mediaRecorder = null;
+            if (window.LiveBar) window.LiveBar.clear();
             updateUI();
         };
         reader.onerror = function() {
@@ -368,34 +469,29 @@
         const status = document.getElementById('recorderStatus');
         const timer = document.getElementById('recorderTimer');
         const saveBtn = document.getElementById('recorderSaveBtn');
-        const continueBtn = document.getElementById('recorderContinueBtn');
 
         if (!btn) return;
 
+        const hasData = (chunks.length > 0) || (levelsHistory.length > 0);
+
         if (isRecording && !isPaused) {
-            // Идёт запись — кнопка работает как СТОП
             btn.textContent = 'СТОП';
             btn.style.background = 'var(--accent)';
             btn.style.color = 'var(--text-on-accent)';
             if (status) status.textContent = 'Идёт запись';
             if (saveBtn) saveBtn.style.display = 'none';
-            if (continueBtn) continueBtn.style.display = 'none';
         } else if (isRecording && isPaused) {
-            // Запись на паузе
             btn.textContent = 'ПРОДОЛЖИТЬ';
             btn.style.background = '#4CAF50';
             btn.style.color = '#ffffff';
             if (status) status.textContent = 'Пауза';
             if (saveBtn) saveBtn.style.display = 'inline-block';
-            if (continueBtn) continueBtn.style.display = 'none';
-        } else if (chunks.length > 0 || levelsHistory.length > 0) {
-            // Запись остановлена, но не сохранена
-            btn.textContent = 'ЗАПИСАТЬ';
+        } else if (hasData) {
+            btn.textContent = 'ПРОДОЛЖИТЬ';
             btn.style.background = '#4CAF50';
             btn.style.color = '#ffffff';
-            if (status) status.textContent = 'Готово. Прослушайте или продолжите запись';
+            if (status) status.textContent = 'Готово. Можно продолжить или сохранить';
             if (saveBtn) saveBtn.style.display = 'inline-block';
-            if (continueBtn) continueBtn.style.display = 'inline-block';
         } else {
             btn.textContent = 'НАЧАТЬ';
             btn.style.background = '#4CAF50';
@@ -403,7 +499,10 @@
             if (status) status.textContent = 'Готово к записи';
             if (timer) timer.textContent = '00:00.0';
             if (saveBtn) saveBtn.style.display = 'none';
-            if (continueBtn) continueBtn.style.display = 'none';
+        }
+
+        if (timer && isRecording) {
+            timer.textContent = formatTime(recordingElapsed);
         }
     }
 
@@ -443,36 +542,18 @@
         const rect = canvas.getBoundingClientRect();
         const w = rect.width;
         const h = rect.height;
+        if (w === 0 || h === 0) return;
         if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
             canvas.width = Math.round(w * dpr);
             canvas.height = Math.round(h * dpr);
             canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
 
-        // Белый фон
         canvasCtx.fillStyle = '#ffffff';
         canvasCtx.fillRect(0, 0, w, h);
 
-        // Клетчатый фон
-        const cellSize = 40;
-        canvasCtx.strokeStyle = 'rgba(0,0,0,0.06)';
-        canvasCtx.lineWidth = 1;
-        for (let x = 0; x <= w; x += cellSize) {
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(x, 0);
-            canvasCtx.lineTo(x, h);
-            canvasCtx.stroke();
-        }
-        for (let y = 0; y <= h; y += cellSize) {
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(0, y);
-            canvasCtx.lineTo(w, y);
-            canvasCtx.stroke();
-        }
-
         const centerY = h / 2;
 
-        // Общая длительность
         let duration = recordingElapsed;
         if (duration <= 0 && levelsHistory.length > 0) {
             duration = levelsHistory[levelsHistory.length - 1].t;
@@ -481,7 +562,6 @@
 
         const pixelsPerMs = w / Math.max(duration, 1000);
 
-        // Точки на экране
         const points = [];
         for (let i = 0; i < levelsHistory.length; i++) {
             const sample = levelsHistory[i];
@@ -493,7 +573,6 @@
             points.push({ x: x, y: y });
         }
 
-        // Живая точка в правом краю во время записи
         if (isRecording && !isPaused && levelsHistory.length > 0) {
             const liveT = recordingElapsed;
             const liveX = liveT * pixelsPerMs - viewPosition * pixelsPerMs;
@@ -503,7 +582,6 @@
             }
         }
 
-        // Плавная линия
         if (points.length > 0) {
             canvasCtx.save();
 
@@ -530,7 +608,6 @@
             }
             canvasCtx.stroke();
 
-            // Заливка под линией до центра
             canvasCtx.beginPath();
             canvasCtx.moveTo(points[0].x, centerY);
             canvasCtx.lineTo(points[0].x, points[0].y);
@@ -548,7 +625,6 @@
             canvasCtx.fillStyle = 'rgba(204,0,0,0.12)';
             canvasCtx.fill();
 
-            // Отражение снизу
             canvasCtx.beginPath();
             canvasCtx.moveTo(points[0].x, centerY + (centerY - points[0].y));
             for (let i = 0; i < points.length - 1; i++) {
@@ -587,7 +663,6 @@
             canvasCtx.restore();
         }
 
-        // Линия центра
         canvasCtx.strokeStyle = 'rgba(0,0,0,0.12)';
         canvasCtx.lineWidth = 1;
         canvasCtx.beginPath();
@@ -595,7 +670,6 @@
         canvasCtx.lineTo(w, centerY);
         canvasCtx.stroke();
 
-        // Курсор просмотра
         if (!isRecording && duration > 0) {
             const xPos = (viewPosition / duration) * w;
             if (xPos >= 0 && xPos <= w) {
@@ -649,6 +723,8 @@
     function createUI() {
         if (document.getElementById('recorderApp')) {
             document.getElementById('recorderApp').style.display = 'flex';
+            document.getElementById('recorderApp').style.opacity = '1';
+            isOpen = true;
             return;
         }
         isOpen = true;
@@ -669,15 +745,18 @@
             font-family: ${FONT_MAIN};
             color: #1a1a1a;
             opacity: 0;
-            animation: recorderFadeIn 0.3s ease forwards;
             overflow: hidden;
+            will-change: filter, opacity, transform;
         `;
 
         if (!document.getElementById('recorderStyles')) {
             const style = document.createElement('style');
             style.id = 'recorderStyles';
             style.textContent = `
-                @keyframes recorderFadeIn { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes recorderPanelIn {
+                    from { opacity: 0; filter: blur(14px); transform: translateY(14px); }
+                    to { opacity: 1; filter: blur(0); transform: translateY(0); }
+                }
 
                 #recorderApp, #recorderApp * {
                     font-family: ${FONT_MAIN} !important;
@@ -769,6 +848,7 @@
                     gap: 14px;
                     position: relative;
                     z-index: 21;
+                    animation: recorderPanelIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
                 }
 
                 .recorder-timer {
@@ -778,12 +858,14 @@
                     color: #1a1a1a;
                     font-family: ${FONT_MAIN};
                     line-height: 1;
+                    transition: opacity 0.25s ease, filter 0.25s ease;
                 }
                 .recorder-status {
                     font-size: 13px;
                     color: #888888;
                     min-height: 18px;
                     font-family: ${FONT_MAIN};
+                    transition: opacity 0.25s ease;
                 }
 
                 .recorder-controls {
@@ -802,17 +884,16 @@
                     font-size: 15px;
                     font-weight: 700;
                     background: #4CAF50;
-                    transition: background 0.2s, transform 0.15s;
+                    transition: background 0.2s, transform 0.15s, filter 0.2s;
                     letter-spacing: 1px;
                     touch-action: manipulation;
                 }
                 .recorder-main-btn:active { transform: scale(0.96); }
-                .recorder-save-btn,
-                .recorder-continue-btn {
+                .recorder-save-btn {
                     padding: 14px 26px;
-                    border: 2px solid var(--accent);
+                    border: 2px solid #4CAF50;
                     background: none;
-                    color: var(--accent);
+                    color: #4CAF50;
                     cursor: pointer;
                     font-family: ${FONT_MAIN};
                     font-size: 14px;
@@ -821,25 +902,8 @@
                     display: none;
                     touch-action: manipulation;
                 }
-                .recorder-save-btn:hover,
-                .recorder-continue-btn:hover {
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                }
-                .recorder-save-btn {
-                    border-color: #4CAF50;
-                    color: #4CAF50;
-                }
                 .recorder-save-btn:hover {
                     background: #4CAF50;
-                    color: #ffffff;
-                }
-                .recorder-continue-btn {
-                    border-color: #333;
-                    color: #333;
-                }
-                .recorder-continue-btn:hover {
-                    background: #333;
                     color: #ffffff;
                 }
 
@@ -849,8 +913,7 @@
                     .recorder-controls-panel { padding: 16px 16px 90px; gap: 10px; }
                     .recorder-timer { font-size: 34px; }
                     .recorder-main-btn { padding: 12px 28px; font-size: 14px; }
-                    .recorder-save-btn,
-                    .recorder-continue-btn { padding: 12px 18px; font-size: 12px; }
+                    .recorder-save-btn { padding: 12px 18px; font-size: 12px; }
                 }
             `;
             document.head.appendChild(style);
@@ -881,7 +944,6 @@
             <div class="recorder-timer" id="recorderTimer">00:00.0</div>
             <div class="recorder-status" id="recorderStatus">Готово к записи</div>
             <div class="recorder-controls">
-                <button class="recorder-continue-btn" id="recorderContinueBtn">ПРОДОЛЖИТЬ</button>
                 <button class="recorder-main-btn" id="recorderMainBtn">НАЧАТЬ</button>
                 <button class="recorder-save-btn" id="recorderSaveBtn">СОХРАНИТЬ</button>
             </div>
@@ -904,76 +966,25 @@
 
         document.getElementById('recorderMainBtn').addEventListener('click', function() {
             if (isRecording && !isPaused) {
-                // СТОП — приостанавливаем, но не сохраняем
-                stopAndPause();
-            } else if (!isRecording) {
-                // НАЧАТЬ / ЗАПИСАТЬ / ПРОДОЛЖИТЬ
-                if (chunks.length > 0) {
-                    resumeExistingRecording();
-                } else {
-                    startRecording();
-                }
+                pauseRecording();
+            } else if (isRecording && isPaused) {
+                resumeRecording();
+            } else if (chunks.length > 0 || levelsHistory.length > 0) {
+                resumeRecording();
+            } else {
+                startRecording();
             }
         });
 
         document.getElementById('recorderSaveBtn').addEventListener('click', saveRecording);
 
-        document.getElementById('recorderContinueBtn').addEventListener('click', function() {
-            resumeExistingRecording();
-        });
-
         document.addEventListener('keydown', onKeyDown);
+
+        // Анимация появления — как в настройках
+        blurIn(app);
 
         startDrawLoop();
         updateUI();
-    }
-
-    async function resumeExistingRecording() {
-        try {
-            if (!stream) {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            }
-            startAudioAnalysis(stream);
-
-            const mimeType = pickMimeType();
-            try {
-                mediaRecorder = mimeType
-                    ? new MediaRecorder(stream, { mimeType: mimeType })
-                    : new MediaRecorder(stream);
-            } catch(e) {
-                mediaRecorder = new MediaRecorder(stream);
-            }
-
-            mediaRecorder.ondataavailable = function(e) {
-                if (e.data && e.data.size > 0) chunks.push(e.data);
-            };
-            mediaRecorder.onerror = function(e) {
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify('Ошибка записи', { type: 'error' });
-                }
-            };
-
-            mediaRecorder.start(1000);
-            isRecording = true;
-            isPaused = false;
-            recordingStartTime = Date.now() - recordingElapsed;
-            timerInterval = setInterval(updateTimer, 100);
-            lastLevelSampleTime = performance.now();
-
-            updateUI();
-
-            if (window.LiveBar) {
-                window.LiveBar.set({
-                    type: 'recording',
-                    appId: 'recorder',
-                    payload: { elapsed: recordingElapsed / 1000, paused: false }
-                });
-            }
-        } catch(e) {
-            if (window.Win && window.Win.notify) {
-                window.Win.notify('Не удалось продолжить запись', { type: 'error' });
-            }
-        }
     }
 
     function onKeyDown(e) {
