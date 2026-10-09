@@ -10,11 +10,16 @@
     let idCounter = 0;
     let activeMobilePanel = 'palette';
 
+    let pendingParentId = null;
+    let dragCtx = null;
+
     const STORAGE_KEY = 'coll_project';
     const COLL_ID = 'collApp';
     const INSTALLED_KEY = 'shnuk_installed_apps';
     const FONT_DEFAULT = "'TTPaplane', monospace";
     const FONT_FILE = 'TT_Paplane_Trial_Regular.ttf';
+
+    const JSZIP_LOCAL = 'jszip.min.js';
 
     const FONTS = [
         { value: FONT_DEFAULT, label: 'TT Paplane (по умолчанию)' },
@@ -27,6 +32,13 @@
         { value: "Verdana, sans-serif", label: 'Verdana' }
     ];
 
+    const NOTIFICATION_TYPES = [
+        { value: 'info',    label: 'Обычное' },
+        { value: 'success', label: 'Успех' },
+        { value: 'warning', label: 'Предупреждение' },
+        { value: 'error',   label: 'Ошибка' }
+    ];
+
     function getFont() {
         return (appState && appState.font) || FONT_DEFAULT;
     }
@@ -35,17 +47,17 @@
         { type: 'text',      name: 'Текст',       icon: 'T',  color: '#4488ff', group: 'ui',    defaults: { text: 'Заголовок', size: 'large' } },
         { type: 'paragraph', name: 'Абзац',       icon: '¶',  color: '#4488ff', group: 'ui',    defaults: { text: 'Простой текст.' } },
         { type: 'spacer',    name: 'Отступ',      icon: '↕',  color: '#9E9E9E', group: 'ui',    defaults: { size: '20' } },
-        { type: 'image',     name: 'Изображение', icon: '🖼', color: '#8844cc', group: 'ui',    defaults: { src: '', width: '320', align: 'left', alt: '' } },
-        { type: 'video',     name: 'Видео',       icon: '▶',  color: '#dd6600', group: 'ui',    defaults: { src: '', width: '420', controls: true, autoplay: false, loop: false, muted: false } },
-        { type: 'input',     name: 'Поле ввода',  icon: '⌨', color: '#4CAF50', group: 'ui',    defaults: { placeholder: 'Введите текст', varName: 'input1' } },
-        { type: 'output',    name: 'Вывод',       icon: '▤',  color: '#607d8b', group: 'ui',    defaults: { varName: 'input1' } },
-        { type: 'slider',    name: 'Ползунок',    icon: '⇆',  color: '#00a0a0', group: 'ui',    defaults: { varName: 'slider1', min: '0', max: '100', value: '50', step: '1' } },
+        { type: 'image',     name: 'Изображение', icon: 'I',  color: '#8844cc', group: 'ui',    defaults: { src: '', width: '320', align: 'left', alt: '' } },
+        { type: 'video',     name: 'Видео',       icon: 'V',  color: '#dd6600', group: 'ui',    defaults: { src: '', width: '420', controls: true, autoplay: false, loop: false, muted: false } },
+        { type: 'input',     name: 'Поле ввода',  icon: 'K',  color: '#4CAF50', group: 'ui',    defaults: { placeholder: 'Введите текст', varName: 'input1' } },
+        { type: 'output',    name: 'Вывод',       icon: 'O',  color: '#607d8b', group: 'ui',    defaults: { varName: 'input1' } },
+        { type: 'slider',    name: 'Ползунок',    icon: 'S',  color: '#00a0a0', group: 'ui',    defaults: { varName: 'slider1', min: '0', max: '100', value: '50', step: '1' } },
 
-        { type: 'onstart',   name: 'При старте',  icon: '▶',  color: '#2e7d32', group: 'logic', defaults: { children: [] } },
+        { type: 'onstart',   name: 'При старте',  icon: 'P',  color: '#2e7d32', group: 'logic', defaults: { children: [] } },
         { type: 'ifb',       name: 'Если',        icon: '?',  color: '#3366cc', group: 'logic', defaults: { varName: 'x', op: '==', value: '0', children: [] } },
-        { type: 'timerb',    name: 'Таймер',      icon: '⏱', color: '#cc6600', group: 'logic', defaults: { interval: '5', children: [] } },
+        { type: 'timerb',    name: 'Таймер',      icon: 'T',  color: '#cc6600', group: 'logic', defaults: { interval: '5', children: [] } },
         { type: 'setvar',    name: 'Установить',  icon: '=',  color: '#aa8800', group: 'logic', defaults: { varName: 'x', value: '0' } },
-        { type: 'notifyb',   name: 'Уведомление', icon: '!',  color: '#e91e63', group: 'logic', defaults: { title: 'Заголовок', body: 'Текст уведомления' } },
+        { type: 'notifyb',   name: 'Уведомление', icon: '!',  color: '#e91e63', group: 'logic', defaults: { title: 'Заголовок', body: 'Текст уведомления', type: 'info' } },
         { type: 'varb',      name: 'Переменная',  icon: '$',  color: '#7b1fa2', group: 'logic', defaults: { name: 'x', value: '0' } }
     ];
 
@@ -114,11 +126,40 @@
         return appState.pages.find(p => p.id === currentPageId) || null;
     }
 
-    function findElementById(id) {
+    function findElementById(id, list) {
         if (!appState) return null;
-        for (const page of appState.pages) {
-            for (const el of page.elements) {
-                if (el.id === id) return el;
+        if (!list) {
+            for (const page of appState.pages) {
+                const found = findElementById(id, page.elements);
+                if (found) return found;
+            }
+            return null;
+        }
+        for (const el of list) {
+            if (el.id === id) return el;
+            if (Array.isArray(el.fields && el.fields.children)) {
+                const found = findElementById(id, el.fields.children);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function findElementLocation(id, list, parent) {
+        if (!appState) return null;
+        if (!list) {
+            for (const page of appState.pages) {
+                const r = findElementLocation(id, page.elements, null);
+                if (r) return r;
+            }
+            return null;
+        }
+        for (let i = 0; i < list.length; i++) {
+            const el = list[i];
+            if (el.id === id) return { list: list, index: i, parent: parent };
+            if (Array.isArray(el.fields && el.fields.children)) {
+                const r = findElementLocation(id, el.fields.children, el);
+                if (r) return r;
             }
         }
         return null;
@@ -135,6 +176,31 @@
         return def && def.group === 'logic';
     }
 
+    function isContainerElement(el) {
+        if (!el) return false;
+        return el.type === 'onstart' || el.type === 'ifb' || el.type === 'timerb';
+    }
+
+    function extractElement(id) {
+        const loc = findElementLocation(id);
+        if (!loc) return null;
+        return loc.list.splice(loc.index, 1)[0];
+    }
+
+    function isDescendantOf(sourceId, targetId) {
+        const source = findElementById(sourceId);
+        if (!source) return false;
+        function walk(el) {
+            if (!el) return false;
+            if (el.id === targetId) return true;
+            if (Array.isArray(el.fields && el.fields.children)) {
+                for (const c of el.fields.children) if (walk(c)) return true;
+            }
+            return false;
+        }
+        return walk(source);
+    }
+
     function renderPreviewElement(el, isPreviewOnly) {
         const def = getElementDef(el.type);
         if (!def) return document.createElement('div');
@@ -147,7 +213,6 @@
         wrap.className = 'coll-element';
         wrap.dataset.elementId = el.id;
         wrap.style.fontFamily = font;
-        // Явно — блочный элемент на всю ширину, не даём схлопываться и налезать
         wrap.style.display = 'block';
         wrap.style.width = '100%';
         wrap.style.boxSizing = 'border-box';
@@ -159,7 +224,6 @@
             wrap.style.padding = '10px';
             wrap.style.border = '2px dashed transparent';
             wrap.style.transition = 'border-color 0.15s';
-            // Не обрезаем — иначе кнопки управления исчезают
             wrap.style.overflow = 'visible';
             wrap.addEventListener('mouseenter', function() {
                 wrap.style.borderColor = 'var(--border-color)';
@@ -173,8 +237,18 @@
 
             const badge = document.createElement('div');
             badge.textContent = def.name;
-            badge.style.cssText = 'position:absolute;top:-1px;left:-1px;background:' + def.color + ';color:#fff;font-size:9px;padding:2px 6px;letter-spacing:0.5px;z-index:2;font-family:' + FONT_DEFAULT + ';';
+            badge.style.cssText = 'position:absolute;top:-1px;left:-1px;background:' + def.color + ';color:#fff;font-size:9px;padding:2px 6px;letter-spacing:0.5px;z-index:2;font-family:' + FONT_DEFAULT + ';cursor:grab;touch-action:none;user-select:none;';
             wrap.appendChild(badge);
+            badge.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                startUiDrag(e, el.id);
+            });
+            badge.addEventListener('touchstart', function(e) {
+                e.stopPropagation();
+                if (e.cancelable) e.preventDefault();
+                startUiDrag(e, el.id);
+            }, { passive: false });
 
             const rm = document.createElement('button');
             rm.textContent = '✕';
@@ -182,20 +256,6 @@
             rm.style.cssText = 'position:absolute;top:-1px;right:-1px;width:22px;height:22px;background:#cc0000;color:#fff;border:none;font-size:11px;cursor:pointer;padding:0;z-index:2;';
             rm.addEventListener('click', function(e) { e.stopPropagation(); removeElement(el.id); });
             wrap.appendChild(rm);
-
-            const up = document.createElement('button');
-            up.textContent = '▲';
-            up.title = 'Вверх';
-            up.style.cssText = 'position:absolute;bottom:-1px;right:24px;width:22px;height:22px;background:#333;color:#fff;border:none;font-size:10px;cursor:pointer;padding:0;z-index:2;';
-            up.addEventListener('click', function(e) { e.stopPropagation(); moveElement(el.id, -1); });
-            wrap.appendChild(up);
-
-            const dn = document.createElement('button');
-            dn.textContent = '▼';
-            dn.title = 'Вниз';
-            dn.style.cssText = 'position:absolute;bottom:-1px;right:-1px;width:22px;height:22px;background:#333;color:#fff;border:none;font-size:10px;cursor:pointer;padding:0;z-index:2;';
-            dn.addEventListener('click', function(e) { e.stopPropagation(); moveElement(el.id, +1); });
-            wrap.appendChild(dn);
 
             wrap.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -207,7 +267,6 @@
         inner.style.fontFamily = font;
         inner.style.width = '100%';
         inner.style.boxSizing = 'border-box';
-        // Обрезаем только контент, а не сам контейнер с кнопками
         inner.style.overflow = 'hidden';
 
         switch (el.type) {
@@ -416,28 +475,17 @@
         const head = document.createElement('div');
         head.className = 'coll-logic-head';
         head.style.background = def.color;
+        head.style.cursor = 'grab';
+        head.style.touchAction = 'none';
+        head.style.userSelect = 'none';
 
         const title = document.createElement('span');
         title.textContent = def.name;
-        title.style.cssText = 'font-size:12px;font-weight:700;color:#fff;letter-spacing:0.4px;';
+        title.style.cssText = 'font-size:12px;font-weight:700;color:#fff;letter-spacing:0.4px;pointer-events:none;';
         head.appendChild(title);
 
         const headActions = document.createElement('div');
         headActions.style.cssText = 'display:flex;gap:4px;';
-
-        const upBtn = document.createElement('button');
-        upBtn.className = 'coll-logic-btn';
-        upBtn.textContent = '▲';
-        upBtn.title = 'Вверх';
-        upBtn.addEventListener('click', function(e) { e.stopPropagation(); moveElement(el.id, -1); });
-        headActions.appendChild(upBtn);
-
-        const dnBtn = document.createElement('button');
-        dnBtn.className = 'coll-logic-btn';
-        dnBtn.textContent = '▼';
-        dnBtn.title = 'Вниз';
-        dnBtn.addEventListener('click', function(e) { e.stopPropagation(); moveElement(el.id, +1); });
-        headActions.appendChild(dnBtn);
 
         const rmBtn = document.createElement('button');
         rmBtn.className = 'coll-logic-btn danger';
@@ -449,12 +497,62 @@
         head.appendChild(headActions);
         wrap.appendChild(head);
 
+        head.addEventListener('mousedown', function(e) {
+            if (e.target.closest('button')) return;
+            e.stopPropagation();
+            e.preventDefault();
+            startLogicDrag(e, el.id);
+        });
+        head.addEventListener('touchstart', function(e) {
+            if (e.target.closest('button')) return;
+            e.stopPropagation();
+            if (e.cancelable) e.preventDefault();
+            startLogicDrag(e, el.id);
+        }, { passive: false });
+
         const summary = document.createElement('div');
         summary.className = 'coll-logic-summary';
         summary.textContent = buildLogicSummary(el);
         wrap.appendChild(summary);
 
+        if (isContainerElement(el)) {
+            const children = Array.isArray(el.fields.children) ? el.fields.children : [];
+
+            const childrenWrap = document.createElement('div');
+            childrenWrap.className = 'coll-logic-children';
+            childrenWrap.style.cssText = 'padding: 8px 10px 10px 22px; border-left: 2px dashed ' + def.color + '; margin: 0 10px 10px; display:flex; flex-direction:column; gap:6px;';
+
+            if (children.length === 0) {
+                const hint = document.createElement('div');
+                hint.textContent = 'Нет дочерних блоков.';
+                hint.style.cssText = 'font-size:11px;color:var(--text-muted);';
+                childrenWrap.appendChild(hint);
+            } else {
+                children.forEach(function(child) {
+                    childrenWrap.appendChild(renderLogicBlock(child, 0));
+                });
+            }
+
+            const addBtn = document.createElement('button');
+            addBtn.className = 'coll-btn';
+            addBtn.style.cssText = 'align-self:flex-start;margin-top:6px;';
+            addBtn.textContent = '+ Добавить дочерний блок';
+            addBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                selectElement(el.id);
+                pendingParentId = el.id;
+                if (isMobileLayout()) switchMobilePanel('palette');
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Выберите блок в палитре — он добавится внутрь', { type: 'info', duration: 2500 });
+                }
+            });
+            childrenWrap.appendChild(addBtn);
+
+            wrap.appendChild(childrenWrap);
+        }
+
         wrap.addEventListener('click', function(e) {
+            if (e.target.closest('button')) return;
             e.stopPropagation();
             selectElement(el.id);
         });
@@ -468,7 +566,11 @@
         if (el.type === 'ifb') return 'если ' + (f.varName || 'x') + ' ' + (f.op || '==') + ' ' + (f.value || '0');
         if (el.type === 'timerb') return 'каждые ' + (f.interval || '5') + ' сек';
         if (el.type === 'setvar') return (f.varName || 'x') + ' = ' + (f.value || '0');
-        if (el.type === 'notifyb') return 'Уведомление: ' + (f.title || '');
+        if (el.type === 'notifyb') {
+            const t = NOTIFICATION_TYPES.find(x => x.value === (f.type || 'info'));
+            const typeLabel = t ? t.label : 'Обычное';
+            return 'Уведомление [' + typeLabel + ']: ' + (f.title || '');
+        }
         if (el.type === 'varb') return 'var ' + (f.name || 'x') + ' = ' + (f.value || '0');
         return '';
     }
@@ -500,7 +602,26 @@
         if (!def) return;
         const page = getCurrentPage();
         if (!page) return;
+
         const el = { id: uid('el'), type: type, fields: JSON.parse(JSON.stringify(def.defaults)) };
+
+        if (pendingParentId) {
+            const parent = findElementById(pendingParentId);
+            if (parent && isContainerElement(parent) && def.group === 'logic') {
+                if (!Array.isArray(parent.fields.children)) parent.fields.children = [];
+                parent.fields.children.push(el);
+                pendingParentId = null;
+                selectedElementId = el.id;
+                saveProject();
+                renderPreview();
+                renderLogicPanel();
+                renderInspector();
+                if (isMobileLayout()) switchMobilePanel('logic');
+                return;
+            }
+            pendingParentId = null;
+        }
+
         page.elements.push(el);
         selectedElementId = el.id;
         saveProject();
@@ -514,31 +635,221 @@
     }
 
     function removeElement(id) {
-        const page = getCurrentPage();
-        if (!page) return;
-        page.elements = page.elements.filter(e => e.id !== id);
+        const extracted = extractElement(id);
+        if (!extracted) return;
         if (selectedElementId === id) selectedElementId = null;
+        if (pendingParentId === id) pendingParentId = null;
         saveProject();
         renderPreview();
         renderLogicPanel();
         renderInspector();
     }
 
-    function moveElement(id, direction) {
-        const page = getCurrentPage();
-        if (!page) return;
-        const idx = page.elements.findIndex(e => e.id === id);
-        if (idx === -1) return;
-        const newIdx = idx + direction;
-        if (newIdx < 0 || newIdx >= page.elements.length) return;
-        const tmp = page.elements[idx];
-        page.elements[idx] = page.elements[newIdx];
-        page.elements[newIdx] = tmp;
+    function getDragPoint(e) {
+        if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function startUiDrag(e, elementId) {
+        if (dragCtx) return;
+        const p = getDragPoint(e);
+        dragCtx = {
+            kind: 'ui',
+            elementId: elementId,
+            startX: p.x,
+            startY: p.y,
+            moved: false,
+            targetList: null,
+            targetIndex: -1,
+            targetParentId: null
+        };
+        attachDragListeners();
+    }
+
+    function startLogicDrag(e, elementId) {
+        if (dragCtx) return;
+        const p = getDragPoint(e);
+        dragCtx = {
+            kind: 'logic',
+            elementId: elementId,
+            startX: p.x,
+            startY: p.y,
+            moved: false,
+            targetList: null,
+            targetIndex: -1,
+            targetParentId: null
+        };
+        attachDragListeners();
+    }
+
+    function attachDragListeners() {
+        document.addEventListener('mousemove', onDragMove, { passive: false });
+        document.addEventListener('mouseup', onDragEnd);
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+        document.addEventListener('touchcancel', onDragEnd);
+    }
+
+    function detachDragListeners() {
+        document.removeEventListener('mousemove', onDragMove);
+        document.removeEventListener('mouseup', onDragEnd);
+        document.removeEventListener('touchmove', onDragMove);
+        document.removeEventListener('touchend', onDragEnd);
+        document.removeEventListener('touchcancel', onDragEnd);
+    }
+
+    function onDragMove(e) {
+        if (!dragCtx) return;
+        const p = getDragPoint(e);
+        const dx = p.x - dragCtx.startX;
+        const dy = p.y - dragCtx.startY;
+        if (!dragCtx.moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+            dragCtx.moved = true;
+            const src = findElementById(dragCtx.elementId);
+            if (src) {
+                const node = document.querySelector('[data-element-id="' + dragCtx.elementId + '"]');
+                if (node) node.classList.add('dragging');
+            }
+        }
+        if (!dragCtx.moved) return;
+        if (e.cancelable) e.preventDefault();
+
+        const target = findDropTarget(p.x, p.y, dragCtx.elementId, dragCtx.kind);
+        dragCtx.targetParentId = target ? target.parentId : null;
+        dragCtx.targetList = target ? target.list : null;
+        dragCtx.targetIndex = target ? target.index : -1;
+
+        document.querySelectorAll('.coll-logic-block.drop-target, .coll-element.drop-target').forEach(function(el) {
+            el.classList.remove('drop-target');
+        });
+        if (target && target.highlightEl) {
+            target.highlightEl.classList.add('drop-target');
+        }
+    }
+
+    function findDropTarget(x, y, sourceId, kind) {
+        if (kind === 'ui') {
+            const previewFrame = document.getElementById('collPreview');
+            if (!previewFrame) return null;
+            const rect = previewFrame.getBoundingClientRect();
+            if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+
+            const page = getCurrentPage();
+            if (!page) return null;
+
+            const candidates = [];
+            page.elements.forEach(function(el, idx) {
+                if (isLogicElement(el)) return;
+                const node = previewFrame.querySelector('[data-element-id="' + el.id + '"]');
+                if (!node) return;
+                const r = node.getBoundingClientRect();
+                candidates.push({ el: el, idx: idx, top: r.top, bottom: r.bottom, mid: r.top + r.height / 2 });
+            });
+
+            if (candidates.length === 0) {
+                return { list: page.elements, index: 0, parentId: null, highlightEl: null };
+            }
+
+            const filtered = candidates.filter(c => c.el.id !== sourceId);
+            if (filtered.length === 0) {
+                return { list: page.elements, index: page.elements.length, parentId: null, highlightEl: null };
+            }
+
+            let best = null;
+            let bestDist = Infinity;
+            filtered.forEach(function(c) {
+                const d = Math.abs(y - c.mid);
+                if (d < bestDist) { bestDist = d; best = c; }
+            });
+
+            if (!best) return { list: page.elements, index: page.elements.length, parentId: null, highlightEl: null };
+
+            const insertAfter = y > best.mid;
+            const realIdx = page.elements.indexOf(best.el);
+            const finalIdx = insertAfter ? realIdx + 1 : realIdx;
+
+            return {
+                list: page.elements,
+                index: finalIdx,
+                parentId: null,
+                highlightEl: previewFrame.querySelector('[data-element-id="' + best.el.id + '"]')
+            };
+        }
+
+        const blocks = Array.from(document.querySelectorAll('.coll-logic-block'));
+        let bestEl = null;
+        let bestDist = Infinity;
+        blocks.forEach(function(b) {
+            if (b.dataset.elementId === sourceId) return;
+            if (isDescendantOf(sourceId, b.dataset.elementId)) return;
+            const r = b.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const d = Math.abs(x - cx) + Math.abs(y - cy);
+            if (d < bestDist) { bestDist = d; bestEl = b; }
+        });
+
+        if (!bestEl) return null;
+        const targetId = bestEl.dataset.elementId;
+        const target = findElementById(targetId);
+        if (!target) return null;
+
+        const r = bestEl.getBoundingClientRect();
+        if (isContainerElement(target)) {
+            const childArea = bestEl.querySelector('.coll-logic-children');
+            const isInsideBody = y > r.top + 24;
+            if (isInsideBody) {
+                if (!Array.isArray(target.fields.children)) target.fields.children = [];
+                return {
+                    list: target.fields.children,
+                    index: target.fields.children.length,
+                    parentId: target.id,
+                    highlightEl: bestEl
+                };
+            }
+        }
+
+        const loc = findElementLocation(targetId);
+        if (!loc) return null;
+        const insertAfter = y > r.top + r.height / 2;
+        const finalIdx = insertAfter ? loc.index + 1 : loc.index;
+        return {
+            list: loc.list,
+            index: finalIdx,
+            parentId: loc.parent ? loc.parent.id : null,
+            highlightEl: bestEl
+        };
+    }
+
+    function onDragEnd(e) {
+        if (!dragCtx) return;
+        const ctx = dragCtx;
+        dragCtx = null;
+        detachDragListeners();
+
+        document.querySelectorAll('.dragging').forEach(function(el) { el.classList.remove('dragging'); });
+        document.querySelectorAll('.drop-target').forEach(function(el) { el.classList.remove('drop-target'); });
+
+        if (!ctx.moved) return;
+        if (!ctx.targetList) return;
+
+        if (ctx.targetParentId && (ctx.targetParentId === ctx.elementId || isDescendantOf(ctx.elementId, ctx.targetParentId))) {
+            return;
+        }
+
+        const el = extractElement(ctx.elementId);
+        if (!el) return;
+
+        let insertIdx = ctx.targetIndex;
+        if (insertIdx < 0) insertIdx = 0;
+        if (insertIdx > ctx.targetList.length) insertIdx = ctx.targetList.length;
+        ctx.targetList.splice(insertIdx, 0, el);
+
         saveProject();
         renderPreview();
         renderLogicPanel();
         renderInspector();
-        renderPagesList();
     }
 
     function renderInspector() {
@@ -664,7 +975,7 @@
                 fieldsContainer.appendChild(makeNumberInput('Шаг', 'step', el.fields.step || '1'));
                 break;
             case 'onstart':
-                fieldsContainer.appendChild(makeInfoText('Этот блок выполняется один раз при запуске приложения. Используйте дочерние блоки "Установить", "Уведомление" и "Если" для описания поведения.'));
+                fieldsContainer.appendChild(makeInfoText('Этот блок выполняется один раз при запуске приложения. Добавьте дочерние блоки кнопкой «+ Добавить дочерний блок» в панели логики.'));
                 break;
             case 'ifb':
                 fieldsContainer.appendChild(makeTextInput('Переменная', 'varName', el.fields.varName || 'x'));
@@ -688,6 +999,9 @@
             case 'notifyb':
                 fieldsContainer.appendChild(makeTextInput('Заголовок', 'title', el.fields.title || ''));
                 fieldsContainer.appendChild(makeTextarea('Текст', 'body', el.fields.body || ''));
+                fieldsContainer.appendChild(makeSelect('Тип уведомления', 'type', el.fields.type || 'info',
+                    NOTIFICATION_TYPES.map(function(t) { return { value: t.value, label: t.label }; })
+                ));
                 break;
             case 'varb':
                 fieldsContainer.appendChild(makeTextInput('Имя', 'name', el.fields.name || 'x'));
@@ -699,18 +1013,6 @@
 
         const actions = document.createElement('div');
         actions.className = 'coll-inspector-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.className = 'coll-btn';
-        upBtn.textContent = '▲ Вверх';
-        upBtn.addEventListener('click', function() { moveElement(el.id, -1); });
-        actions.appendChild(upBtn);
-
-        const dnBtn = document.createElement('button');
-        dnBtn.className = 'coll-btn';
-        dnBtn.textContent = '▼ Вниз';
-        dnBtn.addEventListener('click', function() { moveElement(el.id, +1); });
-        actions.appendChild(dnBtn);
 
         const rmBtn = document.createElement('button');
         rmBtn.className = 'coll-btn danger';
@@ -936,7 +1238,11 @@
         return new Promise(function(resolve) {
             if (typeof JSZip !== 'undefined') { resolve(true); return; }
             const s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+            s.src = JSZIP_LOCAL;
+            if (window.__SRI && window.__SRI[JSZIP_LOCAL]) {
+                s.integrity = window.__SRI[JSZIP_LOCAL];
+                s.crossOrigin = 'anonymous';
+            }
             s.onload = function() { resolve(true); };
             s.onerror = function() { resolve(false); };
             document.head.appendChild(s);
@@ -1016,7 +1322,7 @@
                 }
             }
             if (Array.isArray(fields.children)) {
-                fields.children.forEach(processFields);
+                fields.children.forEach(function(c) { processFields(c.fields); });
             }
         }
         const cloned = JSON.parse(JSON.stringify(appState.pages));
@@ -1058,6 +1364,18 @@
             'let __currentPage = __pages[0].id;',
             'const __vars = {};',
             'const __timers = [];',
+            'const __appToken = (typeof window.__collToken === "string") ? window.__collToken : "";',
+            '',
+            'function __postToParent(type, data) {',
+            '  try {',
+            '    window.parent.postMessage({',
+            '      __coll: true,',
+            '      type: type,',
+            '      token: __appToken,',
+            '      data: data || {}',
+            '    }, "*");',
+            '  } catch(e) {}',
+            '}',
             '',
             'function __evalCond(varName, op, value) {',
             '  const v = String(__vars[varName] !== undefined ? __vars[varName] : 0);',
@@ -1075,18 +1393,8 @@
             '  return false;',
             '}',
             '',
-            'function __sendNotification(title, body) {',
-            '  try {',
-            '    if (window.parent && window.parent !== window && window.parent.LiveBar && typeof window.parent.LiveBar.notify === "function") {',
-            '      window.parent.LiveBar.notify({ title: title || "Уведомление", body: body || "", appId: "coll", appName: document.title || "Collaris App" });',
-            '      return;',
-            '    }',
-            '    if (window.LiveBar && typeof window.LiveBar.notify === "function") {',
-            '      window.LiveBar.notify({ title: title || "Уведомление", body: body || "", appId: "coll", appName: document.title || "Collaris App" });',
-            '      return;',
-            '    }',
-            '    alert((title || "Уведомление") + "\\n\\n" + (body || ""));',
-            '  } catch(e) { alert((title || "Уведомление") + "\\n\\n" + (body || "")); }',
+            'function __sendNotification(title, body, type) {',
+            '  __postToParent("notify", { title: title || "Уведомление", body: body || "", type: type || "info" });',
             '}',
             '',
             'function __setVar(name, value) {',
@@ -1101,13 +1409,14 @@
             '}',
             '',
             'function __runLogic(el) {',
+            '  if (!el || !el.type) return;',
             '  const f = el.fields || {};',
             '  if (el.type === "setvar") {',
             '    __setVar(f.varName || "x", f.value || "0");',
             '  } else if (el.type === "varb") {',
             '    __setVar(f.name || "x", f.value || "0");',
             '  } else if (el.type === "notifyb") {',
-            '    __sendNotification(f.title || "Уведомление", f.body || "");',
+            '    __sendNotification(f.title || "Уведомление", f.body || "", f.type || "info");',
             '  } else if (el.type === "ifb") {',
             '    if (__evalCond(f.varName || "x", f.op || "==", f.value || "0")) {',
             '      const kids = Array.isArray(f.children) ? f.children : [];',
@@ -1115,11 +1424,14 @@
             '    }',
             '  } else if (el.type === "timerb") {',
             '    const sec = Math.max(0.5, parseFloat(f.interval || "5") || 5) * 1000;',
+            '    const kids = Array.isArray(f.children) ? f.children : [];',
             '    const id = setInterval(function() {',
-            '      const kids = Array.isArray(f.children) ? f.children : [];',
             '      kids.forEach(__runLogic);',
             '    }, sec);',
             '    __timers.push(id);',
+            '  } else if (el.type === "onstart") {',
+            '    const kids = Array.isArray(f.children) ? f.children : [];',
+            '    kids.forEach(__runLogic);',
             '  }',
             '}',
             '',
@@ -1234,10 +1546,11 @@
             '    const node = __renderElement(el);',
             '    if (node) root.appendChild(node);',
             '  });',
-            '  const logicEls = page.elements.filter(function(el) {',
-            '    return el.type === "onstart" || el.type === "ifb" || el.type === "timerb" || el.type === "setvar" || el.type === "notifyb" || el.type === "varb";',
+            '  page.elements.forEach(function(el) {',
+            '    if (el.type === "onstart" || el.type === "ifb" || el.type === "timerb" || el.type === "setvar" || el.type === "notifyb" || el.type === "varb") {',
+            '      __runLogic(el);',
+            '    }',
             '  });',
-            '  logicEls.forEach(__runLogic);',
             '}',
             '',
             'document.addEventListener("DOMContentLoaded", function() { __render(); });'
@@ -1378,11 +1691,70 @@
 '</html>';
     }
 
-    function installAsApp() {
+    function buildInstalledHtml(appId, appName) {
+        const cloned = JSON.parse(JSON.stringify(appState.pages));
+        const title = escapeHtml(appName || appState.title || 'Моё приложение');
+        const font = getFont();
+        const css = buildRuntimeCss(font);
+        const js = buildRuntimeJs(cloned);
+
+        const prelude =
+            '<script>\n' +
+            'window.__collAppId = ' + JSON.stringify(appId) + ';\n' +
+            'window.__collAppName = ' + JSON.stringify(appName || appState.title || 'Collaris App') + ';\n' +
+            'window.__collToken = "";\n' +
+            '</script>\n';
+
+        return '<!DOCTYPE html>\n' +
+'<html lang="ru">\n' +
+'<head>\n' +
+'<meta charset="UTF-8" />\n' +
+'<meta name="viewport" content="width=device-width, initial-scale=1.0" />\n' +
+'<title>' + title + '</title>\n' +
+'<style>\n' + css + '\n</style>\n' +
+prelude +
+'</head>\n' +
+'<body>\n' +
+'<div id="collHeader">' + title + '</div>\n' +
+'<div id="collRoot"></div>\n' +
+'<script>\n' + js + '\n</script>\n' +
+'</body>\n' +
+'</html>';
+    }
+
+    async function confirmCollarisInstall(appName) {
+        if (typeof window.confirmInstallWarning === 'function') {
+            try {
+                return await window.confirmInstallWarning({
+                    name: appName,
+                    source: 'Collaris'
+                });
+            } catch(e) {
+                return false;
+            }
+        }
+        if (window.Win && window.Win.confirm) {
+            try {
+                return await window.Win.confirm(
+                    'Файл может быть опасным. Устанавливайте приложения только из проверенных источников. Продолжить?',
+                    { title: 'Внимание', okText: 'Установить', cancelText: 'Отмена', danger: true }
+                );
+            } catch(e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    async function installAsApp() {
         try {
-            const html = buildStandaloneHtml();
             const title = (appState.title || 'Collaris App').trim() || 'Collaris App';
+
+            const proceed = await confirmCollarisInstall(title);
+            if (!proceed) return;
+
             const appId = 'collar_' + title.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
+            const html = buildInstalledHtml(appId, title);
 
             let installed = getInstalledApps();
             installed.push({
@@ -1443,13 +1815,14 @@
 
     function reinstallCollarisApp(appId) {
         try {
-            const html = buildStandaloneHtml();
             let installed = getInstalledApps();
             const idx = installed.findIndex(function(a) { return a.id === appId; });
             if (idx === -1) {
                 if (window.Win && window.Win.notify) window.Win.notify('Приложение не найдено', { type: 'error' });
                 return;
             }
+            const appName = installed[idx].name;
+            const html = buildInstalledHtml(appId, appName);
             installed[idx].html = html;
             installed[idx].version = '1.0.0';
             installed[idx].installedAt = new Date().toISOString();
@@ -1707,7 +2080,6 @@
                 width: 100%; max-width: 640px; background: var(--bg-primary);
                 border: 3px solid var(--border-color); padding: 20px;
                 min-height: 400px; box-sizing: border-box; position: relative;
-                /* Не обрезаем — дети могут иметь свои кнопки */
                 overflow: visible;
             }
             .coll-preview-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; text-align: center; max-width: 640px; width: 100%; }
@@ -1719,6 +2091,8 @@
                 min-height: 1px;
                 clear: both;
             }
+            .coll-element.dragging { opacity: 0.4; }
+            .coll-element.drop-target { box-shadow: inset 0 0 0 3px var(--accent); }
 
             .coll-right { background: var(--bg-secondary); border-left: 2px solid var(--border-color); overflow-y: auto; padding: 12px; min-height: 0; }
             .coll-inspector-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 40px 12px; line-height: 1.6; }
@@ -1782,6 +2156,8 @@
                 cursor: pointer;
                 transition: background 0.2s ease, border-color 0.2s ease;
             }
+            .coll-logic-block.dragging { opacity: 0.4; }
+            .coll-logic-block.drop-target { box-shadow: inset 0 0 0 3px var(--accent); }
             .coll-logic-head {
                 display: flex;
                 justify-content: space-between;
@@ -1838,7 +2214,6 @@
                 .coll-installed-card { flex-direction: column; align-items: stretch; }
                 .coll-installed-actions { width: 100%; }
                 .coll-installed-actions .coll-btn { flex: 1; }
-                /* На мобиле убираем кнопки ▲▼ слева/снизу, чтобы не мешали, оставляем только ✕ и перемещение в инспекторе */
             }
         `;
         document.head.appendChild(style);
@@ -2005,6 +2380,7 @@
         previewFrame.addEventListener('click', function(e) {
             if (e.target === previewFrame) {
                 selectedElementId = null;
+                pendingParentId = null;
                 renderPreview();
                 renderLogicPanel();
                 renderInspector();
@@ -2027,6 +2403,7 @@
                 document.activeElement.blur();
                 return;
             }
+            if (pendingParentId) { pendingParentId = null; return; }
             closeCollaris();
         }
     }
@@ -2041,6 +2418,7 @@
         idCounter = appState.counter || 0;
         currentPageId = appState.pages[0].id;
         selectedElementId = null;
+        pendingParentId = null;
         createUI();
     }
 

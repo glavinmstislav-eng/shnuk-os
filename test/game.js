@@ -50,19 +50,30 @@
 
     let threeLoading = false;
 
-    // DeltaTime
     let lastFrameTime = 0;
-    // Скорость "по умолчанию" — насколько должна двигаться сцена за секунду при 60 fps
     const SPEED_PER_SECOND = 20;
 
-    function getBest() {
+    async function getBest() {
+        try {
+            if (window.svaer && typeof window.svaer.get === 'function') {
+                const v = await window.svaer.get(BEST_KEY, 0);
+                const n = parseInt(v, 10);
+                return isNaN(n) ? 0 : n;
+            }
+        } catch(e) {}
         try {
             const v = localStorage.getItem(BEST_KEY);
             return v ? parseInt(v, 10) : 0;
         } catch(e) { return 0; }
     }
 
-    function setBest(v) {
+    async function setBest(v) {
+        try {
+            if (window.svaer && typeof window.svaer.set === 'function') {
+                await window.svaer.set(BEST_KEY, v);
+                return;
+            }
+        } catch(e) {}
         try { localStorage.setItem(BEST_KEY, String(v)); } catch(e) {}
     }
 
@@ -181,7 +192,7 @@
             }
             threeLoading = true;
             const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+            script.src = 'three.min.js';
             script.onload = function() {
                 threeLoading = false;
                 resolve(true);
@@ -610,10 +621,6 @@
         }
     }
 
-    // ============================================
-    // GAME LOOP
-    // ============================================
-
     function gameLoop(now) {
         if (!gameRunning || isPaused) return;
 
@@ -621,10 +628,8 @@
         let dt = (now - lastFrameTime) / 1000;
         lastFrameTime = now;
 
-        // Ограничиваем dt, чтобы при возврате из фона не было скачка
         if (dt > 0.1) dt = 0.1;
 
-        // Скорость движения относительно 60 fps
         const frameFactor = dt * 60;
 
         const currentSpeed = speed + score * 0.001;
@@ -787,17 +792,20 @@
         animationId = requestAnimationFrame(gameLoop);
     }
 
-    function gameOver() {
+    async function gameOver() {
         gameRunning = false;
         gameOverShown = true;
         const finalScoreEl = document.getElementById('finalScore');
         if (finalScoreEl) finalScoreEl.textContent = score;
-        const best = getBest();
+
+        const best = await getBest();
         const finalBestEl = document.getElementById('finalBest');
         if (finalBestEl) finalBestEl.textContent = Math.max(best, score);
+
         if (score > best) {
-            setBest(score);
+            setBest(score).catch(function() {});
         }
+
         const el = document.getElementById('gameOverScreen');
         if (el) el.style.display = 'flex';
         if (animationId) {

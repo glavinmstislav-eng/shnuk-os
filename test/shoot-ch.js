@@ -10,7 +10,7 @@
     let initialized = false;
 
     const GRID = 8;
-    let CELL = 56; // пересчитывается при resize
+    let CELL = 56;
 
     let king = { r: 7, c: 4 };
     let enemies = [];
@@ -27,7 +27,6 @@
     let playerTurnLocked = false;
     let enemyMoveTimer = 0;
 
-    // Управление жестами
     let touchStartX = 0;
     let touchStartY = 0;
     let touchStartTime = 0;
@@ -38,14 +37,28 @@
 
     const BEST_KEY = 'shnuk_shoot_ch_best';
 
-    function getBest() {
+    async function getBest() {
+        try {
+            if (window.svaer && typeof window.svaer.get === 'function') {
+                const v = await window.svaer.get(BEST_KEY, null);
+                if (v === null || v === undefined || v === '') return null;
+                const n = parseFloat(v);
+                return isNaN(n) ? null : n;
+            }
+        } catch(e) {}
         try {
             const v = localStorage.getItem(BEST_KEY);
             return v ? parseFloat(v) : null;
         } catch(e) { return null; }
     }
 
-    function setBest(t) {
+    async function setBest(t) {
+        try {
+            if (window.svaer && typeof window.svaer.set === 'function') {
+                await window.svaer.set(BEST_KEY, t);
+                return;
+            }
+        } catch(e) {}
         try { localStorage.setItem(BEST_KEY, String(t)); } catch(e) {}
     }
 
@@ -278,8 +291,11 @@
         sctx = canvas.getContext('2d');
         if (!sctx) return false;
 
-        bestTime = getBest();
-        updateBestHud();
+        // Читаем рекорд асинхронно после построения UI.
+        getBest().then(function(v) {
+            bestTime = v;
+            updateBestHud();
+        }).catch(function() {});
 
         resizeCanvas();
         return true;
@@ -294,11 +310,9 @@
         const hudH = wrap.querySelector('div').offsetHeight || 30;
         const controlsH = wrap.querySelector('div:last-child').offsetHeight || 50;
 
-        // Доступная высота/ширина с учётом HUD, controls и отступов
         const availW = wrapRect.width - 16;
         const availH = wrapRect.height - hudH - controlsH - 30;
 
-        // Квадратный canvas: минимум из доступной ширины и высоты
         const side = Math.max(200, Math.min(availW, availH));
 
         canvas.style.width = side + 'px';
@@ -309,9 +323,6 @@
         canvas.height = Math.round(side * dpr);
 
         CELL = canvas.width / GRID;
-
-        // Масштабируем контекст, чтобы рисование было в "логических" пикселях canvas.width
-        // (не нужно, если рисуем в canvas.width-координатах)
     }
 
     function updateBestHud() {
@@ -556,11 +567,13 @@
         if (!won && enemies.every(e => !e.alive)) {
             won = true;
             gameOver = true;
-            if (bestTime === null || elapsed < bestTime) {
-                bestTime = elapsed;
-                setBest(bestTime);
-                updateBestHud();
-            }
+            (async function() {
+                if (bestTime === null || elapsed < bestTime) {
+                    bestTime = elapsed;
+                    updateBestHud();
+                    await setBest(bestTime);
+                }
+            })();
         }
 
         for (let i = particles.length - 1; i >= 0; i--) {
@@ -727,7 +740,6 @@
         const adx = Math.abs(dx);
         const ady = Math.abs(dy);
 
-        // Свайп → шаг
         if (adx > SWIPE_THRESHOLD || ady > SWIPE_THRESHOLD) {
             if (adx > ady) {
                 if (dx > 0) tryMove(0, 1);
@@ -739,7 +751,6 @@
             return;
         }
 
-        // Тап → выстрел в точку
         if (dt < TAP_TIME && !touchMoved) {
             const pos = getCanvasCoords(e);
             shoot(pos.x, pos.y);

@@ -66,14 +66,27 @@
     const BEST_KEY = 'shnuk_missplane_best';
     const FONT_MAIN = "'TTPaplane', monospace";
 
-    function getBest() {
+    async function getBest() {
+        try {
+            if (window.svaer && typeof window.svaer.get === 'function') {
+                const v = await window.svaer.get(BEST_KEY, 0);
+                const n = parseFloat(v);
+                return isNaN(n) ? 0 : n;
+            }
+        } catch(e) {}
         try {
             const v = localStorage.getItem(BEST_KEY);
             return v ? parseFloat(v) : 0;
         } catch(e) { return 0; }
     }
 
-    function setBest(v) {
+    async function setBest(v) {
+        try {
+            if (window.svaer && typeof window.svaer.set === 'function') {
+                await window.svaer.set(BEST_KEY, v);
+                return;
+            }
+        } catch(e) {}
         try { localStorage.setItem(BEST_KEY, String(v)); } catch(e) {}
     }
 
@@ -218,7 +231,10 @@
         ctx = canvas.getContext('2d');
         if (!ctx) return false;
 
-        best = getBest();
+        // Читаем рекорд асинхронно.
+        getBest().then(function(v) {
+            best = v;
+        }).catch(function() {});
 
         document.getElementById('mpStartBtn').addEventListener('click', startGame);
         document.getElementById('mpRestart').addEventListener('click', restartGame);
@@ -910,14 +926,15 @@
         if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = false;
     }
 
-    function endGame() {
+    async function endGame() {
         gameOver = true;
         gameStarted = false;
 
         const finalScore = score;
         if (finalScore > best) {
             best = finalScore;
-            setBest(best);
+            // Сохраняем в фоне, не блокируя показ экрана.
+            setBest(best).catch(function() {});
         }
 
         const fs = document.getElementById('mpFinalScore');

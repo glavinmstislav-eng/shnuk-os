@@ -26,13 +26,34 @@
 
     const EDITABLE = ['txt', 'json', 'xml', 'html', 'css', 'js', 'md', 'log', 'csv', 'yml', 'yaml', 'ini', 'conf', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'java', 'c', 'cpp', 'h', 'hpp', 'sh', 'bat', 'svg'];
 
-    // Архивы, которые можно распаковать и просмотреть
     const SUPPORTED_ARCHIVES = ['zip'];
-    // Все форматы архивов (включая неподдерживаемые для просмотра)
     const ARCHIVE_EXTENSIONS = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz', 'tbz', 'tbz2', 'txz', 'cab', 'iso', 'lz', 'lzma', 'z', 'zipx', 'jar', 'war', 'apk', 'ipa', 'deb', 'rpm'];
 
-    const JSZIP_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    const INSTALLED_KEY = 'shnuk_installed_apps';
+
+    const JSZIP_LOCAL = 'jszip.min.js';
     let jszipPromise = null;
+
+    // Системные приложения — их нельзя удалять и переименовывать.
+    const SYSTEM_APP_IDS = [
+        'settings',
+        'time',
+        'file',
+        'file2',
+        'camera',
+        'recorder',
+        'cooop',
+        'gamecenter',
+        'coll',
+        'my-shnuk',
+        'store',
+        'browser'
+    ];
+
+    function isSystemApp(appId) {
+        if (!appId) return false;
+        return SYSTEM_APP_IDS.indexOf(appId) !== -1;
+    }
 
     function escapeHtml(str) {
         if (!str) return '';
@@ -270,7 +291,11 @@
         if (jszipPromise) return jszipPromise;
         jszipPromise = new Promise(function(resolve) {
             const s = document.createElement('script');
-            s.src = JSZIP_CDN;
+            s.src = JSZIP_LOCAL;
+            if (window.__SRI && window.__SRI[JSZIP_LOCAL]) {
+                s.integrity = window.__SRI[JSZIP_LOCAL];
+                s.crossOrigin = 'anonymous';
+            }
             s.onload = function() { resolve(true); };
             s.onerror = function() { resolve(false); };
             document.head.appendChild(s);
@@ -300,6 +325,12 @@
         if (!file || file.isFolder) return false;
         const ext = getExt(file);
         return SUPPORTED_ARCHIVES.indexOf(ext) !== -1;
+    }
+
+    function isHtmlFile(file) {
+        if (!file || file.isFolder) return false;
+        const ext = getExt(file);
+        return ext === 'html' || ext === 'htm';
     }
 
     function formatDate(iso) {
@@ -816,6 +847,626 @@
         return false;
     }
 
+    // ============================================
+    // УСТАНОВКА HTML-ФАЙЛА КАК ПРИЛОЖЕНИЯ
+    // ============================================
+
+    function readInstalledApps() {
+        try {
+            const raw = localStorage.getItem(INSTALLED_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch(e) { return []; }
+    }
+
+    function writeInstalledApps(apps) {
+        try {
+            localStorage.setItem(INSTALLED_KEY, JSON.stringify(apps));
+            return true;
+        } catch(e) { return false; }
+    }
+
+    async function installHtmlAsApp(fileId) {
+        const file = allItems.find(f => f.id === fileId);
+        if (!file) {
+            if (window.Win && window.Win.notify) window.Win.notify('Файл не найден', { type: 'error' });
+            return;
+        }
+        if (!isHtmlFile(file)) {
+            if (window.Win && window.Win.notify) window.Win.notify('Это не HTML-файл', { type: 'error' });
+            return;
+        }
+
+        const html = decodeTextFromData(file.data);
+        if (!html || !html.trim()) {
+            if (window.Win && window.Win.notify) window.Win.notify('Файл пуст или повреждён', { type: 'error' });
+            return;
+        }
+
+        const defaultName = (file.name || 'app').replace(/\.(html?|htm)$/i, '') || 'app';
+
+        let proceed = true;
+        if (typeof window.confirmInstallWarning === 'function') {
+            try {
+                proceed = await window.confirmInstallWarning({
+                    name: defaultName,
+                    source: 'файловый менеджер'
+                });
+            } catch(e) { proceed = false; }
+        } else if (window.Win && window.Win.confirm) {
+            try {
+                proceed = await window.Win.confirm(
+                    'Файл может быть опасным. Устанавливайте приложения только из проверенных источников. Продолжить?',
+                    { title: 'Внимание', okText: 'Установить', cancelText: 'Отмена', danger: true }
+                );
+            } catch(e) { proceed = false; }
+        }
+
+        if (!proceed) return;
+
+        const appId = 'html_' + defaultName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
+
+        const appRecord = {
+            id: appId,
+            name: defaultName,
+            description: 'Установлено из файлового менеджера',
+            author: 'Пользователь',
+            version: '1.0.0',
+            icon: null,
+            html: html,
+            installedAt: new Date().toISOString()
+        };
+
+        const installed = readInstalledApps();
+        installed.push(appRecord);
+        writeInstalledApps(installed);
+
+        if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
+            AppScanner.rescan().then(function() {
+                if (typeof window.refreshApps === 'function') window.refreshApps();
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Приложение установлено: ' + defaultName, { type: 'success', duration: 4000 });
+                }
+            }).catch(function() {
+                if (typeof window.refreshApps === 'function') window.refreshApps();
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Приложение установлено: ' + defaultName, { type: 'success', duration: 4000 });
+                }
+            });
+        } else {
+            if (typeof window.refreshApps === 'function') window.refreshApps();
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Приложение установлено: ' + defaultName, { type: 'success', duration: 4000 });
+            }
+        }
+    }
+
+    // ============================================
+    // УПРАВЛЕНИЕ И УДАЛЕНИЕ ПРОГРАММ
+    // ============================================
+
+    function getManageableApps() {
+        const installed = readInstalledApps();
+        return installed.filter(app => app && app.id && !isSystemApp(app.id));
+    }
+
+    function openAppManager() {
+        // Закрываем меню и открываем оверлей управления.
+        closeMenu();
+
+        const existing = document.getElementById('appManagerOverlay');
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+        const overlay = document.createElement('div');
+        overlay.id = 'appManagerOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: var(--livebar-h, 44px); left: 0;
+            width: 100%; height: calc(100% - var(--livebar-h, 44px));
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            z-index: 100002;
+            display: flex;
+            flex-direction: column;
+            font-family: ${FONT_MAIN};
+            opacity: 0;
+            animation: appManagerFadeIn 0.25s ease forwards;
+            box-sizing: border-box;
+        `;
+
+        if (!document.getElementById('appManagerStyles')) {
+            const st = document.createElement('style');
+            st.id = 'appManagerStyles';
+            st.textContent = `
+                @keyframes appManagerFadeIn { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes appManagerFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+                #appManagerOverlay, #appManagerOverlay * {
+                    font-family: ${FONT_MAIN} !important;
+                }
+
+                .app-mgr-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px 20px;
+                    background: var(--header-bg);
+                    border-bottom: 2px solid var(--border-color);
+                    flex-shrink: 0;
+                    gap: 10px;
+                }
+                .app-mgr-header h2 {
+                    font-size: 18px;
+                    font-weight: 700;
+                    margin: 0;
+                    letter-spacing: 0.4px;
+                }
+                .app-mgr-close {
+                    width: 40px;
+                    height: 40px;
+                    background: none;
+                    border: 2px solid var(--accent);
+                    color: var(--accent);
+                    cursor: pointer;
+                    font-family: ${FONT_MAIN};
+                    font-size: 18px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0;
+                    transition: all 0.2s ease;
+                    flex-shrink: 0;
+                }
+                .app-mgr-close:hover {
+                    background: var(--accent);
+                    color: var(--text-on-accent);
+                }
+
+                .app-mgr-body {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    -webkit-overflow-scrolling: touch;
+                }
+
+                .app-mgr-empty {
+                    text-align: center;
+                    color: var(--text-muted);
+                    font-size: 14px;
+                    line-height: 1.6;
+                    padding: 60px 20px;
+                }
+
+                .app-mgr-card {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 14px;
+                    padding: 16px 18px;
+                    background: var(--bg-secondary);
+                    border: 2px solid var(--border-color);
+                    transition: border-color 0.2s ease;
+                    flex-wrap: wrap;
+                }
+                .app-mgr-card:hover {
+                    border-color: var(--accent);
+                }
+
+                .app-mgr-icon {
+                    width: 52px;
+                    height: 52px;
+                    flex-shrink: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--bg-primary);
+                    border: 2px solid var(--border-color);
+                    overflow: hidden;
+                    font-size: 22px;
+                    font-weight: 700;
+                    color: var(--accent);
+                }
+                .app-mgr-icon img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                }
+
+                .app-mgr-info {
+                    flex: 1;
+                    min-width: 0;
+                }
+                .app-mgr-name {
+                    font-size: 16px;
+                    font-weight: 700;
+                    margin-bottom: 4px;
+                    word-break: break-word;
+                }
+                .app-mgr-meta {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    line-height: 1.5;
+                    word-break: break-word;
+                }
+                .app-mgr-meta b {
+                    color: var(--text-primary);
+                    font-weight: 600;
+                }
+
+                .app-mgr-actions {
+                    display: flex;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                    flex-shrink: 0;
+                    align-self: center;
+                }
+
+                .app-mgr-btn {
+                    padding: 8px 16px;
+                    border: 2px solid var(--border-color);
+                    background: var(--bg-primary);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    font-family: ${FONT_MAIN};
+                    font-size: 12px;
+                    font-weight: 600;
+                    letter-spacing: 0.4px;
+                    transition: all 0.15s ease;
+                    white-space: nowrap;
+                    -webkit-tap-highlight-color: transparent;
+                }
+                .app-mgr-btn:hover {
+                    border-color: var(--accent);
+                    color: var(--accent);
+                }
+                .app-mgr-btn.danger {
+                    border-color: var(--accent);
+                    color: var(--accent);
+                }
+                .app-mgr-btn.danger:hover {
+                    background: var(--accent);
+                    color: var(--text-on-accent);
+                }
+                .app-mgr-btn.update {
+                    border-color: #4CAF50;
+                    color: #4CAF50;
+                }
+                .app-mgr-btn.update:hover {
+                    background: #4CAF50;
+                    color: #ffffff;
+                }
+
+                @media (max-width: 600px) {
+                    .app-mgr-card {
+                        flex-direction: column;
+                    }
+                    .app-mgr-actions {
+                        width: 100%;
+                        align-self: stretch;
+                    }
+                    .app-mgr-btn {
+                        flex: 1;
+                        text-align: center;
+                    }
+                }
+            `;
+            document.head.appendChild(st);
+        }
+
+        const header = document.createElement('div');
+        header.className = 'app-mgr-header';
+
+        const title = document.createElement('h2');
+        title.textContent = 'Управление и удаление программ';
+        header.appendChild(title);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'app-mgr-close';
+        closeBtn.textContent = '✕';
+        closeBtn.addEventListener('click', closeAppManager);
+        header.appendChild(closeBtn);
+
+        const body = document.createElement('div');
+        body.className = 'app-mgr-body';
+        body.id = 'appManagerBody';
+
+        overlay.appendChild(header);
+        overlay.appendChild(body);
+        document.body.appendChild(overlay);
+
+        renderAppManagerList();
+    }
+
+    function closeAppManager() {
+        const overlay = document.getElementById('appManagerOverlay');
+        if (!overlay) return;
+        overlay.style.animation = 'appManagerFadeOut 0.2s ease forwards';
+        setTimeout(function() {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        }, 220);
+    }
+
+    function renderAppManagerList() {
+        const body = document.getElementById('appManagerBody');
+        if (!body) return;
+
+        const apps = getManageableApps();
+        body.innerHTML = '';
+
+        if (apps.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'app-mgr-empty';
+            empty.textContent = 'Нет установленных пользовательских программ. Системные приложения защищены и здесь не отображаются.';
+            body.appendChild(empty);
+            return;
+        }
+
+        apps.forEach(function(app) {
+            body.appendChild(buildAppManagerCard(app));
+        });
+    }
+
+    function buildAppManagerCard(app) {
+        const card = document.createElement('div');
+        card.className = 'app-mgr-card';
+        card.dataset.appId = app.id;
+
+        const icon = document.createElement('div');
+        icon.className = 'app-mgr-icon';
+        if (app.icon) {
+            const img = document.createElement('img');
+            img.src = app.icon;
+            img.alt = app.name || '';
+            img.onerror = function() {
+                icon.innerHTML = '';
+                icon.textContent = (app.name || '?').charAt(0);
+            };
+            icon.appendChild(img);
+        } else {
+            icon.textContent = (app.name || '?').charAt(0);
+        }
+        card.appendChild(icon);
+
+        const info = document.createElement('div');
+        info.className = 'app-mgr-info';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'app-mgr-name';
+        nameEl.textContent = app.name || 'Без названия';
+        info.appendChild(nameEl);
+
+        const metaEl = document.createElement('div');
+        metaEl.className = 'app-mgr-meta';
+        const parts = [];
+        parts.push('ID: <b>' + escapeHtml(app.id) + '</b>');
+        if (app.version) parts.push('Версия: <b>' + escapeHtml(app.version) + '</b>');
+        if (app.author) parts.push('Автор: <b>' + escapeHtml(app.author) + '</b>');
+        if (app.installedAt) {
+            try {
+                parts.push('Установлено: <b>' + new Date(app.installedAt).toLocaleString('ru-RU') + '</b>');
+            } catch(e) {}
+        }
+        metaEl.innerHTML = parts.join(' • ');
+        info.appendChild(metaEl);
+
+        card.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'app-mgr-actions';
+
+        const updateBtn = document.createElement('button');
+        updateBtn.className = 'app-mgr-btn update';
+        updateBtn.textContent = 'ОБНОВИТЬ';
+        updateBtn.addEventListener('click', function() {
+            updateAppFromFile(app.id);
+        });
+        actions.appendChild(updateBtn);
+
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'app-mgr-btn';
+        renameBtn.textContent = 'ПЕРЕИМЕНОВАТЬ';
+        renameBtn.addEventListener('click', function() {
+            renameApp(app.id);
+        });
+        actions.appendChild(renameBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'app-mgr-btn danger';
+        deleteBtn.textContent = 'УДАЛИТЬ';
+        deleteBtn.addEventListener('click', function() {
+            confirmDeleteApp(app.id, app.name);
+        });
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(actions);
+
+        return card;
+    }
+
+    // Обновление приложения: выбор HTML-файла → замена html и version.
+    function updateAppFromFile(appId) {
+        const apps = readInstalledApps();
+        const idx = apps.findIndex(a => a.id === appId);
+        if (idx === -1) {
+            if (window.Win && window.Win.notify) window.Win.notify('Приложение не найдено', { type: 'error' });
+            return;
+        }
+
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.html,.htm,text/html';
+        input.style.display = 'none';
+        input.addEventListener('change', function() {
+            const file = this.files && this.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const html = e.target.result;
+                if (!html || !String(html).trim()) {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Файл пуст', { type: 'error' });
+                    }
+                    return;
+                }
+
+                (async function() {
+                    let proceed = true;
+                    if (typeof window.confirmInstallWarning === 'function') {
+                        try {
+                            proceed = await window.confirmInstallWarning({
+                                name: apps[idx].name || 'приложение',
+                                source: 'обновление из файла'
+                            });
+                        } catch(e) { proceed = false; }
+                    } else if (window.Win && window.Win.confirm) {
+                        try {
+                            proceed = await window.Win.confirm(
+                                'Файл может быть опасным. Обновлять приложение только из проверенных источников. Продолжить?',
+                                { title: 'Внимание', okText: 'Обновить', cancelText: 'Отмена', danger: true }
+                            );
+                        } catch(e) { proceed = false; }
+                    }
+                    if (!proceed) return;
+
+                    // Парсим версию: если в HTML есть <meta name="version" content="...">, берём её.
+                    let newVersion = '1.0.0';
+                    try {
+                        const m = String(html).match(/<meta[^>]+name=["']version["'][^>]+content=["']([^"']+)["']/i);
+                        if (m && m[1]) newVersion = m[1];
+                    } catch(e) {}
+
+                    apps[idx].html = html;
+                    apps[idx].version = newVersion;
+                    apps[idx].updatedAt = new Date().toISOString();
+
+                    writeInstalledApps(apps);
+
+                    if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
+                        AppScanner.rescan().then(function() {
+                            if (typeof window.refreshApps === 'function') window.refreshApps();
+                            renderAppManagerList();
+                            if (window.Win && window.Win.notify) {
+                                window.Win.notify('Обновлено: ' + apps[idx].name, { type: 'success' });
+                            }
+                        }).catch(function() {
+                            renderAppManagerList();
+                        });
+                    } else {
+                        if (typeof window.refreshApps === 'function') window.refreshApps();
+                        renderAppManagerList();
+                        if (window.Win && window.Win.notify) {
+                            window.Win.notify('Обновлено: ' + apps[idx].name, { type: 'success' });
+                        }
+                    }
+                })();
+            };
+            reader.onerror = function() {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Ошибка чтения файла', { type: 'error' });
+                }
+            };
+            reader.readAsText(file);
+        });
+        document.body.appendChild(input);
+        input.click();
+        setTimeout(function() { if (input.parentNode) input.parentNode.removeChild(input); }, 1000);
+    }
+
+    async function renameApp(appId) {
+        const apps = readInstalledApps();
+        const idx = apps.findIndex(a => a.id === appId);
+        if (idx === -1) {
+            if (window.Win && window.Win.notify) window.Win.notify('Приложение не найдено', { type: 'error' });
+            return;
+        }
+
+        let newName = apps[idx].name || 'Приложение';
+
+        if (window.Win && window.Win.prompt) {
+            const res = await window.Win.prompt('Новое название', newName, { title: 'Переименовать', okText: 'Сохранить' });
+            if (res === null || res === undefined) return;
+            newName = (res || '').trim();
+        } else {
+            const res = window.prompt('Новое название', newName);
+            if (res === null) return;
+            newName = (res || '').trim();
+        }
+
+        if (!newName) return;
+
+        apps[idx].name = newName;
+        apps[idx].updatedAt = new Date().toISOString();
+        writeInstalledApps(apps);
+
+        if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
+            AppScanner.rescan().then(function() {
+                if (typeof window.refreshApps === 'function') window.refreshApps();
+                renderAppManagerList();
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Переименовано в ' + newName, { type: 'success' });
+                }
+            }).catch(function() {
+                renderAppManagerList();
+            });
+        } else {
+            if (typeof window.refreshApps === 'function') window.refreshApps();
+            renderAppManagerList();
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Переименовано в ' + newName, { type: 'success' });
+            }
+        }
+    }
+
+    async function confirmDeleteApp(appId, appName) {
+        const title = appName || 'приложение';
+
+        let ok = false;
+        if (window.Win && window.Win.confirm) {
+            try {
+                ok = await window.Win.confirm('Удалить программу "' + title + '"?', {
+                    title: 'Удаление',
+                    okText: 'Удалить',
+                    cancelText: 'Отмена',
+                    danger: true
+                });
+            } catch(e) { ok = false; }
+        } else {
+            ok = window.confirm('Удалить программу "' + title + '"?');
+        }
+
+        if (!ok) return;
+
+        let apps = readInstalledApps();
+        apps = apps.filter(a => a.id !== appId);
+        writeInstalledApps(apps);
+
+        if (typeof AppScanner !== 'undefined' && AppScanner.rescan) {
+            AppScanner.rescan().then(function() {
+                if (typeof window.refreshApps === 'function') window.refreshApps();
+                renderAppManagerList();
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Программа удалена', { type: 'success' });
+                }
+            }).catch(function() {
+                renderAppManagerList();
+            });
+        } else {
+            if (typeof window.refreshApps === 'function') window.refreshApps();
+            renderAppManagerList();
+            if (window.Win && window.Win.notify) {
+                window.Win.notify('Программа удалена', { type: 'success' });
+            }
+        }
+    }
+
+    // ============================================
+    // UI ОСНОВНОГО ОКНА
+    // ============================================
+
     function openFiles() {
         syncItemsFromStorage();
 
@@ -857,6 +1508,7 @@
         isOpen = false;
         closePreview();
         closeEditor();
+        closeAppManager();
         document.removeEventListener('keydown', onKeyDown);
         const el = document.getElementById('fileApp');
         if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -994,10 +1646,6 @@
         }
     }
 
-    // ============================================
-    // СОЗДАНИЕ ПАПОК (публичное — для распаковки)
-    // ============================================
-
     async function createFolder(name, parentId) {
         if (!name) return null;
         const item = {
@@ -1025,11 +1673,7 @@
         return name;
     }
 
-    // ============================================
-    // ZIP — список и извлечение
-    // ============================================
-
-    let archivePreview = null; // { file, zip, entries: [{name, dir, size, date, entry}] }
+    let archivePreview = null;
 
     async function loadZipFromFile(file) {
         const ok = await loadJSZip();
@@ -1194,7 +1838,6 @@
     }
 
     async function pickFolderForExtraction() {
-        // Возвращает: { id } — папка, { newName } — создать новую, null — отмена
         return new Promise(function(resolve) {
             const overlay = document.createElement('div');
             overlay.style.cssText = `
@@ -1350,7 +1993,6 @@
     }
 
     async function saveExtractedFile(targetFolderId, pathName, bytes) {
-        // pathName может содержать подпапки: dir1/dir2/file.txt — создаём цепочку папок
         const parts = pathName.split('/').filter(p => p.length > 0);
         if (parts.length === 0) return false;
 
@@ -1367,7 +2009,6 @@
             parentId = existing.id;
         }
 
-        // Уникальное имя файла в целевой папке
         let finalName = fileName;
         let i = 1;
         while (allItems.some(f => f.parentId === parentId && !f.isFolder && f.name === finalName)) {
@@ -1466,9 +2107,6 @@
         }
     }
 
-    // ============================================
-    // UI
-    // ============================================
     function createUI() {
         if (document.getElementById('fileApp')) {
             document.getElementById('fileApp').style.display = 'flex';
@@ -1937,6 +2575,12 @@
                 .preview-actions-row button.extract-all-btn:hover {
                     background: #8844cc; color: #ffffff;
                 }
+                .preview-actions-row button.install-app-btn {
+                    border-color: #ff6600; color: #ff6600;
+                }
+                .preview-actions-row button.install-app-btn:hover {
+                    background: #ff6600; color: #ffffff;
+                }
 
                 .preview-close-bottom {
                     width: 56px; height: 56px;
@@ -2269,6 +2913,12 @@
             },
             { sep: true },
             {
+                id: 'manage-apps',
+                label: 'Управление и удаление программ',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>'
+            },
+            { sep: true },
+            {
                 id: 'new-folder',
                 label: 'Создать папку',
                 icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
@@ -2326,6 +2976,7 @@
         else if (id === 'upload-multiple') uploadFiles(true);
         else if (id === 'new-text') createTextFile();
         else if (id === 'new-folder') createFolderPrompt();
+        else if (id === 'manage-apps') openAppManager();
         else if (id === 'share') {
             const sel = getSelectedItem();
             if (sel && !sel.isFolder) shareFileWithCooop(sel.id);
@@ -2859,7 +3510,7 @@
 
         const isImage = SUPPORTED.images.indexOf(getExt(file)) !== -1;
         const canEdit = isEditable(file);
-        const isArch = ARCHIVE_EXTENSIONS.indexOf(getExt(file)) !== -1;
+        const isHtml = isHtmlFile(file);
 
         let actionsHtml = '';
         if (type === 'unsupported-archive') {
@@ -2870,6 +3521,7 @@
             `;
         } else {
             actionsHtml = `
+                ${isHtml ? `<button class="install-app-btn" data-file-id="${file.id}">Установить как приложение</button>` : ''}
                 ${isImage ? `<button class="set-wallpaper" data-file-id="${file.id}">Установить как обои</button>` : ''}
                 ${canEdit ? `<button class="edit-text" data-file-id="${file.id}">Редактировать</button>` : ''}
                 <button class="share-btn" data-file-id="${file.id}">Поделиться</button>
@@ -2888,6 +3540,7 @@
                 else if (this.classList.contains('delete-btn')) deleteFileFromPreview(fileId);
                 else if (this.classList.contains('edit-text')) openEditor(fileId);
                 else if (this.classList.contains('share-btn')) shareFileWithCooop(fileId);
+                else if (this.classList.contains('install-app-btn')) installHtmlAsApp(fileId);
             });
         });
 
@@ -3158,6 +3811,8 @@
     function onKeyDown(e) {
         if (!isOpen) return;
         if (e.key === 'Escape') {
+            const mgr = document.getElementById('appManagerOverlay');
+            if (mgr) { closeAppManager(); return; }
             const editor = document.getElementById('fileEditor');
             if (editor && editor.classList.contains('active')) { closeEditor(); return; }
             const prev = document.getElementById('filePreview');
@@ -3176,7 +3831,9 @@
             if (f) openFile(f);
         },
         saveToCooopDownloads: saveToCooopDownloads,
-        getOrCreateCooopFolder: getOrCreateCooopFolder
+        getOrCreateCooopFolder: getOrCreateCooopFolder,
+        installHtmlAsApp: installHtmlAsApp,
+        openAppManager: openAppManager
     };
     window.fileInit = function() { openFiles(); };
 

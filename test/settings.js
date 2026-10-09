@@ -14,13 +14,13 @@
     const FULLSCREEN_KEY = 'shnuk_fullscreen';
     const APP_WALLPAPER_KEY = 'app_wallpaper';
     const SCREEN_SETTINGS_KEY = 'shnuk_screen_settings';
+    const SEARCH_INTELLIGENCE_KEY = 'shnuk_search_intelligence';
 
     const FONT_MAIN = "'TTPaplane', monospace";
 
     const themes = [
-        { id: 'day', name: 'Яркий день', file: 'wall1.png', desc: 'Светлая палитра' },
-        { id: 'evening', name: 'Вечер', file: 'wall2.png', desc: 'Тёмно-серая палитра' },
-        { id: 'warm-night', name: 'Тёплая ночь', file: 'wall3.png', desc: 'Чёрная палитра' }
+        { id: 'day',     name: 'Яркий день',  file: 'wall1.png', desc: 'Светлая палитра' },
+        { id: 'evening', name: 'Тёплая ночь', file: 'wall2.png', desc: 'Тёмная палитра'  }
     ];
 
     let securityPage = 'menu';
@@ -61,6 +61,32 @@
         } catch(e) {}
         try {
             window.dispatchEvent(new CustomEvent('shnuk:screen-settings-changed', { detail: s }));
+        } catch(e) {}
+    }
+
+    function loadSearchIntelligence() {
+        const defaults = {
+            photos: false,
+            files: false,
+            notifications: false,
+            livebarActions: false
+        };
+        try {
+            const raw = localStorage.getItem(SEARCH_INTELLIGENCE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                return Object.assign(defaults, parsed);
+            }
+        } catch(e) {}
+        return defaults;
+    }
+
+    function saveSearchIntelligence(s) {
+        try {
+            localStorage.setItem(SEARCH_INTELLIGENCE_KEY, JSON.stringify(s));
+        } catch(e) {}
+        try {
+            window.dispatchEvent(new CustomEvent('shnuk:search-intelligence-changed', { detail: s }));
         } catch(e) {}
     }
 
@@ -132,7 +158,7 @@
                 currentTheme = detectThemeByFile(savedApp);
             } else {
                 const savedTheme = localStorage.getItem(THEME_KEY);
-                if (savedTheme) {
+                if (savedTheme && themes.some(t => t.id === savedTheme)) {
                     currentTheme = savedTheme;
                 } else {
                     const savedWall = localStorage.getItem(WALLPAPER_KEY) || 'wall1.png';
@@ -170,133 +196,65 @@
             bg.style.backgroundImage = `url('${theme.file}')`;
         }
 
-        renderThemes();
+        renderThemeToggle();
         renderScreenSettings();
         notifyWallpaperChanged();
         notifyThemeChanged(theme.id);
     }
 
-    function isTouchDevice() {
-        try {
-            return window.matchMedia('(hover: none)').matches || ('ontouchstart' in window);
-        } catch(e) {
-            return false;
-        }
+    function toggleTheme() {
+        const next = currentTheme === 'evening' ? 'day' : 'evening';
+        saveTheme(next);
     }
 
-    function renderThemes() {
+    function renderThemeToggle() {
         const container = document.getElementById('themeGrid');
         if (!container) return;
         container.innerHTML = '';
 
-        const currentIdx = themes.findIndex(t => t.id === currentTheme);
-        let leftIdx, centerIdx, rightIdx;
-        if (currentIdx === -1) {
-            centerIdx = 0;
-            leftIdx = themes.length - 1;
-            rightIdx = 1;
-        } else {
-            centerIdx = currentIdx;
-            leftIdx = (currentIdx - 1 + themes.length) % themes.length;
-            rightIdx = (currentIdx + 1) % themes.length;
-        }
+        const isDark = (currentTheme === 'evening');
 
-        const carousel = document.createElement('div');
-        carousel.className = 'theme-carousel';
-        carousel.dataset.justExpanded = '0';
+        const wrap = document.createElement('div');
+        wrap.className = 'theme-toggle-wrap';
 
-        const positions = ['left', 'center', 'right'];
-        const orderedIndices = [leftIdx, centerIdx, rightIdx];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'theme-toggle-btn' + (isDark ? ' dark-active' : '');
+        btn.setAttribute('aria-label', isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему');
 
-        positions.forEach((pos, i) => {
-            const theme = themes[orderedIndices[i]];
-            const item = document.createElement('div');
-            item.className = 'theme-carousel-item theme-pos-' + pos;
-            item.dataset.themeId = theme.id;
+        const sunEl = document.createElement('span');
+        sunEl.className = 'theme-toggle-icon theme-toggle-icon-sun';
+        sunEl.innerHTML =
+            '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+                '<circle cx="12" cy="12" r="4.2" fill="currentColor"/>' +
+                '<g stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
+                    '<line x1="12" y1="2.4" x2="12" y2="5"/>' +
+                    '<line x1="12" y1="19" x2="12" y2="21.6"/>' +
+                    '<line x1="2.4" y1="12" x2="5" y2="12"/>' +
+                    '<line x1="19" y1="12" x2="21.6" y2="12"/>' +
+                    '<line x1="4.9" y1="4.9" x2="6.8" y2="6.8"/>' +
+                    '<line x1="17.2" y1="17.2" x2="19.1" y2="19.1"/>' +
+                    '<line x1="4.9" y1="19.1" x2="6.8" y2="17.2"/>' +
+                    '<line x1="17.2" y1="6.8" x2="19.1" y2="4.9"/>' +
+                '</g>' +
+            '</svg>';
 
-            const img = document.createElement('img');
-            img.src = theme.file;
-            img.alt = theme.name;
-            img.loading = 'lazy';
-            img.onerror = function() { this.style.display = 'none'; };
-            item.appendChild(img);
+        const moonEl = document.createElement('span');
+        moonEl.className = 'theme-toggle-icon theme-toggle-icon-moon';
+        moonEl.innerHTML =
+            '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+                '<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" fill="currentColor"/>' +
+            '</svg>';
 
-            const check = document.createElement('div');
-            check.className = 'theme-check';
-            check.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
-            if (theme.id === currentTheme) {
-                check.style.display = 'flex';
-            } else {
-                check.style.display = 'none';
-            }
-            item.appendChild(check);
+        btn.appendChild(sunEl);
+        btn.appendChild(moonEl);
 
-            const info = document.createElement('div');
-            info.className = 'theme-info';
-            info.innerHTML = `
-                <div class="theme-name">${theme.name}</div>
-                <div class="theme-desc">${theme.desc}</div>
-            `;
-            item.appendChild(info);
-
-            item.addEventListener('click', function(e) {
-                e.stopPropagation();
-                if (carousel.dataset.justExpanded === '1') return;
-                if (!carousel.classList.contains('expanded')) {
-                    carousel.classList.add('expanded');
-                    if (isTouchDevice()) {
-                        carousel.dataset.justExpanded = '1';
-                        setTimeout(function() {
-                            carousel.dataset.justExpanded = '0';
-                        }, 350);
-                    }
-                    return;
-                }
-                openThemeApply(theme.id);
-            });
-
-            carousel.appendChild(item);
+        btn.addEventListener('click', function() {
+            toggleTheme();
         });
 
-        container.appendChild(carousel);
-
-        let collapseTimer = null;
-
-        function expand() {
-            if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null; }
-            carousel.classList.add('expanded');
-        }
-
-        function collapse() {
-            if (collapseTimer) clearTimeout(collapseTimer);
-            collapseTimer = setTimeout(function() {
-                carousel.classList.remove('expanded');
-            }, 320);
-        }
-
-        if (!isTouchDevice()) {
-            carousel.addEventListener('mouseenter', expand);
-            carousel.addEventListener('mouseleave', collapse);
-        } else {
-            carousel.addEventListener('click', function(e) {
-                if (e.target.closest('.theme-carousel-item')) return;
-                if (carousel.classList.contains('expanded')) {
-                    carousel.classList.remove('expanded');
-                } else {
-                    carousel.classList.add('expanded');
-                }
-            });
-        }
-
-        document.addEventListener('click', function onDocClick(e) {
-            if (!document.getElementById('themeGrid')) {
-                document.removeEventListener('click', onDocClick);
-                return;
-            }
-            if (!carousel.contains(e.target)) {
-                carousel.classList.remove('expanded');
-            }
-        });
+        wrap.appendChild(btn);
+        container.appendChild(wrap);
     }
 
     function renderScreenSettings() {
@@ -338,16 +296,6 @@
             }
         ));
 
-        container.appendChild(makeToggleRow(
-            'Поиск в меню приложений',
-            'Фильтровать приложения по названию',
-            !!s.appsSearch,
-            function(v) {
-                s.appsSearch = v;
-                saveScreenSettings(s);
-            }
-        ));
-
         container.appendChild(makeGridRow(
             'Ряды и столбцы на главном',
             'desktopCols',
@@ -366,6 +314,59 @@
             2, 6,
             1, 6,
             function() { saveScreenSettings(s); }
+        ));
+    }
+
+    function renderSearchIntelligence() {
+        const container = document.getElementById('searchIntelContent');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const intro = document.createElement('div');
+        intro.style.cssText = 'font-size:15px;color:var(--text-muted);line-height:1.5;margin-bottom:18px;';
+        intro.textContent = 'Расширенный поиск в меню приложений: помимо программ можно искать фото, файлы, уведомления и действия в Live Bar.';
+        container.appendChild(intro);
+
+        const si = loadSearchIntelligence();
+
+        container.appendChild(makeToggleRow(
+            'Поиск по фото',
+            'Искать изображения в галерее файлов',
+            !!si.photos,
+            function(v) {
+                si.photos = v;
+                saveSearchIntelligence(si);
+            }
+        ));
+
+        container.appendChild(makeToggleRow(
+            'Поиск по файлам',
+            'Искать документы и прочие файлы',
+            !!si.files,
+            function(v) {
+                si.files = v;
+                saveSearchIntelligence(si);
+            }
+        ));
+
+        container.appendChild(makeToggleRow(
+            'Поиск по уведомлениям',
+            'Искать по заголовку и тексту уведомлений',
+            !!si.notifications,
+            function(v) {
+                si.notifications = v;
+                saveSearchIntelligence(si);
+            }
+        ));
+
+        container.appendChild(makeToggleRow(
+            'Поиск по действиям Live Bar',
+            'Искать по активным действиям в Live Bar',
+            !!si.livebarActions,
+            function(v) {
+                si.livebarActions = v;
+                saveSearchIntelligence(si);
+            }
         ));
     }
 
@@ -501,81 +502,6 @@
         return row;
     }
 
-    function openThemeApply(themeId) {
-        const old = document.getElementById('themeApplyOverlay');
-        if (old) old.remove();
-
-        const theme = themes.find(t => t.id === themeId);
-        if (!theme) return;
-
-        const overlay = document.createElement('div');
-        overlay.id = 'themeApplyOverlay';
-        overlay.className = 'theme-apply-overlay';
-
-        const modal = document.createElement('div');
-        modal.className = 'theme-apply-modal';
-
-        const header = document.createElement('div');
-        header.className = 'theme-apply-header';
-        header.innerHTML = `
-            <div class="theme-apply-title">Применить тему?</div>
-            <button class="theme-apply-close" id="themeApplyClose">✕</button>
-        `;
-        modal.appendChild(header);
-
-        const nameLine = document.createElement('div');
-        nameLine.className = 'theme-apply-name';
-        nameLine.textContent = theme.name;
-        modal.appendChild(nameLine);
-
-        const actions = document.createElement('div');
-        actions.className = 'theme-apply-actions';
-
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'theme-apply-btn secondary';
-        cancelBtn.textContent = 'Отмена';
-        actions.appendChild(cancelBtn);
-
-        const applyBtn = document.createElement('button');
-        applyBtn.className = 'theme-apply-btn primary';
-        applyBtn.textContent = 'Применить';
-        actions.appendChild(applyBtn);
-
-        modal.appendChild(actions);
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        requestAnimationFrame(function() {
-            overlay.classList.add('visible');
-        });
-
-        function close() {
-            overlay.classList.remove('visible');
-            setTimeout(function() {
-                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-            }, 260);
-        }
-
-        cancelBtn.addEventListener('click', close);
-        header.querySelector('#themeApplyClose').addEventListener('click', close);
-        overlay.addEventListener('click', function(e) {
-            if (e.target === overlay) close();
-        });
-
-        applyBtn.addEventListener('click', function() {
-            saveTheme(theme.id);
-            close();
-        });
-
-        const onEsc = function(e) {
-            if (e.key === 'Escape') {
-                close();
-                document.removeEventListener('keydown', onEsc);
-            }
-        };
-        document.addEventListener('keydown', onEsc);
-    }
-
     async function renderSystemInfo() {
         const container = document.getElementById('systemInfo');
         if (!container) return;
@@ -659,7 +585,7 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    function renderSecurity() {
+    async function renderSecurity() {
         const container = document.getElementById('securityContent');
         if (!container) return;
 
@@ -671,12 +597,27 @@
             renderSecurityPattern(container);
             return;
         }
-        renderSecurityMenu(container);
+        if (securityPage === 'extra') {
+            await renderSecurityExtra(container);
+            return;
+        }
+        await renderSecurityMenu(container);
     }
 
-    function renderSecurityMenu(container) {
-        const hasSec = window.Security && window.Security.hasSecurity();
-        const secType = hasSec ? (window.Security.hasPassword() ? 'Пароль' : 'Графический ключ') : 'Не установлен';
+    async function renderSecurityMenu(container) {
+        let hasSec = false;
+        try {
+            hasSec = window.Security && await window.Security.hasSecurityAsync();
+        } catch(e) { hasSec = false; }
+
+        let secType = 'Не установлен';
+        if (hasSec) {
+            try {
+                const sec = await window.Security.load();
+                if (sec && sec.type === 'password') secType = 'Пароль';
+                else if (sec && sec.type === 'pattern') secType = 'Графический ключ';
+            } catch(e) {}
+        }
 
         let html = `
             <div class="security-status">
@@ -703,8 +644,26 @@
 
         if (hasSec) {
             html += `
+                <div class="security-section">
+                    <div class="security-section-title">Дополнительная безопасность</div>
+                    <div class="security-choice-row">
+                        <button class="security-choice-btn" id="openExtraSecurityBtn">
+                            <span class="scb-title">Открыть</span>
+                            <span class="scb-desc">Специальный код для стирания, лимит попыток и блокировка</span>
+                        </button>
+                    </div>
+                </div>
                 <div class="security-actions">
                     <button class="security-btn danger" id="removeSecurityBtn">Удалить защиту</button>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="security-section">
+                    <div class="security-section-title">Дополнительная безопасность</div>
+                    <div class="security-desc" style="font-size:14px;color:var(--text-muted);line-height:1.4;">
+                        Доступно после установки пароля или графического ключа.
+                    </div>
                 </div>
             `;
         }
@@ -753,6 +712,14 @@
             });
         }
 
+        const openExtraBtn = document.getElementById('openExtraSecurityBtn');
+        if (openExtraBtn) {
+            openExtraBtn.addEventListener('click', function() {
+                securityPage = 'extra';
+                renderSecurity();
+            });
+        }
+
         const removeBtn = document.getElementById('removeSecurityBtn');
         if (removeBtn) {
             removeBtn.addEventListener('click', async function() {
@@ -764,11 +731,429 @@
                     danger: true
                 });
                 if (ok) {
-                    window.Security.removeSecurity();
+                    await window.Security.removeSecurity();
                     renderSecurity();
                 }
             });
         }
+    }
+
+    // ============================================
+    // ДОПОЛНИТЕЛЬНАЯ БЕЗОПАСНОСТЬ
+    // ============================================
+
+    async function renderSecurityExtra(container) {
+        const cfg = await window.Security.getExtra();
+
+        let method = 'password';
+        try {
+            const sec = await window.Security.load();
+            method = (sec && sec.type === 'pattern') ? 'pattern' : 'password';
+        } catch(e) {}
+
+        const wipeCodeSet = !!(cfg.wipeCode && cfg.wipeCode.hash);
+
+        container.innerHTML = `
+            <div class="security-subheader">
+                <button class="security-back-btn" id="securityBackBtn">‹ Назад</button>
+                <div class="security-subheader-title">Дополнительная безопасность</div>
+            </div>
+
+            <div class="security-section">
+                <div class="security-section-title">Специальный код для стирания</div>
+                <div class="security-desc" style="font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;">
+                    Если ввести этот код при разблокировке, все данные будут полностью удалены — включая IndexedDB.
+                </div>
+                <div id="wipeCodeArea"></div>
+                <div class="toggle-row ${cfg.wipeByCode ? 'active' : ''}" id="wipeByCodeToggle" style="margin-top:14px;">
+                    <div class="tr-left"><div>
+                        <div class="tr-text">Стирать при вводе кода</div>
+                        <div class="tr-sub">Активировать специальный код</div>
+                    </div></div>
+                    <div class="tr-switch"></div>
+                </div>
+            </div>
+
+            <div class="security-section">
+                <div class="security-section-title">Стирание после неверных попыток</div>
+                <div class="security-desc" style="font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;">
+                    Если превысить указанное количество неверных вводов подряд, все данные будут стёрты.
+                </div>
+                <div class="toggle-row ${cfg.wipeOnAttempts ? 'active' : ''}" id="wipeOnAttemptsToggle">
+                    <div class="tr-left"><div>
+                        <div class="tr-text">Стирать после N неверных попыток</div>
+                        <div class="tr-sub">Радикальная защита данных</div>
+                    </div></div>
+                    <div class="tr-switch"></div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+                    <label style="font-size:14px;color:var(--text-muted);">Попыток до стирания:</label>
+                    <input type="number" id="wipeAfterAttempts" min="3" max="50" value="${cfg.wipeAfterAttempts}" class="security-input" style="width:100px;" />
+                </div>
+            </div>
+
+            <div class="security-section">
+                <div class="security-section-title">Ограничение ввода</div>
+                <div class="security-desc" style="font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;">
+                    После указанного количества неверных вводов подряд блокировка на указанное время. Счётчик сбрасывается после успешного ввода.
+                </div>
+                <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:14px;color:var(--text-muted);display:flex;align-items:center;gap:8px;">
+                        Попыток до блокировки:
+                        <input type="number" id="lockAttempts" min="1" max="30" value="${cfg.lockAttempts}" class="security-input" style="width:80px;" />
+                    </label>
+                    <label style="font-size:14px;color:var(--text-muted);display:flex;align-items:center;gap:8px;">
+                        Длительность блокировки, сек:
+                        <input type="number" id="lockSeconds" min="5" max="600" value="${cfg.lockSeconds}" class="security-input" style="width:90px;" />
+                    </label>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('securityBackBtn').addEventListener('click', function() {
+            securityPage = 'menu';
+            renderSecurity();
+        });
+
+        // ---------- Блок специального кода для стирания ----------
+        const wipeCodeArea = document.getElementById('wipeCodeArea');
+        renderWipeCodeControls(wipeCodeArea, method, cfg, wipeCodeSet);
+
+        // ---------- Переключатели и числа ----------
+        const wipeByCodeToggle = document.getElementById('wipeByCodeToggle');
+        wipeByCodeToggle.addEventListener('click', async function() {
+            const cfg2 = await window.Security.getExtra();
+            cfg2.wipeByCode = !cfg2.wipeByCode;
+            await window.Security.setExtra(cfg2);
+            renderSecurity();
+        });
+
+        const wipeOnAttemptsToggle = document.getElementById('wipeOnAttemptsToggle');
+        wipeOnAttemptsToggle.addEventListener('click', async function() {
+            const cfg2 = await window.Security.getExtra();
+            cfg2.wipeOnAttempts = !cfg2.wipeOnAttempts;
+            await window.Security.setExtra(cfg2);
+            renderSecurity();
+        });
+
+        document.getElementById('wipeAfterAttempts').addEventListener('change', async function() {
+            const v = Math.max(3, Math.min(50, parseInt(this.value, 10) || 10));
+            const cfg2 = await window.Security.getExtra();
+            cfg2.wipeAfterAttempts = v;
+            await window.Security.setExtra(cfg2);
+            this.value = v;
+        });
+
+        document.getElementById('lockAttempts').addEventListener('change', async function() {
+            const v = Math.max(1, Math.min(30, parseInt(this.value, 10) || 5));
+            const cfg2 = await window.Security.getExtra();
+            cfg2.lockAttempts = v;
+            await window.Security.setExtra(cfg2);
+            this.value = v;
+        });
+
+        document.getElementById('lockSeconds').addEventListener('change', async function() {
+            const v = Math.max(5, Math.min(600, parseInt(this.value, 10) || 30));
+            const cfg2 = await window.Security.getExtra();
+            cfg2.lockSeconds = v;
+            await window.Security.setExtra(cfg2);
+            this.value = v;
+        });
+    }
+
+    // Рисует блок специального кода: для пароля — текстовое поле, для ключа — интерактивная сетка 3×3.
+    function renderWipeCodeControls(area, method, cfg, wipeCodeSet) {
+        area.innerHTML = '';
+
+        if (method === 'password') {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
+
+            const input = document.createElement('input');
+            input.type = 'password';
+            input.id = 'wipeCodeInput';
+            input.placeholder = 'Новый специальный код';
+            input.className = 'security-input';
+            input.style.cssText = 'flex:1;min-width:180px;';
+            row.appendChild(input);
+
+            const setBtn = document.createElement('button');
+            setBtn.className = 'security-btn';
+            setBtn.textContent = 'Задать';
+            setBtn.addEventListener('click', async function() {
+                const val = (input.value || '').trim();
+                if (!val) {
+                    getWin().alert('Введите код', { title: 'Ошибка' });
+                    return;
+                }
+                await window.Security.setWipeCode('password', val);
+                renderSecurity();
+            });
+            row.appendChild(setBtn);
+
+            if (wipeCodeSet) {
+                const clearBtn = document.createElement('button');
+                clearBtn.className = 'security-btn danger';
+                clearBtn.textContent = 'Очистить';
+                clearBtn.addEventListener('click', async function() {
+                    await window.Security.clearWipeCode();
+                    renderSecurity();
+                });
+                row.appendChild(clearBtn);
+            }
+
+            area.appendChild(row);
+
+            const status = document.createElement('div');
+            status.style.cssText = 'margin-top:10px;font-size:14px;color:var(--text-muted);';
+            status.innerHTML = 'Текущее состояние: <b>' + (wipeCodeSet ? 'Задан' : 'Не задан') + '</b>';
+            area.appendChild(status);
+            return;
+        }
+
+        // method === 'pattern'
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
+
+        const setBtn = document.createElement('button');
+        setBtn.className = 'security-btn';
+        setBtn.textContent = wipeCodeSet ? 'Задать новый специальный ключ' : 'Задать специальный ключ';
+        setBtn.addEventListener('click', function() {
+            openWipePatternPad(area, async function(pattern) {
+                if (!pattern || pattern.length < 4) {
+                    getWin().alert('Минимум 4 точки', { title: 'Ошибка' });
+                    return;
+                }
+                await window.Security.setWipeCode('pattern', pattern);
+                renderSecurity();
+            });
+        });
+        row.appendChild(setBtn);
+
+        if (wipeCodeSet) {
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'security-btn danger';
+            clearBtn.textContent = 'Очистить';
+            clearBtn.addEventListener('click', async function() {
+                await window.Security.clearWipeCode();
+                renderSecurity();
+            });
+            row.appendChild(clearBtn);
+        }
+
+        area.appendChild(row);
+
+        const status = document.createElement('div');
+        status.style.cssText = 'margin-top:10px;font-size:14px;color:var(--text-muted);';
+        status.innerHTML = 'Текущее состояние: <b>' + (wipeCodeSet ? 'Задан' : 'Не задан') + '</b>';
+        area.appendChild(status);
+    }
+
+    // Открывает интерактивную сетку 3×3 для рисования специального ключа.
+    // По завершении рисования вызывает onSave(массив точек) или onCancel().
+    function openWipePatternPad(area, onSave) {
+        // Скрываем кнопки под сеткой, чтобы не мешали
+        const existingChildren = Array.from(area.children);
+
+        const padWrap = document.createElement('div');
+        padWrap.style.cssText = 'margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:10px;';
+
+        const hint = document.createElement('div');
+        hint.textContent = 'Нарисуйте специальный ключ';
+        hint.style.cssText = 'font-size:13px;color:var(--text-muted);letter-spacing:0.4px;';
+        padWrap.appendChild(hint);
+
+        const canvas = document.createElement('canvas');
+        const size = 240;
+        canvas.width = size;
+        canvas.height = size;
+        canvas.style.cssText = `
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            touch-action: none;
+            cursor: crosshair;
+            display: block;
+        `;
+        padWrap.appendChild(canvas);
+
+        const sub = document.createElement('div');
+        sub.style.cssText = 'font-size:13px;color:var(--text-muted);min-height:18px;';
+        padWrap.appendChild(sub);
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;justify-content:center;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'security-btn danger';
+        cancelBtn.textContent = 'Отмена';
+        cancelBtn.addEventListener('click', function() {
+            cleanup();
+        });
+        btnRow.appendChild(cancelBtn);
+
+        padWrap.appendChild(btnRow);
+
+        area.appendChild(padWrap);
+
+        const ctx = canvas.getContext('2d');
+        const dots = [];
+        const dotRadius = 10;
+        const gridSize = 3;
+        const cellSize = size / gridSize;
+
+        for (let i = 0; i < gridSize; i++) {
+            for (let j = 0; j < gridSize; j++) {
+                dots.push({
+                    x: cellSize * (j + 0.5),
+                    y: cellSize * (i + 0.5),
+                    id: i * gridSize + j,
+                    used: false
+                });
+            }
+        }
+
+        let selected = [];
+        let isDrawing = false;
+        let currentMouse = null;
+
+        function draw() {
+            ctx.clearRect(0, 0, size, size);
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            ctx.fillRect(0, 0, size, size);
+
+            for (const dot of dots) {
+                if (dot.used) {
+                    ctx.fillStyle = 'var(--accent)';
+                    ctx.beginPath();
+                    ctx.arc(dot.x, dot.y, dotRadius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = 'var(--bg-primary)';
+                    ctx.beginPath();
+                    ctx.arc(dot.x, dot.y, dotRadius * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    ctx.strokeStyle = 'var(--text-muted)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(dot.x, dot.y, dotRadius, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+
+            if (selected.length > 1) {
+                ctx.strokeStyle = 'var(--accent)';
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                for (let i = 0; i < selected.length; i++) {
+                    const d = dots.find(function(x) { return x.id === selected[i]; });
+                    if (d) {
+                        if (i === 0) ctx.moveTo(d.x, d.y);
+                        else ctx.lineTo(d.x, d.y);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            if (isDrawing && currentMouse && selected.length > 0) {
+                ctx.strokeStyle = 'var(--accent)';
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                const last = dots.find(function(x) { return x.id === selected[selected.length - 1]; });
+                if (last) {
+                    ctx.moveTo(last.x, last.y);
+                    ctx.lineTo(currentMouse.x, currentMouse.y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            return {
+                x: touch.clientX - rect.left,
+                y: touch.clientY - rect.top
+            };
+        }
+
+        function findDot(pos) {
+            for (const d of dots) {
+                const dx = d.x - pos.x;
+                const dy = d.y - pos.y;
+                if (Math.sqrt(dx * dx + dy * dy) < dotRadius * 2.5) return d;
+            }
+            return null;
+        }
+
+        function start(e) {
+            e.preventDefault();
+            isDrawing = true;
+            currentMouse = getPos(e);
+            const d = findDot(currentMouse);
+            if (d && !d.used) {
+                d.used = true;
+                selected.push(d.id);
+                sub.textContent = selected.length + ' точек';
+                draw();
+            }
+        }
+
+        function move(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            currentMouse = getPos(e);
+            const d = findDot(currentMouse);
+            if (d && !d.used) {
+                d.used = true;
+                selected.push(d.id);
+                sub.textContent = selected.length + ' точек';
+            }
+            draw();
+        }
+
+        function end(e) {
+            if (!isDrawing) return;
+            isDrawing = false;
+            currentMouse = null;
+            draw();
+
+            if (selected.length >= 4) {
+                const pattern = selected.slice();
+                cleanup();
+                onSave(pattern);
+            } else {
+                sub.textContent = 'Нужно минимум 4 точки';
+                sub.style.color = 'var(--accent)';
+                setTimeout(function() {
+                    selected = [];
+                    for (const d of dots) d.used = false;
+                    sub.textContent = '';
+                    sub.style.color = 'var(--text-muted)';
+                    draw();
+                }, 500);
+            }
+        }
+
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('mousemove', move);
+        canvas.addEventListener('mouseup', end);
+        canvas.addEventListener('mouseleave', end);
+        canvas.addEventListener('touchstart', start, { passive: false });
+        canvas.addEventListener('touchmove', move, { passive: false });
+        canvas.addEventListener('touchend', end);
+
+        function cleanup() {
+            padWrap.remove();
+            existingChildren.forEach(function(el) {
+                if (!area.contains(el)) area.appendChild(el);
+            });
+        }
+
+        draw();
     }
 
     function renderSecurityPassword(container) {
@@ -794,7 +1179,7 @@
             renderSecurity();
         });
 
-        document.getElementById('setPasswordBtn').addEventListener('click', function() {
+        document.getElementById('setPasswordBtn').addEventListener('click', async function() {
             const pwd = document.getElementById('newPasswordInput').value;
             const confirm = document.getElementById('confirmPasswordInput').value;
 
@@ -807,10 +1192,13 @@
                 return;
             }
 
-            if (window.Security.setPassword(pwd)) {
+            const ok = await window.Security.setPassword(pwd);
+            if (ok) {
                 getWin().alert('Пароль установлен', { title: 'Готово' });
                 securityPage = 'menu';
                 renderSecurity();
+            } else {
+                getWin().alert('Не удалось сохранить пароль', { title: 'Ошибка' });
             }
         });
     }
@@ -984,13 +1372,14 @@
 
         const setPatternBtn = document.getElementById('setPatternBtn');
         if (setPatternBtn) {
-            setPatternBtn.addEventListener('click', function() {
+            setPatternBtn.addEventListener('click', async function() {
                 if (selectedPattern.length < 4) {
                     getWin().alert('Минимум 4 точки', { title: 'Ошибка' });
                     return;
                 }
 
-                if (window.Security.setPattern(selectedPattern)) {
+                const ok = await window.Security.setPattern(selectedPattern);
+                if (ok) {
                     getWin().alert('Графический ключ установлен', { title: 'Готово' });
                     selectedPattern = [];
                     for (const dot of dots) dot.used = false;
@@ -998,6 +1387,8 @@
                     updateHint();
                     securityPage = 'menu';
                     renderSecurity();
+                } else {
+                    getWin().alert('Не удалось сохранить ключ', { title: 'Ошибка' });
                 }
             });
         }
@@ -1031,6 +1422,10 @@
         if (!confirmed2) return;
 
         try {
+            if (window.Security && typeof window.Security.wipeAllData === 'function') {
+                await window.Security.wipeAllData();
+                return;
+            }
             localStorage.clear();
             sessionStorage.clear();
             if (window.OSStorage) {
@@ -1093,9 +1488,7 @@
                 #settingsApp,
                 #settingsApp *,
                 .settings-dropdown,
-                .settings-dropdown *,
-                .theme-apply-overlay,
-                .theme-apply-overlay * {
+                .settings-dropdown * {
                     font-family: ${FONT_MAIN} !important;
                 }
 
@@ -1222,277 +1615,73 @@
                     margin-bottom: 16px;
                 }
 
-                .theme-grid {
-                    display: block;
-                    width: 100%;
+                /* ====== Переключатель темы ====== */
+                .theme-toggle-wrap {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 24px 0 8px;
                 }
 
-                .theme-carousel {
-                    position: relative;
-                    width: 100%;
-                    height: 360px;
-                    max-width: 540px;
-                    margin: 0 auto;
-                    perspective: 1200px;
+                .theme-toggle-btn {
+                    --size: 220px;
+                    width: var(--size);
+                    height: var(--size);
+                    border: none;
                     cursor: pointer;
-                    user-select: none;
+                    padding: 0;
+                    position: relative;
+                    border-radius: 50%;
+                    background: #cc0000;
+                    color: #ffffff;
                     -webkit-tap-highlight-color: transparent;
+                    outline: none;
+                    overflow: hidden;
+                    transition: background 0.4s ease, color 0.4s ease, transform 0.2s ease;
+                }
+                .theme-toggle-btn:active {
+                    transform: scale(0.97);
+                }
+                .theme-toggle-btn.dark-active {
+                    background: #ffffff;
+                    color: #000000;
                 }
 
-                .theme-carousel-item {
+                .theme-toggle-icon {
                     position: absolute;
                     top: 50%;
                     left: 50%;
-                    width: 250px;
-                    height: 320px;
-                    margin-left: -125px;
-                    margin-top: -160px;
-                    overflow: hidden;
-                    background: var(--bg-secondary);
-                    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-                                opacity 0.4s ease,
-                                filter 0.4s ease,
-                                box-shadow 0.4s ease;
-                    will-change: transform, opacity;
-                    cursor: pointer;
-                    border: 3px solid transparent;
-                    box-sizing: border-box;
+                    width: 45%;
+                    height: 45%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: none;
+                    transition: opacity 0.35s ease;
                 }
-
-                .theme-carousel-item img {
-                    position: absolute;
-                    inset: 0;
+                .theme-toggle-icon svg {
                     width: 100%;
                     height: 100%;
-                    object-fit: cover;
                     display: block;
-                    pointer-events: none;
-                    background: var(--bg-tertiary);
                 }
-
-                .theme-carousel-item .theme-info {
-                    position: absolute;
-                    bottom: 0;
-                    left: 0;
-                    right: 0;
-                    padding: 14px 16px;
-                    background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0));
-                    color: #fff;
-                    text-align: left;
-                    pointer-events: none;
-                }
-                .theme-carousel-item .theme-name {
-                    font-size: 21px;
-                    font-weight: 700;
-                    letter-spacing: 0.3px;
-                }
-                .theme-carousel-item .theme-desc {
-                    font-size: 15px;
-                    color: #cccccc;
-                    margin-top: 3px;
-                }
-                .theme-carousel-item .theme-check {
-                    position: absolute;
-                    top: 10px;
-                    right: 10px;
-                    width: 36px;
-                    height: 36px;
-                    background: var(--accent);
-                    display: none;
-                    align-items: center;
-                    justify-content: center;
-                    pointer-events: none;
-                }
-                .theme-carousel-item .theme-check svg {
-                    width: 20px;
-                    height: 20px;
-                }
-
-                .theme-carousel:not(.expanded) .theme-pos-center {
-                    transform: translateZ(0) rotateY(0deg) scale(1);
+                .theme-toggle-icon-sun {
+                    transform: translate(-50%, -50%);
                     opacity: 1;
-                    z-index: 3;
-                    filter: blur(0);
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
                 }
-                .theme-carousel:not(.expanded) .theme-pos-left {
-                    transform: translateX(-130px) rotateY(35deg) scale(0.82);
-                    opacity: 0.55;
-                    z-index: 2;
-                    filter: blur(1px);
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-                }
-                .theme-carousel:not(.expanded) .theme-pos-right {
-                    transform: translateX(130px) rotateY(-35deg) scale(0.82);
-                    opacity: 0.55;
-                    z-index: 2;
-                    filter: blur(1px);
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-                }
-
-                .theme-carousel.expanded .theme-pos-center {
-                    transform: translateX(0) rotateY(0deg) scale(0.95);
-                    opacity: 1;
-                    z-index: 3;
-                    filter: blur(0);
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-                }
-                .theme-carousel.expanded .theme-pos-left {
-                    transform: translateX(-270px) rotateY(0deg) scale(0.88);
-                    opacity: 1;
-                    z-index: 3;
-                    filter: blur(0);
-                    box-shadow: 0 14px 40px rgba(0,0,0,0.3);
-                }
-                .theme-carousel.expanded .theme-pos-right {
-                    transform: translateX(270px) rotateY(0deg) scale(0.88);
-                    opacity: 1;
-                    z-index: 3;
-                    filter: blur(0);
-                    box-shadow: 0 14px 40px rgba(0,0,0,0.3);
-                }
-
-                .theme-carousel-item:hover {
-                    border-color: var(--accent);
-                }
-
-                @media (max-width: 600px) {
-                    .theme-carousel {
-                        height: 290px;
-                        max-width: 100%;
-                    }
-                    .theme-carousel-item {
-                        width: 180px;
-                        height: 250px;
-                        margin-left: -90px;
-                        margin-top: -125px;
-                    }
-                    .theme-carousel:not(.expanded) .theme-pos-left {
-                        transform: translateX(-100px) rotateY(35deg) scale(0.82);
-                    }
-                    .theme-carousel:not(.expanded) .theme-pos-right {
-                        transform: translateX(100px) rotateY(-35deg) scale(0.82);
-                    }
-                    .theme-carousel.expanded .theme-pos-left {
-                        transform: translateX(-180px) rotateY(0deg) scale(0.86);
-                    }
-                    .theme-carousel.expanded .theme-pos-right {
-                        transform: translateX(180px) rotateY(0deg) scale(0.86);
-                    }
-                    .theme-carousel-item .theme-name { font-size: 17px; }
-                    .theme-carousel-item .theme-desc { font-size: 13px; }
-                }
-
-                .theme-apply-overlay {
-                    position: fixed;
-                    inset: 0;
-                    background: rgba(0, 0, 0, 0.55);
-                    backdrop-filter: blur(8px);
-                    -webkit-backdrop-filter: blur(8px);
-                    z-index: 100002;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
+                .theme-toggle-icon-moon {
+                    transform: translate(-50%, -50%);
                     opacity: 0;
-                    transition: opacity 0.26s ease;
-                    padding: 20px;
-                    box-sizing: border-box;
                 }
-                .theme-apply-overlay.visible { opacity: 1; }
-
-                .theme-apply-modal {
-                    background: var(--bg-primary);
-                    color: var(--text-primary);
-                    width: 100%;
-                    max-width: 460px;
-                    border: 2px solid var(--border-color);
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
-                    transform: scale(0.94) translateY(10px);
-                    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-                    display: flex;
-                    flex-direction: column;
-                    max-height: calc(100% - 40px);
-                    overflow: hidden;
+                .theme-toggle-btn.dark-active .theme-toggle-icon-sun {
+                    opacity: 0;
                 }
-                .theme-apply-overlay.visible .theme-apply-modal {
-                    transform: scale(1) translateY(0);
+                .theme-toggle-btn.dark-active .theme-toggle-icon-moon {
+                    opacity: 1;
                 }
 
-                .theme-apply-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 16px 20px;
-                    background: var(--header-bg);
-                    color: var(--header-text);
-                    border-bottom: 2px solid var(--border-color);
-                    flex-shrink: 0;
-                }
-                .theme-apply-title {
-                    font-size: 22px;
-                    font-weight: 700;
-                    letter-spacing: 0.3px;
-                }
-                .theme-apply-close {
-                    background: none;
-                    border: 2px solid var(--accent);
-                    color: var(--accent);
-                    font-size: 18px;
-                    padding: 4px 12px;
-                    cursor: pointer;
-                    line-height: 1;
-                    transition: all 0.2s ease;
-                }
-                .theme-apply-close:hover {
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                }
-
-                .theme-apply-name {
-                    padding: 28px 20px;
-                    font-size: 23px;
-                    color: var(--text-primary);
-                    letter-spacing: 0.4px;
-                    font-weight: 600;
-                    text-align: center;
-                    flex-shrink: 0;
-                }
-
-                .theme-apply-actions {
-                    display: flex;
-                    gap: 10px;
-                    padding: 16px 20px 20px;
-                    border-top: 2px solid var(--border-color);
-                    background: var(--bg-secondary);
-                    flex-shrink: 0;
-                }
-                .theme-apply-btn {
-                    flex: 1;
-                    padding: 14px 20px;
-                    font-size: 20px;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    border: 2px solid transparent;
-                }
-                .theme-apply-btn.primary {
-                    background: var(--accent);
-                    color: var(--text-on-accent);
-                    border-color: var(--accent);
-                }
-                .theme-apply-btn.primary:hover {
-                    background: var(--accent-dark);
-                    border-color: var(--accent-dark);
-                }
-                .theme-apply-btn.secondary {
-                    background: var(--bg-primary);
-                    color: var(--text-primary);
-                    border-color: var(--border-color);
-                }
-                .theme-apply-btn.secondary:hover {
-                    border-color: var(--accent);
-                    color: var(--accent);
+                @media (max-width: 500px) {
+                    .theme-toggle-btn { --size: 160px; }
+                    .theme-toggle-wrap { padding: 12px 0 4px; }
                 }
 
                 .system-image-wrap {
@@ -1757,7 +1946,6 @@
                     .toggle-row { padding: 16px 18px; }
                     .toggle-row .tr-text { font-size: 19px; }
                     .security-section { padding: 18px; }
-                    .theme-apply-modal { max-width: 100%; }
                     .security-choice-btn { padding: 18px 20px; }
                     .security-choice-btn .scb-title { font-size: 20px; }
                     .security-choice-btn .scb-desc { font-size: 15px; }
@@ -1789,10 +1977,15 @@
 
             <div class="settings-stage" id="settingsStage">
                 <div class="settings-section-view" id="viewTheme">
-                    <div class="settings-section-title">Темы оформления</div>
+                    <div class="settings-section-title">Тема оформления</div>
                     <div class="theme-grid" id="themeGrid"></div>
 
                     <div id="screenSettingsContainer"></div>
+                </div>
+
+                <div class="settings-section-view" id="viewSearchIntel">
+                    <div class="settings-section-title">Shnuk Search Intelligence</div>
+                    <div id="searchIntelContent"></div>
                 </div>
 
                 <div class="settings-section-view" id="viewSecurity">
@@ -1836,6 +2029,7 @@
         let isDropdownOpen = false;
 
         function getViewByTab(tab) {
+            if (tab === 'searchIntel') return document.getElementById('viewSearchIntel');
             if (tab === 'security') return document.getElementById('viewSecurity');
             if (tab === 'system') return document.getElementById('viewSystem');
             return document.getElementById('viewTheme');
@@ -1847,8 +2041,11 @@
                 securityPage = 'menu';
                 renderSecurity();
             }
+            else if (tab === 'searchIntel') {
+                renderSearchIntelligence();
+            }
             else if (tab === 'theme') {
-                renderThemes();
+                renderThemeToggle();
                 renderScreenSettings();
             }
         }
@@ -1922,6 +2119,7 @@
 
             const sections = [
                 { id: 'theme', name: 'Темы' },
+                { id: 'searchIntel', name: 'Shnuk Search Intelligence' },
                 { id: 'security', name: 'Безопасность' },
                 { id: 'system', name: 'Система' }
             ];
@@ -2013,8 +2211,6 @@
 
         const onEsc = function(e) {
             if (e.key === 'Escape') {
-                const overlay = document.getElementById('themeApplyOverlay');
-                if (overlay) return;
                 if (isDropdownOpen) {
                     closeSectionsMenu();
                     return;
@@ -2040,9 +2236,6 @@
 
         isOpen = false;
 
-        const overlay = document.getElementById('themeApplyOverlay');
-        if (overlay) overlay.remove();
-
         if (window.ShnukCloseAnimation) {
             window.ShnukCloseAnimation(el, 'settings', function() {
                 el.remove();
@@ -2063,8 +2256,6 @@
         const el = document.getElementById('settingsApp');
         if (el && el.parentNode) el.parentNode.removeChild(el);
         document.querySelectorAll('.settings-dropdown').forEach(m => m.remove());
-        const overlay = document.getElementById('themeApplyOverlay');
-        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }
 
     window.Settings = {
@@ -2074,7 +2265,7 @@
             setTimeout(function() {
                 const container = document.getElementById('settingsApp');
                 if (!container) return;
-                const tabIds = ['theme', 'security', 'system'];
+                const tabIds = ['theme', 'searchIntel', 'security', 'system'];
                 tabIds.forEach(id => {
                     const v = document.getElementById('view' + id.charAt(0).toUpperCase() + id.slice(1));
                     if (!v) return;
@@ -2093,8 +2284,11 @@
                     securityPage = 'menu';
                     renderSecurity();
                 }
+                else if (sectionId === 'searchIntel') {
+                    renderSearchIntelligence();
+                }
                 else if (sectionId === 'theme') {
-                    renderThemes();
+                    renderThemeToggle();
                     renderScreenSettings();
                 }
             }, 400);
@@ -2102,7 +2296,8 @@
         selectTheme: function(id) {
             if (!id) return;
             saveTheme(id);
-        }
+        },
+        toggleTheme: toggleTheme
     };
     window.settingsInit = function() {
         if (isOpen) {

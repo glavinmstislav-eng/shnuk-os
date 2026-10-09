@@ -62,6 +62,23 @@
         return s;
     }
 
+    function playNotificationSound(type) {
+        try {
+            let file;
+            if (type === 'error' || type === 'warning') file = 'error.mp3';
+            else if (type === 'success') file = 'window2.mp3';
+            else file = 'window.mp3';
+
+            if (window.L && typeof window.L.playSound === 'function') {
+                window.L.playSound(file);
+                return;
+            }
+            if (typeof window.playSound === 'function') {
+                window.playSound(file);
+            }
+        } catch(e) {}
+    }
+
     function getTheme() {
         try { return localStorage.getItem(THEME_KEY) || 'day'; } catch(e) { return 'day'; }
     }
@@ -391,8 +408,15 @@
         e.stopPropagation();
         if (currentActivity && currentActivity.appId) {
             const id = currentActivity.appId;
+            if (typeof window.ShnukOpenAppById === 'function') {
+                window.__appOpenedFrom = 'notification';
+                window.__notificationOpenedAppId = id;
+                window.ShnukOpenAppById(id, currentActivity.appName || null);
+                return;
+            }
             if (typeof window[id + 'Init'] === 'function') {
                 window.__appOpenedFrom = 'notification';
+                window.__notificationOpenedAppId = id;
                 window[id + 'Init']();
             }
         }
@@ -525,6 +549,7 @@
         applyActivity({
             type: data.type,
             appId: data.appId || null,
+            appName: data.appName || null,
             payload: data.payload || {},
             startedAt: data.startedAt || Date.now()
         });
@@ -551,7 +576,6 @@
         } else {
             if (leftSlot) leftSlot.textContent = buildLeftContent(currentActivity);
         }
-        // Обновляем значение в шторке без полной перерисовки
         updateShadeActivity();
     }
 
@@ -631,6 +655,9 @@
         notifications.unshift(n);
         if (notifications.length > 200) notifications = notifications.slice(0, 200);
         saveNotifications();
+
+        playNotificationSound(n.type);
+
         if (shadeOpen) renderShade();
 
         showTransientInBar(n);
@@ -714,7 +741,47 @@
 
         window.__appOpenedFrom = 'notification';
 
+        if (n.appName && window.__collarAppRegistry) {
+            const reg = window.__collarAppRegistry;
+            const entry = reg[n.appName];
+            if (entry && typeof window.ShnukOpenAppById === 'function') {
+                window.__notificationOpenedAppId = entry.id;
+                try {
+                    const ok = window.ShnukOpenAppById(entry.id);
+                    if (ok) return;
+                } catch(e) {}
+            }
+        }
+
+        if (n.appName && window.AppScanner && AppScanner.getApps && typeof window.ShnukOpenAppById === 'function') {
+            AppScanner.getApps().then(function(apps) {
+                const found = apps.find(a => a.name === n.appName);
+                if (found) {
+                    window.__notificationOpenedAppId = found.id;
+                    try { window.ShnukOpenAppById(found.id); } catch(e) {}
+                } else if (n.appId) {
+                    window.__notificationOpenedAppId = n.appId;
+                    try { window.ShnukOpenAppById(n.appId); } catch(e) {}
+                }
+            }).catch(function() {
+                if (n.appId) {
+                    window.__notificationOpenedAppId = n.appId;
+                    try { window.ShnukOpenAppById(n.appId); } catch(e) {}
+                }
+            });
+            return;
+        }
+
+        if (n.appId && typeof window.ShnukOpenAppById === 'function') {
+            window.__notificationOpenedAppId = n.appId;
+            try {
+                const ok = window.ShnukOpenAppById(n.appId);
+                if (ok) return;
+            } catch(e) {}
+        }
+
         if (n.appId) {
+            window.__notificationOpenedAppId = n.appId;
             const initFns = [n.appId + 'Init', n.appId.replace(/-/g, '') + 'Init'];
             for (const fn of initFns) {
                 if (typeof window[fn] === 'function') {
@@ -723,14 +790,16 @@
             }
         }
 
-        if (n.appName && window.AppScanner) {
-            AppScanner.getApps().then(function(apps) {
-                const found = apps.find(a => a.name === n.appName);
-                if (found) {
-                    const iconEl = document.querySelector('.icon-item[data-app-id="' + found.id + '"]');
-                    if (iconEl) iconEl.click();
+        if (n.appName) {
+            const allIcons = document.querySelectorAll('.icon-item[data-app-id]');
+            for (const el of allIcons) {
+                const name = el.dataset.appName || '';
+                if (name === n.appName) {
+                    window.__notificationOpenedAppId = el.dataset.appId || null;
+                    el.click();
+                    return;
                 }
-            });
+            }
         }
     }
 
@@ -783,6 +852,7 @@
             color: ${bd.text};
             pointer-events: none;
             padding-top: ${BAR_HEIGHT}px;
+            touch-action: none;
         `;
 
         const header = document.createElement('div');
@@ -840,17 +910,37 @@
         body.id = 'lbShadeBody';
         body.style.cssText = `
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
-            padding: 16px 20px 40px;
+            padding: 16px 20px 120px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             gap: 12px;
             -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
+            overscroll-behavior: contain;
+        `;
+
+        const bottomBlur = document.createElement('div');
+        bottomBlur.className = 'lb-shade-bottom-blur';
+        bottomBlur.style.cssText = `
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 90px;
+            pointer-events: none;
+            z-index: 5;
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
         `;
 
         shadeEl.appendChild(header);
         shadeEl.appendChild(body);
+        shadeEl.appendChild(bottomBlur);
         document.body.appendChild(shadeEl);
 
         bindShadeCloseGesture();
@@ -884,8 +974,6 @@
         });
     }
 
-    // Строит узел активного действия, повторяя структуру обычного уведомления:
-    // [иконка/плейсхолдер 36px] [gap 12px] [блок с заголовком и значением]
     function buildShadeActivityNode(activity, it) {
         if (!it) it = getShadeItemColors();
 
@@ -903,7 +991,6 @@
             flex-shrink: 0;
         `;
 
-        // Левая колонка — как иконка в уведомлении: фиксированные 36x36
         const leading = document.createElement('div');
         leading.style.cssText = 'width:36px;height:36px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;';
 
@@ -911,13 +998,11 @@
             const c = document.createElement('canvas');
             c.style.cssText = 'width:36px;height:18px;display:block;';
             leading.appendChild(c);
-            // Запуск анимации волны внутри шторки (независимо от полосы)
             startShadeRecordingWave(c);
         } else if (isClockType(activity.type)) {
             const clock = buildClockSvg();
             leading.appendChild(clock.svg);
         } else {
-            // Плейсхолдер — буква "A" (activity) на красном фоне, как у уведомлений
             const ph = document.createElement('div');
             ph.textContent = 'A';
             ph.style.cssText = 'width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:#cc0000;color:#ffffff;font-weight:700;font-size:14px;';
@@ -926,7 +1011,6 @@
 
         item.appendChild(leading);
 
-        // Правая колонка — заголовок-метка и значение
         const info = document.createElement('div');
         info.style.cssText = 'flex:1;min-width:0;';
 
@@ -948,17 +1032,11 @@
 
         item.appendChild(info);
 
-        // Клик по активности — открывает приложение
         if (activity.appId) {
             item.style.cursor = 'pointer';
             item.addEventListener('click', function(e) {
                 e.stopPropagation();
-                const id = activity.appId;
-                if (typeof window[id + 'Init'] === 'function') {
-                    window.__openedFrom = 'notification';
-                    window[id + 'Init']();
-                }
-                closeShade();
+                openNotificationTarget({ appId: activity.appId, appName: activity.appName || '' });
             });
         }
 
@@ -978,17 +1056,14 @@
         return buildLeftContent(activity);
     }
 
-    // Обновляет только значение в шторке (без пересборки всего DOM)
     function updateShadeActivity() {
         if (!shadeEl || !shadeOpen) return;
         const existing = document.getElementById('lbShadeActivity');
         if (!existing) {
-            // Если активность появилась — пересоберём шторку
             if (currentActivity) renderShade();
             return;
         }
         if (!currentActivity) {
-            // Активности больше нет — убираем узел
             if (existing.parentNode) existing.parentNode.removeChild(existing);
             return;
         }
@@ -998,7 +1073,6 @@
         }
     }
 
-    // Анимация волны записи внутри шторки — отдельный цикл, не связанный с полосой
     let shadeWaveAnimId = null;
     let shadeWaveRunning = false;
     let shadeWaveStart = 0;
@@ -1076,11 +1150,10 @@
             align-items: flex-start;
             gap: 12px;
             cursor: pointer;
-            transition: background .2s ease, border-color .2s ease, transform .25s cubic-bezier(.22,1,.36,1), opacity .25s ease;
+            flex-shrink: 0;
             touch-action: pan-y;
             position: relative;
             overflow: hidden;
-            will-change: transform;
             -webkit-tap-highlight-color: transparent;
         `;
 
@@ -1138,77 +1211,7 @@
             openNotificationTarget(n);
         });
 
-        bindSwipeToDismiss(item, n.id, function() { movedDuringSwipe = true; });
-
         return item;
-    }
-
-    function bindSwipeToDismiss(item, id, onMove) {
-        let startX = 0;
-        let startY = 0;
-        let currentX = 0;
-        let dragging = false;
-        let decided = false;
-        let isHorizontal = false;
-
-        function onStart(e) {
-            const t = (e.touches && e.touches[0]) || e;
-            startX = t.clientX;
-            startY = t.clientY;
-            currentX = 0;
-            dragging = true;
-            decided = false;
-            isHorizontal = false;
-            item.style.transition = 'none';
-        }
-
-        function onMoveHandler(e) {
-            if (!dragging) return;
-            const t = (e.touches && e.touches[0]) || e;
-            const dx = t.clientX - startX;
-            const dy = t.clientY - startY;
-
-            if (!decided) {
-                if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-                    decided = true;
-                    isHorizontal = Math.abs(dx) > Math.abs(dy);
-                    if (isHorizontal && onMove) onMove();
-                }
-            }
-            if (!isHorizontal) return;
-
-            if (e.cancelable) e.preventDefault();
-            currentX = dx;
-            const opacity = Math.max(0, 1 - Math.abs(dx) / 220);
-            item.style.transform = 'translateX(' + dx + 'px)';
-            item.style.opacity = String(opacity);
-        }
-
-        function onEnd() {
-            if (!dragging) return;
-            dragging = false;
-            item.style.transition = 'transform .25s cubic-bezier(.22,1,.36,1), opacity .25s ease';
-            if (isHorizontal && Math.abs(currentX) > 90) {
-                const dir = currentX > 0 ? 1 : -1;
-                item.style.transform = 'translateX(' + (dir * 400) + 'px)';
-                item.style.opacity = '0';
-                setTimeout(function() {
-                    removeNotification(id);
-                }, 200);
-            } else {
-                item.style.transform = '';
-                item.style.opacity = '1';
-            }
-        }
-
-        item.addEventListener('touchstart', onStart, { passive: true });
-        item.addEventListener('touchmove', onMoveHandler, { passive: false });
-        item.addEventListener('touchend', onEnd, { passive: true });
-        item.addEventListener('touchcancel', onEnd, { passive: true });
-
-        item.addEventListener('mousedown', onStart);
-        window.addEventListener('mousemove', onMoveHandler);
-        window.addEventListener('mouseup', onEnd);
     }
 
     function bindShadeGestures() {
@@ -1261,11 +1264,23 @@
         }
     }
 
+    let shadeCloseHandler = null;
+
     function bindShadeCloseGesture() {
-        if (!shadeEl) return;
+        if (shadeCloseHandler) {
+            window.removeEventListener('touchstart', shadeCloseHandler.onStart, { passive: true });
+            window.removeEventListener('touchmove', shadeCloseHandler.onMove, { passive: false });
+            window.removeEventListener('touchend', shadeCloseHandler.onEnd, { passive: true });
+            window.removeEventListener('touchcancel', shadeCloseHandler.onEnd, { passive: true });
+            window.removeEventListener('mousedown', shadeCloseHandler.onStart);
+            window.removeEventListener('mousemove', shadeCloseHandler.onMove);
+            window.removeEventListener('mouseup', shadeCloseHandler.onEnd);
+        }
+
         let startY = 0;
         let startX = 0;
         let tracking = false;
+        let startInShade = false;
 
         function getPoint(e) {
             if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -1273,42 +1288,48 @@
             return { x: e.clientX, y: e.clientY };
         }
 
+        function isInsideShade(x, y) {
+            if (!shadeEl || !shadeOpen) return false;
+            const rect = shadeEl.getBoundingClientRect();
+            return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+        }
+
         function onStart(e) {
+            if (!shadeOpen) return;
             const p = getPoint(e);
             startX = p.x;
             startY = p.y;
-            tracking = true;
+            startInShade = isInsideShade(p.x, p.y);
+            tracking = startInShade;
         }
 
-        function onMoveHandler(e) {
-            if (!tracking) return;
+        function onMove(e) {
+            if (!tracking || !shadeOpen) return;
             const p = getPoint(e);
             const dy = p.y - startY;
             const dx = p.x - startX;
-            if (dy < -40 && Math.abs(dy) > Math.abs(dx)) {
+            if (dy < -30 && Math.abs(dy) > Math.abs(dx) * 1.2) {
                 tracking = false;
                 if (e.cancelable) e.preventDefault();
                 closeShade();
             }
         }
 
-        function onEnd() { tracking = false; }
-
-        shadeEl.addEventListener('touchstart', onStart, { passive: true });
-        shadeEl.addEventListener('touchmove', onMoveHandler, { passive: false });
-        shadeEl.addEventListener('touchend', onEnd, { passive: true });
-        shadeEl.addEventListener('touchcancel', onEnd, { passive: true });
-
-        if (window.PointerEvent) {
-            shadeEl.addEventListener('pointerdown', onStart);
-            shadeEl.addEventListener('pointermove', onMoveHandler);
-            shadeEl.addEventListener('pointerup', onEnd);
-            shadeEl.addEventListener('pointercancel', onEnd);
-        } else {
-            shadeEl.addEventListener('mousedown', onStart);
-            window.addEventListener('mousemove', onMoveHandler);
-            window.addEventListener('mouseup', onEnd);
+        function onEnd() {
+            tracking = false;
+            startInShade = false;
         }
+
+        shadeCloseHandler = { onStart: onStart, onMove: onMove, onEnd: onEnd };
+
+        window.addEventListener('touchstart', onStart, { passive: true });
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onEnd, { passive: true });
+        window.addEventListener('touchcancel', onEnd, { passive: true });
+
+        window.addEventListener('mousedown', onStart);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onEnd);
     }
 
     function openShade() {
@@ -1316,7 +1337,6 @@
         if (shadeOpen) return;
         shadeOpen = true;
         renderShade();
-        // Пока шторка открыта, полоса делается неактивной и невидимой
         if (barEl) {
             barEl.style.pointerEvents = 'none';
             barEl.style.opacity = '0';
@@ -1337,7 +1357,6 @@
         shadeEl.style.opacity = '0';
         shadeEl.style.filter = 'blur(24px)';
         shadeEl.style.pointerEvents = 'none';
-        // Возвращаем полосу
         if (barEl) {
             barEl.style.pointerEvents = 'auto';
             barEl.style.opacity = '1';

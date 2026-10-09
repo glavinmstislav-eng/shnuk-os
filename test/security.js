@@ -1,149 +1,410 @@
-// security.js
+// security.js — защита системы: пароль, графический ключ, доп. безопасность, стирание.
+// Хэширование пароля/ключа — через Apl.deriveSecret (Argon2id/PBKDF2-SHA-512).
+// Секреты хранятся в IndexedDB (shnuk_os.system) в зашифрованном виде.
 
 (function() {
     'use strict';
 
-    const SECURITY_KEY = 'shnuk_security';
-    const SESSION_KEY = 'shnuk_session_unlocked';
+    const EXTRA_KEY = 'shnuk_security_extra';
+    const HAS_SECURITY_KEY = 'shnuk_has_security';
+    const ATTEMPTS_KEY = 'shnuk_attempts_count';
+    const LOCK_UNTIL_KEY = 'shnuk_lock_until';
+    const SECURITY_STORE_KEY = 'security_main';
+    const WIPE_PENDING_KEY = 'shnuk_wipe_pending';
+
+    const SESSION_TOKENS_KEY = 'shnuk_session_tokens';
+    const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
     const FONT_MAIN = "'TTPaplane', monospace";
 
-    function simpleHash(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+    const DEFAULT_EXTRA = {
+        wipeByCode: false,
+        wipeCode: null,
+        wipeOnAttempts: false,
+        wipeAfterAttempts: 10,
+        lockAttempts: 5,
+        lockSeconds: 30
+    };
+
+    let cachedSecurity = null;
+    let sessionTokens = null;
+
+    function randomToken() {
+        if (window.crypto && window.crypto.randomUUID) {
+            return window.crypto.randomUUID();
         }
-        return Math.abs(hash).toString(36);
+        const b = new Uint8Array(24);
+        if (window.crypto && window.crypto.getRandomValues) {
+            window.crypto.getRandomValues(b);
+        } else {
+            for (let i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256);
+        }
+        let out = '';
+        for (let i = 0; i < b.length; i++) out += b[i].toString(16).padStart(2, '0');
+        return out;
     }
 
-    function simpleEncrypt(text, key) {
-        let result = '';
-        for (let i = 0; i < text.length; i++) {
-            const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
-            result += String.fromCharCode(charCode);
-        }
-        return btoa(unescape(encodeURIComponent(result)));
+    function ensureSessionTokens() {
+        if (sessionTokens) return sessionTokens;
+        sessionTokens = {};
+        return sessionTokens;
     }
 
-    function simpleDecrypt(encoded, key) {
+    function issueSessionToken() {
+        const t = ensureSessionTokens();
+        const token = randomToken();
+        t[token] = Date.now() + SESSION_TTL_MS;
         try {
-            const decoded = decodeURIComponent(escape(atob(encoded)));
-            let result = '';
-            for (let i = 0; i < decoded.length; i++) {
-                const charCode = decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length);
-                result += String.fromCharCode(charCode);
+            sessionStorage.setItem(SESSION_TOKENS_KEY, JSON.stringify(t));
+        } catch(e) {}
+        return token;
+    }
+
+    function loadSessionTokens() {
+        if (sessionTokens) return sessionTokens;
+        try {
+            const raw = sessionStorage.getItem(SESSION_TOKENS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') {
+                    sessionTokens = parsed;
+                    return sessionTokens;
+                }
             }
-            return result;
-        } catch(e) {
-            return null;
-        }
+        } catch(e) {}
+        sessionTokens = {};
+        return sessionTokens;
     }
 
-    function getSecurity() {
+    function pruneExpiredTokens() {
+        const t = loadSessionTokens();
+        const now = Date.now();
+        let changed = false;
+        for (const k in t) {
+            if (!Object.prototype.hasOwnProperty.call(t, k)) continue;
+            if (typeof t[k] !== 'number' || t[k] <= now) {
+                delete t[k];
+                changed = true;
+            }
+        }
+        if (changed) {
+            try { sessionStorage.setItem(SESSION_TOKENS_KEY, JSON.stringify(t)); } catch(e) {}
+        }
+        return t;
+    }
+
+    function hasValidSessionToken() {
+        const t = pruneExpiredTokens();
+        for (const k in t) {
+            if (Object.prototype.hasOwnProperty.call(t, k)) return true;
+        }
+        return false;
+    }
+
+    function clearAllSessionTokens() {
+        sessionTokens = {};
+        try { sessionStorage.removeItem(SESSION_TOKENS_KEY); } catch(e) {}
+    }
+
+    // ============================================
+    // ХРАНЕНИЕ СЕКРЕТА — только в IndexedDB, в зашифрованном виде
+    // ============================================
+
+    async function loadSecurity() {
+        if (cachedSecurity) return cachedSecurity;
         try {
-            const saved = localStorage.getItem(SECURITY_KEY);
-            if (!saved) return null;
-            return JSON.parse(saved);
-        } catch(e) {
-            return null;
-        }
+            if (window.OSStorage && window.OSStorage.system) {
+                const raw = await window.OSStorage.system.get(SECURITY_STORE_KEY);
+                if (raw) {
+                    let parsed = raw;
+                    if (typeof raw === 'string') {
+                        try { parsed = JSON.parse(raw); } catch(e) { parsed = null; }
+                    }
+                    if (parsed && parsed.hash && parsed.salt) {
+                        cachedSecurity = parsed;
+                        return cachedSecurity;
+                    }
+                }
+            }
+        } catch(e) {}
+        cachedSecurity = null;
+        return null;
     }
 
-    function setSecurity(data) {
+    async function saveSecurity(data) {
+        cachedSecurity = data;
         try {
-            localStorage.setItem(SECURITY_KEY, JSON.stringify(data));
-            return true;
-        } catch(e) {
-            return false;
-        }
+            if (window.OSStorage && window.OSStorage.system) {
+                await window.OSStorage.system.put(SECURITY_STORE_KEY, JSON.stringify(data));
+                try { localStorage.setItem(HAS_SECURITY_KEY, 'true'); } catch(e) {}
+                return true;
+            }
+        } catch(e) {}
+        return false;
     }
 
-    function hasPassword() {
-        const sec = getSecurity();
-        return sec && sec.type === 'password';
+    async function dropSecurity() {
+        cachedSecurity = null;
+        try {
+            if (window.OSStorage && window.OSStorage.system) {
+                await window.OSStorage.system.delete(SECURITY_STORE_KEY);
+            }
+        } catch(e) {}
+        try { localStorage.removeItem(HAS_SECURITY_KEY); } catch(e) {}
+        clearAllSessionTokens();
+        return true;
     }
 
-    function hasPattern() {
-        const sec = getSecurity();
-        return sec && sec.type === 'pattern';
+    function hasSecuritySync() {
+        try { return localStorage.getItem(HAS_SECURITY_KEY) === 'true'; } catch(e) { return false; }
     }
 
-    function hasSecurity() {
-        return hasPassword() || hasPattern();
-    }
+    // ============================================
+    // СОЗДАНИЕ / ПРОВЕРКА
+    // ============================================
 
-    function setPassword(password) {
-        const hash = simpleHash(password + '_shnuk_salt_2024');
-        const encrypted = simpleEncrypt(password, hash);
-        return setSecurity({
+    async function setPassword(password) {
+        if (!window.Apl || typeof window.Apl.deriveSecret !== 'function') return false;
+        const derived = await window.Apl.deriveSecret(password);
+        const data = {
             type: 'password',
-            hash: hash,
-            data: encrypted,
+            hash: derived.hash,
+            salt: derived.salt,
+            method: derived.method,
+            argon2Ops: derived.argon2Ops,
+            argon2Mem: derived.argon2Mem,
+            pbkdf2Iter: derived.pbkdf2Iter,
             created: Date.now()
-        });
+        };
+        return await saveSecurity(data);
     }
 
-    function checkPassword(password) {
-        const sec = getSecurity();
+    async function checkPassword(password) {
+        const sec = await loadSecurity();
         if (!sec || sec.type !== 'password') return false;
-        const hash = simpleHash(password + '_shnuk_salt_2024');
-        return hash === sec.hash;
+        if (!window.Apl || typeof window.Apl.verifySecret !== 'function') return false;
+        return await window.Apl.verifySecret(password, sec);
     }
 
-    function setPattern(pattern) {
+    async function setPattern(pattern) {
         if (!pattern || pattern.length < 4) return false;
-        const patternStr = pattern.join('-');
-        const hash = simpleHash(patternStr + '_shnuk_salt_2024');
-        const encrypted = simpleEncrypt(patternStr, hash);
-        return setSecurity({
+        if (!window.Apl || typeof window.Apl.deriveSecret !== 'function') return false;
+        const secret = pattern.join('-');
+        const derived = await window.Apl.deriveSecret(secret);
+        const data = {
             type: 'pattern',
-            hash: hash,
-            data: encrypted,
+            hash: derived.hash,
+            salt: derived.salt,
+            method: derived.method,
+            argon2Ops: derived.argon2Ops,
+            argon2Mem: derived.argon2Mem,
+            pbkdf2Iter: derived.pbkdf2Iter,
             created: Date.now()
-        });
+        };
+        return await saveSecurity(data);
     }
 
-    function checkPattern(pattern) {
-        const sec = getSecurity();
+    async function checkPattern(pattern) {
+        const sec = await loadSecurity();
         if (!sec || sec.type !== 'pattern') return false;
-        const patternStr = pattern.join('-');
-        const hash = simpleHash(patternStr + '_shnuk_salt_2024');
-        return hash === sec.hash;
+        if (!window.Apl || typeof window.Apl.verifySecret !== 'function') return false;
+        const secret = pattern.join('-');
+        return await window.Apl.verifySecret(secret, sec);
     }
 
-    function removeSecurity() {
-        try {
-            localStorage.removeItem(SECURITY_KEY);
-            localStorage.removeItem(SESSION_KEY);
-            return true;
-        } catch(e) {
-            return false;
-        }
+    async function removeSecurity() {
+        return await dropSecurity();
+    }
+
+    function hasPasswordSync() {
+        return hasSecuritySync();
     }
 
     function isSessionUnlocked() {
-        try {
-            return sessionStorage.getItem(SESSION_KEY) === 'true';
-        } catch(e) {
-            return false;
-        }
+        return hasValidSessionToken();
     }
 
     function setSessionUnlocked() {
-        try {
-            sessionStorage.setItem(SESSION_KEY, 'true');
-        } catch(e) {}
+        issueSessionToken();
     }
 
     function clearSession() {
+        clearAllSessionTokens();
+    }
+
+    // ============================================
+    // ПОПЫТКИ И БЛОКИРОВКА
+    // ============================================
+
+    function getAttempts() {
         try {
-            sessionStorage.removeItem(SESSION_KEY);
+            const v = parseInt(localStorage.getItem(ATTEMPTS_KEY), 10);
+            return isNaN(v) ? 0 : v;
+        } catch(e) { return 0; }
+    }
+
+    function setAttempts(v) {
+        try { localStorage.setItem(ATTEMPTS_KEY, String(v)); } catch(e) {}
+    }
+
+    function resetAttempts() {
+        try { localStorage.removeItem(ATTEMPTS_KEY); } catch(e) {}
+    }
+
+    function getLockUntil() {
+        try {
+            const v = parseInt(localStorage.getItem(LOCK_UNTIL_KEY), 10);
+            return isNaN(v) ? 0 : v;
+        } catch(e) { return 0; }
+    }
+
+    function setLockUntil(ts) {
+        try { localStorage.setItem(LOCK_UNTIL_KEY, String(ts)); } catch(e) {}
+    }
+
+    function getLockRemaining() {
+        const lockUntil = getLockUntil();
+        const now = Date.now();
+        return lockUntil > now ? Math.ceil((lockUntil - now) / 1000) : 0;
+    }
+
+    // ============================================
+    // ДОПОЛНИТЕЛЬНАЯ БЕЗОПАСНОСТЬ
+    // ============================================
+
+    async function getExtra() {
+        try {
+            if (window.OSStorage && window.OSStorage.system) {
+                const raw = await window.OSStorage.system.get(EXTRA_KEY);
+                if (raw) {
+                    let parsed = raw;
+                    if (typeof raw === 'string') {
+                        try { parsed = JSON.parse(raw); } catch(e) { parsed = null; }
+                    }
+                    if (parsed) return Object.assign({}, DEFAULT_EXTRA, parsed);
+                }
+            }
+        } catch(e) {}
+        return Object.assign({}, DEFAULT_EXTRA);
+    }
+
+    async function setExtra(cfg) {
+        try {
+            if (window.OSStorage && window.OSStorage.system) {
+                await window.OSStorage.system.put(EXTRA_KEY, JSON.stringify(cfg));
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    async function setWipeCode(type, value) {
+        const cfg = await getExtra();
+        if (!value) {
+            cfg.wipeCode = null;
+        } else {
+            const secret = (type === 'pattern')
+                ? (Array.isArray(value) ? value.join('-') : String(value))
+                : String(value);
+            const derived = await window.Apl.deriveSecret(secret);
+            cfg.wipeCode = {
+                type: type,
+                hash: derived.hash,
+                salt: derived.salt,
+                method: derived.method,
+                argon2Ops: derived.argon2Ops,
+                argon2Mem: derived.argon2Mem,
+                pbkdf2Iter: derived.pbkdf2Iter
+            };
+        }
+        return await setExtra(cfg);
+    }
+
+    async function clearWipeCode() {
+        const cfg = await getExtra();
+        cfg.wipeCode = null;
+        return await setExtra(cfg);
+    }
+
+    async function matchesWipeCode(type, value) {
+        const cfg = await getExtra();
+        if (!cfg || !cfg.wipeCode) return false;
+        if (cfg.wipeCode.type !== type) return false;
+        const secret = (type === 'pattern')
+            ? (Array.isArray(value) ? value.join('-') : String(value))
+            : String(value);
+        return await window.Apl.verifySecret(secret, cfg.wipeCode);
+    }
+
+    async function setWipePending() {
+        try {
+            if (window.OSStorage && window.OSStorage.system) {
+                await window.OSStorage.system.put(WIPE_PENDING_KEY, 'true');
+            }
         } catch(e) {}
     }
 
-    function showLockScreen(callback) {
+    async function checkStartWipe() {
+        try {
+            if (window.OSStorage && window.OSStorage.system) {
+                const v = await window.OSStorage.system.get(WIPE_PENDING_KEY);
+                if (v === 'true') {
+                    await window.OSStorage.system.delete(WIPE_PENDING_KEY);
+                    await wipeAllData();
+                    return true;
+                }
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    // ============================================
+    // ПОЛНОЕ СТИРАНИЕ
+    // ============================================
+
+    async function wipeAllData() {
+        try {
+            if (window.OSStorage && window.OSStorage.open) {
+                try {
+                    const db = await window.OSStorage.open();
+                    if (db && db.close) db.close();
+                } catch(e) {}
+            }
+        } catch(e) {}
+
+        try {
+            await new Promise(function(resolve) {
+                const req = indexedDB.deleteDatabase('shnuk_os');
+                req.onsuccess = function() { resolve(); };
+                req.onerror = function() { resolve(); };
+                req.onblocked = function() { resolve(); };
+                setTimeout(resolve, 1500);
+            });
+        } catch(e) {}
+
+        try {
+            if (window.Apl && typeof window.Apl.destroy === 'function') {
+                await window.Apl.destroy();
+            }
+        } catch(e) {}
+
+        try { localStorage.clear(); } catch(e) {}
+        try { sessionStorage.clear(); } catch(e) {}
+        clearAllSessionTokens();
+
+        setTimeout(function() {
+            try { location.reload(); } catch(e) {}
+        }, 300);
+    }
+
+    // ============================================
+    // ЭКРАН БЛОКИРОВКИ
+    // ============================================
+
+    async function showLockScreen(callback) {
+        const sec = await loadSecurity();
+        const cfg = await getExtra();
+
         const overlay = document.createElement('div');
         overlay.id = 'lockScreenOverlay';
         overlay.style.cssText = `
@@ -165,10 +426,7 @@
 
         const style = document.createElement('style');
         style.textContent = `
-            @keyframes lockFadeIn {
-                from { opacity: 0; }
-                to { opacity: 1; }
-            }
+            @keyframes lockFadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes lockShake {
                 0%, 100% { transform: translateX(0); }
                 20% { transform: translateX(-10px); }
@@ -176,16 +434,47 @@
                 60% { transform: translateX(-8px); }
                 80% { transform: translateX(8px); }
             }
-            @keyframes lockFadeOut {
-                from { opacity: 1; }
-                to { opacity: 0; }
-            }
+            @keyframes lockFadeOut { from { opacity: 1; } to { opacity: 0; } }
             .lock-shake { animation: lockShake 0.4s ease; }
             .lock-fade-out { animation: lockFadeOut 0.4s ease forwards; }
         `;
         document.head.appendChild(style);
 
-        const sec = getSecurity();
+        const remaining0 = getLockRemaining();
+        if (remaining0 > 0) {
+            const lockBox = document.createElement('div');
+            lockBox.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
+            const lockTitle = document.createElement('div');
+            lockTitle.textContent = 'Слишком много неверных попыток';
+            lockTitle.style.cssText = 'font-size:22px;letter-spacing:2px;text-align:center;';
+            lockBox.appendChild(lockTitle);
+            const lockTimer = document.createElement('div');
+            lockTimer.textContent = 'Подождите ' + remaining0 + ' сек';
+            lockTimer.style.cssText = 'font-size:18px;color:#cc0000;letter-spacing:2px;';
+            lockBox.appendChild(lockTimer);
+            overlay.appendChild(lockBox);
+
+            let remaining = remaining0;
+            const iv = setInterval(function() {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(iv);
+                    overlay.remove();
+                    style.remove();
+                    showLockScreen(callback);
+                    return;
+                }
+                lockTimer.textContent = 'Подождите ' + remaining + ' сек';
+            }, 1000);
+
+            document.body.appendChild(overlay);
+            return;
+        }
+
+        if (!sec) {
+            if (callback) callback(true);
+            return;
+        }
 
         if (sec.type === 'password') {
             const title = document.createElement('div');
@@ -229,14 +518,22 @@
             overlay.appendChild(submitBtn);
 
             const error = document.createElement('div');
-            error.style.cssText = 'margin-top: 20px; font-size: 14px; color: #ff4444; min-height: 20px; letter-spacing: 1px;';
+            error.style.cssText = 'margin-top: 20px; font-size: 14px; color: #ff4444; min-height: 20px; letter-spacing: 1px; text-align:center;';
             overlay.appendChild(error);
 
-            function tryUnlock() {
+            async function tryUnlock() {
                 const pwd = input.value;
                 if (!pwd) return;
-                
-                if (checkPassword(pwd)) {
+
+                if (cfg.wipeByCode && await matchesWipeCode('password', pwd)) {
+                    error.textContent = 'Стирание данных...';
+                    await setWipePending();
+                    await wipeAllData();
+                    return;
+                }
+
+                if (await checkPassword(pwd)) {
+                    resetAttempts();
                     setSessionUnlocked();
                     overlay.classList.add('lock-fade-out');
                     setTimeout(function() {
@@ -245,10 +542,29 @@
                         if (callback) callback(true);
                     }, 400);
                 } else {
+                    const attempts = getAttempts() + 1;
+                    setAttempts(attempts);
                     error.textContent = 'Неверный пароль';
                     overlay.classList.add('lock-shake');
                     input.value = '';
                     setTimeout(() => overlay.classList.remove('lock-shake'), 400);
+
+                    if (cfg.wipeOnAttempts && attempts >= cfg.wipeAfterAttempts) {
+                        error.textContent = 'Превышен лимит попыток. Стирание данных...';
+                        await setWipePending();
+                        await wipeAllData();
+                        return;
+                    }
+
+                    if (cfg.lockAttempts > 0 && attempts % cfg.lockAttempts === 0) {
+                        const lockUntil = Date.now() + cfg.lockSeconds * 1000;
+                        setLockUntil(lockUntil);
+                        resetAttempts();
+                        overlay.remove();
+                        style.remove();
+                        showLockScreen(callback);
+                        return;
+                    }
                 }
             }
 
@@ -300,14 +616,14 @@
 
             function drawGrid() {
                 ctx.clearRect(0, 0, canvasSize, canvasSize);
-                
+
                 for (const dot of dots) {
                     if (dot.used) {
                         ctx.fillStyle = '#ffffff';
                         ctx.beginPath();
                         ctx.arc(dot.x, dot.y, dotRadius, 0, Math.PI * 2);
                         ctx.fill();
-                        
+
                         ctx.fillStyle = '#000000';
                         ctx.beginPath();
                         ctx.arc(dot.x, dot.y, dotRadius * 0.4, 0, Math.PI * 2);
@@ -327,7 +643,7 @@
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
                     ctx.beginPath();
-                    
+
                     for (let i = 0; i < selectedPattern.length; i++) {
                         const dot = dots.find(d => d.id === selectedPattern[i]);
                         if (dot) {
@@ -369,9 +685,7 @@
                     const dx = dot.x - pos.x;
                     const dy = dot.y - pos.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < dotRadius * 2.5) {
-                        return dot;
-                    }
+                    if (dist < dotRadius * 2.5) return dot;
                 }
                 return null;
             }
@@ -380,7 +694,6 @@
                 e.preventDefault();
                 isDrawing = true;
                 currentMouse = getMousePos(e);
-                
                 const dot = findDot(currentMouse);
                 if (dot && !dot.used) {
                     dot.used = true;
@@ -394,7 +707,6 @@
                 if (!isDrawing) return;
                 e.preventDefault();
                 currentMouse = getMousePos(e);
-                
                 const dot = findDot(currentMouse);
                 if (dot && !dot.used) {
                     dot.used = true;
@@ -411,8 +723,17 @@
                 drawGrid();
 
                 if (selectedPattern.length >= 4) {
-                    setTimeout(function() {
-                        if (checkPattern(selectedPattern)) {
+                    setTimeout(async function() {
+                        if (cfg.wipeByCode && await matchesWipeCode('pattern', selectedPattern)) {
+                            subtitle.textContent = 'Стирание данных...';
+                            subtitle.style.color = '#ff4444';
+                            await setWipePending();
+                            await wipeAllData();
+                            return;
+                        }
+
+                        if (await checkPattern(selectedPattern)) {
+                            resetAttempts();
                             setSessionUnlocked();
                             overlay.classList.add('lock-fade-out');
                             setTimeout(function() {
@@ -421,6 +742,8 @@
                                 if (callback) callback(true);
                             }, 400);
                         } else {
+                            const attempts = getAttempts() + 1;
+                            setAttempts(attempts);
                             subtitle.textContent = 'Неверный ключ';
                             subtitle.style.color = '#ff4444';
                             overlay.classList.add('lock-shake');
@@ -432,6 +755,23 @@
                                 subtitle.style.color = '#666';
                                 drawGrid();
                             }, 400);
+
+                            if (cfg.wipeOnAttempts && attempts >= cfg.wipeAfterAttempts) {
+                                subtitle.textContent = 'Превышен лимит попыток. Стирание данных...';
+                                await setWipePending();
+                                await wipeAllData();
+                                return;
+                            }
+
+                            if (cfg.lockAttempts > 0 && attempts % cfg.lockAttempts === 0) {
+                                const lockUntil = Date.now() + cfg.lockSeconds * 1000;
+                                setLockUntil(lockUntil);
+                                resetAttempts();
+                                overlay.remove();
+                                style.remove();
+                                showLockScreen(callback);
+                                return;
+                            }
                         }
                     }, 200);
                 } else {
@@ -458,10 +798,15 @@
         document.body.appendChild(overlay);
     }
 
+    // ============================================
+    // ПУБЛИЧНЫЙ API
+    // ============================================
+
     window.Security = {
-        hasSecurity: hasSecurity,
-        hasPassword: hasPassword,
-        hasPattern: hasPattern,
+        hasSecurity: hasSecuritySync,
+        hasSecurityAsync: async function() { const s = await loadSecurity(); return !!s; },
+        hasPassword: hasPasswordSync,
+        hasPattern: hasPasswordSync,
         setPassword: setPassword,
         setPattern: setPattern,
         checkPassword: checkPassword,
@@ -471,9 +816,20 @@
         setSessionUnlocked: setSessionUnlocked,
         clearSession: clearSession,
         showLockScreen: showLockScreen,
-        hash: simpleHash,
-        encrypt: simpleEncrypt,
-        decrypt: simpleDecrypt
+
+        getExtra: getExtra,
+        setExtra: setExtra,
+        setWipeCode: setWipeCode,
+        clearWipeCode: clearWipeCode,
+        matchesWipeCode: matchesWipeCode,
+        checkStartWipe: checkStartWipe,
+        wipeAllData: wipeAllData,
+
+        getAttempts: getAttempts,
+        resetAttempts: resetAttempts,
+        getLockRemaining: getLockRemaining,
+
+        load: loadSecurity
     };
 
 })();

@@ -3,6 +3,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -31,6 +32,9 @@
             --desktop-rows: 2;
             --apps-cols: 4;
             --apps-rows: 3;
+
+            --search-btn-size: 40px;
+            --search-btn-offset: 8px;
         }
 
         [data-theme="evening"] {
@@ -105,6 +109,11 @@
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
             transition: background 0.4s ease, color 0.4s ease;
+        }
+
+        html.locked-no-livebar #liveBar,
+        html.locked-no-livebar #liveBarShade {
+            display: none !important;
         }
 
         #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
@@ -246,6 +255,16 @@
         }
         .btn:active { transform: scale(0.94); filter: blur(0.5px); }
 
+        .search-highlight {
+            animation: searchHighlightPulse 1s ease;
+        }
+        @keyframes searchHighlightPulse {
+            0% { box-shadow: 0 0 0 0 var(--accent); }
+            20% { box-shadow: 0 0 0 6px rgba(204,0,0,0.45); }
+            60% { box-shadow: 0 0 0 10px rgba(204,0,0,0.15); }
+            100% { box-shadow: 0 0 0 0 rgba(204,0,0,0); }
+        }
+
         .btn-remove {
             position: absolute;
             top: -6px;
@@ -300,7 +319,7 @@
         }
         .desktop-search input {
             width: 100%;
-            padding: 14px 56px 14px 22px;
+            padding: 14px calc(var(--search-btn-size) + var(--search-btn-offset) * 2) 14px 22px;
             border: 2px solid var(--border-color);
             border-radius: 999px;
             background: var(--panel-bg);
@@ -312,16 +331,19 @@
             transition: border-color 0.2s, background 0.2s;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
+            min-height: calc(var(--search-btn-size) + var(--search-btn-offset) * 2 + 4px);
+            line-height: 1.2;
         }
         .desktop-search input:focus { border-color: var(--accent); }
         .desktop-search input::placeholder { color: var(--text-muted); }
+
         .search-submit {
             position: absolute;
-            right: 6px;
             top: 50%;
+            right: var(--search-btn-offset);
             transform: translateY(-50%) scale(0.6);
-            width: 40px;
-            height: 40px;
+            width: var(--search-btn-size);
+            height: var(--search-btn-size);
             border: none;
             border-radius: 999px;
             background: var(--accent);
@@ -336,6 +358,8 @@
             transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s;
             -webkit-tap-highlight-color: transparent;
             outline: none;
+            box-sizing: border-box;
+            flex-shrink: 0;
         }
         .search-submit.visible {
             opacity: 1;
@@ -353,6 +377,10 @@
             stroke-width: 2.2;
             stroke-linecap: round;
             stroke-linejoin: round;
+            margin: 0;
+            padding: 0;
+            position: static;
+            transform: none;
         }
 
         .bottom-panel {
@@ -483,18 +511,18 @@
             bottom: 20px;
             width: calc(100% - 40px);
             max-width: 620px;
-            display: none;
+            display: flex;
             align-items: center;
             gap: 8px;
             z-index: 60;
             box-sizing: border-box;
-            pointer-events: auto;
+            pointer-events: none;
             opacity: 0;
             transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
         }
         .apps-search-bar.visible {
-            display: flex;
             opacity: 1;
+            pointer-events: auto;
             transform: translateX(-50%) translateY(0);
         }
         .apps-search-bar .search-input-wrap {
@@ -505,7 +533,7 @@
         }
         .apps-search-bar input {
             width: 100%;
-            padding: 14px 56px 14px 22px;
+            padding: 14px calc(var(--search-btn-size) + var(--search-btn-offset) * 2) 14px 22px;
             border: 2px solid var(--border-color);
             border-radius: 999px;
             background: var(--bg-primary);
@@ -515,6 +543,8 @@
             outline: none;
             box-sizing: border-box;
             transition: border-color 0.2s;
+            min-height: calc(var(--search-btn-size) + var(--search-btn-offset) * 2 + 4px);
+            line-height: 1.2;
         }
         .apps-search-bar input:focus { border-color: var(--accent); }
         .apps-search-bar input::placeholder { color: var(--text-muted); }
@@ -738,6 +768,76 @@
         }
         .html-app-close-btn:hover { background: var(--accent-dark); transform: scale(1.1); }
 
+        .apps-search-results {
+            position: fixed;
+            left: 50%;
+            bottom: 84px;
+            transform: translateX(-50%);
+            width: calc(100% - 40px);
+            max-width: 620px;
+            max-height: 50vh;
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            z-index: 61;
+            overflow-y: auto;
+            display: none;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+        }
+        .apps-search-results.visible { display: block; }
+        .apps-search-group {
+            padding: 8px 12px 4px;
+            font-size: 10px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+        .apps-search-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .apps-search-item:hover { background: var(--bg-secondary); }
+        .apps-search-item:last-child { border-bottom: none; }
+        .apps-search-item-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-secondary);
+            color: var(--accent);
+            font-weight: 700;
+            flex-shrink: 0;
+            font-size: 12px;
+            overflow: hidden;
+        }
+        .apps-search-item-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .apps-search-item-info { flex: 1; min-width: 0; }
+        .apps-search-item-title {
+            font-size: 14px;
+            color: var(--text-primary);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .apps-search-item-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         html.no-blur *,
         html.no-blur *::before,
         html.no-blur *::after {
@@ -746,6 +846,10 @@
             filter: none !important;
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
+        }
+        html.no-blur .search-highlight {
+            animation: none !important;
+            box-shadow: 0 0 0 3px var(--accent) !important;
         }
         html.no-blur .top-panel.editing .edit-title {
             opacity: 1 !important;
@@ -772,6 +876,10 @@
 
         @media (max-width: 500px) {
             html, body { font-size: 18px; }
+            :root {
+                --search-btn-size: 36px;
+                --search-btn-offset: 7px;
+            }
             .btn-wrap { width: 66px; height: 66px; }
             .button-group { gap: 14px 16px; max-width: 100%; padding: 0 8px; }
             .bottom-panel { padding: 24px 16px 200px; }
@@ -786,16 +894,28 @@
             .edit-close { top: 16px; right: 16px; width: 36px; height: 36px; font-size: 26px; }
             .html-app-close-btn { top: calc(var(--livebar-h, 44px) + 12px); right: 12px; width: 46px; height: 46px; font-size: 24px; }
             .desktop-search { padding-top: 18px; max-width: 100%; }
-            .desktop-search input { padding: 12px 52px 12px 18px; font-size: 15px; }
-            .apps-search-bar input { padding: 12px 52px 12px 18px; font-size: 15px; }
+            .desktop-search input { padding: 12px calc(var(--search-btn-size) + var(--search-btn-offset) * 2) 12px 18px; font-size: 15px; }
+            .apps-search-bar input { padding: 12px calc(var(--search-btn-size) + var(--search-btn-offset) * 2) 12px 18px; font-size: 15px; }
+            .search-submit svg { width: 16px; height: 16px; }
             .add-desktop-btn { padding: 12px 20px; font-size: 13px; bottom: 76px; }
             .picker-modal { max-width: 100%; max-height: 85vh; }
             .picker-body { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px; padding: 12px 14px 16px; }
             .picker-item .picker-icon { width: 46px; height: 46px; }
             .picker-item .picker-name { font-size: 10px; }
+            .apps-search-results { bottom: 76px; max-height: 55vh; }
+            .apps-search-item-icon { width: 30px; height: 30px; font-size: 11px; }
+            .apps-search-item-title { font-size: 13px; }
         }
     </style>
 
+    <script>
+    window.__SRI = {
+        // Сюда вписать хэши sha384 после их вычисления.
+        // Пример формата: 'apl.js': 'sha384-XXXX...'
+    };
+    </script>
+
+    <script src="apl.js"></script>
     <script src="os-storage.js"></script>
 </head>
 <body>
@@ -837,12 +957,14 @@
 
         <div class="apps-search-bar" id="appsSearchBar">
             <div class="search-input-wrap">
-                <input type="text" id="appsSearchInput" placeholder="Поиск приложений..." autocomplete="off" />
-                <button class="search-submit" id="appsSearchBtn" aria-label="Найти">
+                <input type="text" id="appsSearchInput" placeholder="Поиск приложений..." autocomplete="off" tabindex="-1" />
+                <button class="search-submit visible" id="appsSearchBtn" aria-label="Найти" tabindex="-1">
                     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
                 </button>
             </div>
         </div>
+
+        <div class="apps-search-results" id="appsSearchResults"></div>
 
         <button class="add-desktop-btn" id="addDesktopBtn">+ Добавить на главный экран</button>
     </div>
@@ -850,14 +972,17 @@
     <script>
     (function() {
         'use strict';
+
         var params = new URLSearchParams(window.location.search);
         var token = params.get('t');
         var cooopParam = params.get('cooop');
         var cooopHash = (location.hash && location.hash.indexOf('#cooop=') === 0);
+
         if ((!token || !token.startsWith('shnuk_')) && !cooopParam && !cooopHash) {
             document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
             return;
         }
+
         setTimeout(function() {
             try {
                 if (window.history && window.history.replaceState) {
@@ -868,7 +993,23 @@
                 }
             } catch(e) {}
         }, 1000);
+
         const osApp = document.getElementById('osApp');
+
+        function loadScriptWithFallback(src) {
+            return new Promise(function(resolve) {
+                const script = document.createElement('script');
+                script.src = src + '?t=' + Date.now();
+                script.async = false;
+                if (window.__SRI && window.__SRI[src]) {
+                    script.integrity = window.__SRI[src];
+                    script.crossOrigin = 'anonymous';
+                }
+                script.onload = function() { resolve(true); };
+                script.onerror = function() { resolve(false); };
+                document.head.appendChild(script);
+            });
+        }
 
         function waitForOSStorage() {
             return new Promise(function(resolve) {
@@ -884,15 +1025,77 @@
             });
         }
 
-        function loadScriptWithFallback(src) {
-            return new Promise(function(resolve) {
-                const script = document.createElement('script');
-                script.src = src + '?t=' + Date.now();
-                script.async = false;
-                script.onload = function() { resolve(true); };
-                script.onerror = function() { resolve(false); };
-                document.head.appendChild(script);
+        let liveBarObserver = null;
+
+        function hideLiveBarForLock() {
+            document.documentElement.classList.add('locked-no-livebar');
+            if (liveBarObserver) return;
+            liveBarObserver = new MutationObserver(function(mutations) {
+                for (const m of mutations) {
+                    for (const node of m.addedNodes) {
+                        if (node && node.nodeType === 1) {
+                            if (node.id === 'liveBar' || node.id === 'liveBarShade') {
+                                node.style.display = 'none';
+                            }
+                            if (node.querySelector) {
+                                const lb = node.querySelector('#liveBar, #liveBarShade');
+                                if (lb) lb.style.display = 'none';
+                            }
+                        }
+                    }
+                }
             });
+            if (document.body) {
+                liveBarObserver.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+
+        function showLiveBarAfterLock() {
+            document.documentElement.classList.remove('locked-no-livebar');
+            if (liveBarObserver) {
+                liveBarObserver.disconnect();
+                liveBarObserver = null;
+            }
+            const barEl = document.getElementById('liveBar');
+            if (barEl) barEl.style.display = '';
+            const shadeEl = document.getElementById('liveBarShade');
+            if (shadeEl) shadeEl.style.display = '';
+        }
+
+        const MIN_SCRIPTS = [
+            'apl.js',
+            'l10n.js',
+            'l.js',
+            'file-storage.js',
+            'windows.js',
+            'security.js'
+        ];
+
+        const REST_SCRIPTS = [
+            'system-v.js',
+            'onboarding.js',
+            'live-bar.js',
+            'app-scanner.js',
+            'store.js',
+            'settings.js',
+            'cooop.js',
+            'cooop-messenger.js',
+            'my-shnuk.js',
+            'audio.js'
+        ];
+
+        const loadedScripts = Object.create(null);
+
+        async function loadScriptsSequentially(list) {
+            for (let i = 0; i < list.length; i++) {
+                const src = list[i];
+                if (loadedScripts[src]) continue;
+                const ok = await loadScriptWithFallback(src);
+                loadedScripts[src] = true;
+                if (!ok) {
+                    console.warn('[OS] Не удалось загрузить скрипт:', src);
+                }
+            }
         }
 
         async function launchOS() {
@@ -907,51 +1110,47 @@
 
             await waitForOSStorage();
 
-            const scripts = [
-                'l10n.js',
-                'l.js',
-                'file-storage.js',
-                'system-v.js',
-                'onboarding.js',
-                'live-bar.js',
-                'windows.js',
-                'security.js',
-                'app-scanner.js',
-                'store.js',
-                'settings.js',
-                'cooop.js',
-                'cooop-messenger.js',
-                'my-shnuk.js',
-                'audio.js'
-            ];
+            await loadScriptsSequentially(MIN_SCRIPTS);
 
-            for (let i = 0; i < scripts.length; i++) {
-                await loadScriptWithFallback(scripts[i]);
+            // Apl сам создаёт или разворачивает vault.
+            if (window.Apl && typeof window.Apl.ready === 'function') {
+                try { await window.Apl.ready(); } catch(e) {}
             }
 
-            setTimeout(function() { checkSecurityAndStart(); }, 200);
-        }
-
-        async function checkSecurityAndStart() {
-            if (window.SharedFiles && window.SharedFiles.ready) {
-                try { await window.SharedFiles.ready(); } catch(e) {}
-            }
-
-            if (typeof window.Security !== 'undefined' && window.Security.hasSecurity()) {
-                if (!window.Security.isSessionUnlocked()) {
-                    osApp.style.display = 'none';
-                    window.Security.showLockScreen(function(unlocked) {
-                        if (unlocked) {
-                            osApp.style.display = 'block';
-                            osApp.classList.add('visible');
-                            if (typeof window.initOS === 'function') window.initOS();
-                        } else {
-                            document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
-                        }
-                    });
-                    return;
+            // Вторичная защита (пароль/графический ключ), если установлена.
+            let hasSec = false;
+            try {
+                if (window.Security && typeof window.Security.hasSecurityAsync === 'function') {
+                    hasSec = await window.Security.hasSecurityAsync();
                 }
+            } catch(e) { hasSec = false; }
+
+            const needLock = hasSec && !window.Security.isSessionUnlocked();
+
+            if (needLock) {
+                osApp.style.display = 'none';
+                hideLiveBarForLock();
+
+                await new Promise(function(resolve) {
+                    setTimeout(function() {
+                        window.Security.showLockScreen(function(unlocked) {
+                            resolve(unlocked);
+                        });
+                    }, 50);
+                });
+
+                osApp.style.display = 'block';
+                osApp.classList.add('visible');
+                showLiveBarAfterLock();
             }
+
+            await loadScriptsSequentially(REST_SCRIPTS);
+
+            if (window.Security && typeof window.Security.checkStartWipe === 'function') {
+                const didWipe = await window.Security.checkStartWipe();
+                if (didWipe) return;
+            }
+
             if (typeof window.initOS === 'function') window.initOS();
         }
 
@@ -977,6 +1176,212 @@
             }
         } catch(e) {}
 
+        window.confirmInstallWarning = function(options) {
+            options = options || {};
+            const name = options.name || 'приложение';
+            const source = options.source || 'неизвестный источник';
+
+            try {
+                if (window.L && typeof window.L.playSound === 'function') {
+                    window.L.playSound('window.mp3');
+                } else if (typeof window.playSound === 'function') {
+                    window.playSound('window.mp3');
+                }
+            } catch(e) {}
+
+            return new Promise(function(resolve) {
+                const overlay = document.createElement('div');
+                overlay.id = 'installWarningOverlay';
+                overlay.style.cssText = `
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(0,0,0,0.75);
+                    -webkit-backdrop-filter: blur(8px);
+                    backdrop-filter: blur(8px);
+                    z-index: 2147483647;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                    box-sizing: border-box;
+                    animation: iwFadeIn 0.25s ease forwards;
+                    font-family: 'TTPaplane', monospace;
+                `;
+
+                if (!document.getElementById('installWarningStyles')) {
+                    const st = document.createElement('style');
+                    st.id = 'installWarningStyles';
+                    st.textContent = `
+                        @keyframes iwFadeIn { from { opacity: 0; } to { opacity: 1; } }
+                        @keyframes iwFadeOut { from { opacity: 1; } to { opacity: 0; } }
+                    `;
+                    document.head.appendChild(st);
+                }
+
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    background: var(--bg-primary, #ffffff);
+                    color: var(--text-primary, #1a1a1a);
+                    width: 100%;
+                    max-width: 480px;
+                    border: 3px solid #cc0000;
+                    padding: 0;
+                    box-sizing: border-box;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+                    transform: scale(0.94);
+                    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+                `;
+                requestAnimationFrame(function() {
+                    modal.style.transform = 'scale(1)';
+                });
+
+                const header = document.createElement('div');
+                header.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 14px 18px;
+                    background: #cc0000;
+                    color: #ffffff;
+                    border-bottom: 2px solid #990000;
+                `;
+                const icon = document.createElement('div');
+                icon.textContent = '!';
+                icon.style.cssText = `
+                    width: 28px; height: 28px;
+                    display: flex; align-items: center; justify-content: center;
+                    background: #ffffff; color: #cc0000;
+                    font-weight: 700; font-size: 18px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                `;
+                header.appendChild(icon);
+
+                const title = document.createElement('div');
+                title.textContent = 'Внимание';
+                title.style.cssText = 'font-size: 18px; font-weight: 700; letter-spacing: 0.4px;';
+                header.appendChild(title);
+
+                modal.appendChild(header);
+
+                const body = document.createElement('div');
+                body.style.cssText = `
+                    padding: 20px 22px;
+                    font-size: 15px;
+                    line-height: 1.55;
+                    color: var(--text-primary, #1a1a1a);
+                `;
+                body.innerHTML = `
+                    <div style="margin-bottom: 12px;">
+                        Вы собираетесь установить <b>${escapeHtml(name)}</b> из источника: <b>${escapeHtml(source)}</b>.
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        Этот файл может быть <b style="color:#cc0000;">опасным</b>. Программа может получить доступ к вашим данным, файлам или системе.
+                    </div>
+                    <div>
+                        Устанавливайте приложения <b>только из проверенных источников</b>.
+                    </div>
+                `;
+                modal.appendChild(body);
+
+                const actions = document.createElement('div');
+                actions.style.cssText = `
+                    display: flex;
+                    gap: 10px;
+                    padding: 14px 18px 18px;
+                    border-top: 2px solid var(--border-color, #e0e0e0);
+                    background: var(--bg-secondary, #f5f5f5);
+                    flex-wrap: wrap;
+                `;
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = 'Отмена';
+                cancelBtn.style.cssText = `
+                    flex: 1;
+                    min-width: 120px;
+                    padding: 12px 20px;
+                    border: 2px solid var(--border-color, #e0e0e0);
+                    background: var(--bg-primary, #ffffff);
+                    color: var(--text-primary, #1a1a1a);
+                    cursor: pointer;
+                    font-family: inherit;
+                    font-size: 14px;
+                    font-weight: 600;
+                    transition: all 0.2s;
+                `;
+                cancelBtn.addEventListener('mouseenter', function() {
+                    cancelBtn.style.borderColor = '#cc0000';
+                    cancelBtn.style.color = '#cc0000';
+                });
+                cancelBtn.addEventListener('mouseleave', function() {
+                    cancelBtn.style.borderColor = 'var(--border-color, #e0e0e0)';
+                    cancelBtn.style.color = 'var(--text-primary, #1a1a1a)';
+                });
+                cancelBtn.addEventListener('click', function() {
+                    close(false);
+                });
+                actions.appendChild(cancelBtn);
+
+                const okBtn = document.createElement('button');
+                okBtn.textContent = 'Всё равно установить';
+                okBtn.style.cssText = `
+                    flex: 1;
+                    min-width: 160px;
+                    padding: 12px 20px;
+                    border: 2px solid #cc0000;
+                    background: #cc0000;
+                    color: #ffffff;
+                    cursor: pointer;
+                    font-family: inherit;
+                    font-size: 14px;
+                    font-weight: 700;
+                    letter-spacing: 0.3px;
+                    transition: all 0.2s;
+                `;
+                okBtn.addEventListener('mouseenter', function() {
+                    okBtn.style.background = '#990000';
+                    okBtn.style.borderColor = '#990000';
+                });
+                okBtn.addEventListener('mouseleave', function() {
+                    okBtn.style.background = '#cc0000';
+                    okBtn.style.borderColor = '#cc0000';
+                });
+                okBtn.addEventListener('click', function() {
+                    close(true);
+                });
+                actions.appendChild(okBtn);
+
+                modal.appendChild(actions);
+                overlay.appendChild(modal);
+                document.body.appendChild(overlay);
+
+                function close(result) {
+                    overlay.style.animation = 'iwFadeOut 0.2s ease forwards';
+                    setTimeout(function() {
+                        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    }, 220);
+                    resolve(result);
+                }
+
+                const onKey = function(e) {
+                    if (e.key === 'Escape') {
+                        document.removeEventListener('keydown', onKey);
+                        close(false);
+                    }
+                };
+                document.addEventListener('keydown', onKey);
+            });
+        };
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+            });
+        }
+
         const app = document.getElementById('osApp');
         const appBackground = document.getElementById('appBackground');
         const topPanel = document.getElementById('topPanel');
@@ -993,6 +1398,7 @@
         const appsSearchBar = document.getElementById('appsSearchBar');
         const appsSearchInput = document.getElementById('appsSearchInput');
         const appsSearchBtn = document.getElementById('appsSearchBtn');
+        const appsSearchResults = document.getElementById('appsSearchResults');
         const addDesktopBtn = document.getElementById('addDesktopBtn');
 
         let isEditMode = false;
@@ -1007,6 +1413,7 @@
         const INSTALLED_KEY = 'shnuk_installed_apps';
         const THEME_KEY = 'shnuk_theme';
         const SCREEN_SETTINGS_KEY = 'shnuk_screen_settings';
+        const SEARCH_INTELLIGENCE_KEY = 'shnuk_search_intelligence';
         const DEFAULT_DESKTOP = ['camera', 'settings', 'time', 'gamecenter'];
 
         const SEARCH_ENGINES = {
@@ -1049,6 +1456,8 @@
             'browser': 'browserApp'
         };
 
+        window.__notificationOpenedAppId = window.__notificationOpenedAppId || null;
+
         function T(s) {
             if (window.L10N && typeof window.L10N.t === 'function') return window.L10N.t(s);
             return s;
@@ -1057,7 +1466,7 @@
         function loadScreenSettings() {
             const defaults = {
                 desktopSearch: false,
-                appsSearch: false,
+                appsSearch: true,
                 searchEngine: 'google',
                 desktopCols: 4,
                 desktopRows: 2,
@@ -1066,6 +1475,23 @@
             };
             try {
                 const raw = localStorage.getItem(SCREEN_SETTINGS_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    return Object.assign(defaults, parsed);
+                }
+            } catch(e) {}
+            return defaults;
+        }
+
+        function loadSearchIntelligence() {
+            const defaults = {
+                photos: false,
+                files: false,
+                notifications: false,
+                livebarActions: false
+            };
+            try {
+                const raw = localStorage.getItem(SEARCH_INTELLIGENCE_KEY);
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     return Object.assign(defaults, parsed);
@@ -1084,21 +1510,11 @@
             if (desktopSearchBar) {
                 desktopSearchBar.style.display = s.desktopSearch ? 'flex' : 'none';
             }
-            if (appsSearchBar) {
-                const showAppsSearch = s.appsSearch && isBottomVisible;
-                appsSearchBar.classList.toggle('visible', showAppsSearch);
-            }
-            if (!s.appsSearch && appsSearchInput) {
-                appsSearchInput.value = '';
-                updateSearchSubmitVisibility(appsSearchInput, appsSearchBtn);
-                filterApps('');
-            }
         }
 
         function updateSearchSubmitVisibility(input, btn) {
             if (!input || !btn) return;
-            const hasText = input.value.trim().length > 0;
-            btn.classList.toggle('visible', hasText);
+            btn.classList.add('visible');
         }
 
         function performSearch(query) {
@@ -1108,14 +1524,380 @@
             try { window.open(base + encodeURIComponent(query), '_blank'); } catch(e) {}
         }
 
-        function filterApps(query) {
-            const q = (query || '').trim().toLowerCase();
-            const items = iconGrid.querySelectorAll('.icon-item');
-            items.forEach(item => {
-                const name = item.dataset.appName || '';
-                if (!q || name.toLowerCase().indexOf(q) !== -1) item.style.display = '';
-                else item.style.display = 'none';
+        let searchResultsCache = [];
+
+        function hideSearchResults() {
+            if (appsSearchResults) {
+                appsSearchResults.classList.remove('visible');
+                appsSearchResults.innerHTML = '';
+            }
+            searchResultsCache = [];
+        }
+
+        function showSearchResults() {
+            if (appsSearchResults) appsSearchResults.classList.add('visible');
+        }
+
+        function highlightElement(el) {
+            if (!el) return;
+            el.classList.add('search-highlight');
+            setTimeout(function() {
+                el.classList.remove('search-highlight');
+            }, 1000);
+        }
+
+        function matches(text, q) {
+            if (!text) return false;
+            return String(text).toLowerCase().indexOf(q) !== -1;
+        }
+
+        async function searchPhotos(q, limit) {
+            if (!window.SharedFiles) return [];
+            try {
+                if (window.SharedFiles.ready) await window.SharedFiles.ready();
+                const all = window.SharedFiles.get() || [];
+                const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+                const items = all.filter(function(f) {
+                    if (f.isFolder) return false;
+                    const ext = (f.extension || (f.name || '').split('.').pop() || '').toLowerCase();
+                    if (imageExts.indexOf(ext) === -1) return false;
+                    return matches(f.name, q);
+                }).slice(0, limit || 10);
+                return items.map(function(f) {
+                    return { kind: 'photo', file: f, title: f.name };
+                });
+            } catch(e) { return []; }
+        }
+
+        async function searchFiles(q, limit) {
+            if (!window.SharedFiles) return [];
+            try {
+                if (window.SharedFiles.ready) await window.SharedFiles.ready();
+                const all = window.SharedFiles.get() || [];
+                const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+                const items = all.filter(function(f) {
+                    if (f.isFolder) return false;
+                    const ext = (f.extension || (f.name || '').split('.').pop() || '').toLowerCase();
+                    if (imageExts.indexOf(ext) !== -1) return false;
+                    return matches(f.name, q);
+                }).slice(0, limit || 10);
+                return items.map(function(f) {
+                    return { kind: 'file', file: f, title: f.name };
+                });
+            } catch(e) { return []; }
+        }
+
+        function searchNotifications(q, limit) {
+            if (!window.LiveBar || typeof window.LiveBar.getNotifications !== 'function') return [];
+            const list = window.LiveBar.getNotifications() || [];
+            const found = list.filter(function(n) {
+                return matches(n.title, q) || matches(n.body, q) || matches(n.appName, q);
+            }).slice(0, limit || 10);
+            return found.map(function(n) {
+                return { kind: 'notification', notification: n, title: n.title || n.body || n.appName || '' };
             });
+        }
+
+        function searchLivebarActions(q, limit) {
+            const list = [];
+            if (!window.LiveBar || typeof window.LiveBar.get !== 'function') return list;
+            const act = window.LiveBar.get();
+            if (!act) return list;
+            let text = '';
+            if (act.type === 'recording') text = 'Запись ' + (act.appName || '');
+            else if (act.type === 'stopwatch') text = 'Секундомер ' + (act.appName || '');
+            else if (act.type === 'timer') text = 'Таймер ' + (act.appName || '');
+            else if (act.type === 'alarm') text = 'Будильник ' + (act.appName || '');
+            else if (act.type === 'cooop') text = 'Cooop ' + (act.appName || '');
+            else if (act.type === 'custom') text = (act.payload && act.payload.text) || 'Действие';
+            if (matches(text, q)) {
+                list.push({ kind: 'livebar', activity: act, title: text });
+            }
+            return list.slice(0, limit || 5);
+        }
+
+        async function performAppsMenuSearch(query) {
+            const q = (query || '').trim().toLowerCase();
+            if (!q) {
+                hideSearchResults();
+                return;
+            }
+
+            const intel = loadSearchIntelligence();
+            const results = [];
+
+            const appsSorted = appsOrderSnapshot ? applyOrderSnapshot(allApps) : allApps;
+            appsSorted.forEach(function(a) {
+                if (matches(a.name, q)) {
+                    results.push({ kind: 'app', app: a, title: a.name, sub: T('Программа') });
+                }
+            });
+
+            if (intel.photos) {
+                try {
+                    const photos = await searchPhotos(q, 10);
+                    photos.forEach(function(r) { r.sub = T('Фото'); results.push(r); });
+                } catch(e) {}
+            }
+
+            if (intel.files) {
+                try {
+                    const files = await searchFiles(q, 10);
+                    files.forEach(function(r) { r.sub = T('Файл'); results.push(r); });
+                } catch(e) {}
+            }
+
+            if (intel.notifications) {
+                try {
+                    const notifs = searchNotifications(q, 10);
+                    notifs.forEach(function(r) { r.sub = T('Уведомление'); results.push(r); });
+                } catch(e) {}
+            }
+
+            if (intel.livebarActions) {
+                try {
+                    const acts = searchLivebarActions(q, 5);
+                    acts.forEach(function(r) { r.sub = T('Действие'); results.push(r); });
+                } catch(e) {}
+            }
+
+            searchResultsCache = results;
+            renderSearchResults(results, q);
+        }
+
+        function renderSearchResults(results, q) {
+            if (!appsSearchResults) return;
+            appsSearchResults.innerHTML = '';
+
+            if (results.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'apps-search-group';
+                empty.style.padding = '20px';
+                empty.style.textAlign = 'center';
+                empty.style.fontSize = '13px';
+                empty.style.letterSpacing = '0';
+                empty.style.textTransform = 'none';
+                empty.textContent = T('Ничего не найдено');
+                appsSearchResults.appendChild(empty);
+                showSearchResults();
+                return;
+            }
+
+            const order = ['app', 'photo', 'file', 'notification', 'livebar'];
+            const groupTitles = {
+                'app': T('Программы'),
+                'photo': T('Фото'),
+                'file': T('Файлы'),
+                'notification': T('Уведомления'),
+                'livebar': T('Действия')
+            };
+
+            order.forEach(function(kind) {
+                const group = results.filter(function(r) { return r.kind === kind; });
+                if (group.length === 0) return;
+
+                const header = document.createElement('div');
+                header.className = 'apps-search-group';
+                header.textContent = groupTitles[kind];
+                appsSearchResults.appendChild(header);
+
+                group.forEach(function(r) {
+                    appsSearchResults.appendChild(buildSearchItem(r));
+                });
+            });
+
+            showSearchResults();
+        }
+
+        function buildSearchItem(r) {
+            const item = document.createElement('div');
+            item.className = 'apps-search-item';
+
+            const iconWrap = document.createElement('div');
+            iconWrap.className = 'apps-search-item-icon';
+
+            if (r.kind === 'app') {
+                if (r.app.icon) {
+                    const img = document.createElement('img');
+                    img.src = r.app.icon;
+                    img.alt = r.app.name;
+                    iconWrap.appendChild(img);
+                } else {
+                    iconWrap.textContent = (r.app.name || '?').charAt(0);
+                }
+            } else if (r.kind === 'photo') {
+                if (r.file && r.file.data) {
+                    const img = document.createElement('img');
+                    img.src = r.file.data;
+                    img.alt = r.file.name;
+                    img.onerror = function() {
+                        iconWrap.innerHTML = '';
+                        iconWrap.textContent = 'IMG';
+                    };
+                    iconWrap.appendChild(img);
+                } else {
+                    iconWrap.textContent = 'IMG';
+                }
+            } else if (r.kind === 'file') {
+                const ext = (r.file && r.file.extension) || (r.file && r.file.name && r.file.name.split('.').pop()) || '';
+                iconWrap.textContent = (ext || 'F').substring(0, 3).toUpperCase();
+            } else if (r.kind === 'notification') {
+                iconWrap.textContent = '!';
+            } else if (r.kind === 'livebar') {
+                iconWrap.textContent = '>';
+            }
+
+            item.appendChild(iconWrap);
+
+            const info = document.createElement('div');
+            info.className = 'apps-search-item-info';
+
+            const title = document.createElement('div');
+            title.className = 'apps-search-item-title';
+            title.textContent = r.title || '';
+            info.appendChild(title);
+
+            const sub = document.createElement('div');
+            sub.className = 'apps-search-item-sub';
+            sub.textContent = r.sub || '';
+            info.appendChild(sub);
+
+            item.appendChild(info);
+
+            item.addEventListener('click', function() {
+                hideSearchResults();
+                appsSearchInput.value = '';
+                openSearchResult(r);
+            });
+
+            return item;
+        }
+
+        async function openSearchResult(r) {
+            if (!r) return;
+
+            if (r.kind === 'app') {
+                hideBottomPanel();
+                const appId = r.app.id;
+                const rect = (function() {
+                    const btn = document.querySelector('.btn[data-id="' + appId + '"]');
+                    if (btn) {
+                        const rr = btn.getBoundingClientRect();
+                        if (rr.width > 0 || rr.height > 0) return rr;
+                    }
+                    const item = document.querySelector('.icon-item[data-app-id="' + appId + '"]');
+                    if (item) {
+                        const rr = item.getBoundingClientRect();
+                        if (rr.width > 0 || rr.height > 0) return rr;
+                    }
+                    return null;
+                })();
+                window.__appOpenedFrom = 'menu';
+                openAppWithAnimation(appId, rect, true);
+
+                setTimeout(function() {
+                    const candidates = document.querySelectorAll('.btn[data-id="' + appId + '"], .icon-item[data-app-id="' + appId + '"]');
+                    candidates.forEach(function(el) { highlightElement(el); });
+                }, 400);
+                return;
+            }
+
+            if (r.kind === 'photo' || r.kind === 'file') {
+                hideBottomPanel();
+                const fileId = r.file.id;
+                const parentId = r.file.parentId;
+                if (typeof window.fileInit === 'function') {
+                    window.fileInit();
+                    setTimeout(function() {
+                        window.dispatchEvent(new CustomEvent('shnuk:file-highlight', {
+                            detail: { id: fileId, parentId: parentId }
+                        }));
+                    }, 350);
+                }
+                return;
+            }
+
+            if (r.kind === 'notification') {
+                hideBottomPanel();
+                const n = r.notification;
+                await openAppFromNotification(n);
+                return;
+            }
+
+            if (r.kind === 'livebar') {
+                hideBottomPanel();
+                const act = r.activity;
+                if (act && act.appId && typeof window.ShnukOpenAppById === 'function') {
+                    window.ShnukOpenAppById(act.appId, act.appName || null);
+                }
+                return;
+            }
+        }
+
+        async function openAppFromNotification(n) {
+            if (!n) return;
+
+            window.__appOpenedFrom = 'notification';
+
+            if (n.appName && window.__collarAppRegistry) {
+                const reg = window.__collarAppRegistry;
+                const entry = reg[n.appName];
+                if (entry && typeof window.ShnukOpenAppById === 'function') {
+                    window.__notificationOpenedAppId = entry.id;
+                    try {
+                        const ok = window.ShnukOpenAppById(entry.id);
+                        if (ok) return;
+                    } catch(e) {}
+                }
+            }
+
+            if (n.appName && window.AppScanner && AppScanner.getApps) {
+                try {
+                    const apps = await AppScanner.getApps();
+                    const found = apps.find(function(a) { return a.name === n.appName; });
+                    if (found && typeof window.ShnukOpenAppById === 'function') {
+                        window.__notificationOpenedAppId = found.id;
+                        const ok = window.ShnukOpenAppById(found.id);
+                        if (ok) return;
+                    }
+                } catch(e) {}
+            }
+
+            if (n.appId && typeof window.ShnukOpenAppById === 'function') {
+                window.__notificationOpenedAppId = n.appId;
+                try {
+                    const ok = window.ShnukOpenAppById(n.appId);
+                    if (ok) return;
+                } catch(e) {}
+            }
+
+            if (n.appId) {
+                window.__notificationOpenedAppId = n.appId;
+                const initFns = [n.appId + 'Init', n.appId.replace(/-/g, '') + 'Init'];
+                for (const fn of initFns) {
+                    if (typeof window[fn] === 'function') {
+                        try { window[fn](); return; } catch(e) {}
+                    }
+                }
+            }
+
+            if (n.appName) {
+                const allIcons = document.querySelectorAll('.icon-item[data-app-id]');
+                for (const el of allIcons) {
+                    const name = el.dataset.appName || '';
+                    if (name === n.appName) {
+                        window.__notificationOpenedAppId = el.dataset.appId || null;
+                        el.click();
+                        return;
+                    }
+                }
+            }
+        }
+
+        function scheduleSearch() {
+            setTimeout(function() {
+                performAppsMenuSearch(appsSearchInput ? appsSearchInput.value : '');
+            }, 80);
         }
 
         if (desktopSearchInput) {
@@ -1139,21 +1921,59 @@
         }
         if (appsSearchInput) {
             appsSearchInput.addEventListener('input', function() {
-                updateSearchSubmitVisibility(this, appsSearchBtn);
-                filterApps(this.value);
+                scheduleSearch();
             });
             appsSearchInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') filterApps(this.value);
+                if (e.key === 'Enter') {
+                    performAppsMenuSearch(this.value);
+                }
             });
         }
         if (appsSearchBtn) {
             appsSearchBtn.addEventListener('click', function() {
-                filterApps(appsSearchInput.value);
+                performAppsMenuSearch(appsSearchInput.value);
             });
         }
 
+        function blurAppsSearchInput() {
+            if (appsSearchInput && document.activeElement === appsSearchInput) {
+                appsSearchInput.blur();
+            }
+        }
+        document.addEventListener('pointerdown', function(e) {
+            if (isBottomVisible) return;
+            if (e.target === appsSearchInput || e.target === appsSearchBtn) return;
+            blurAppsSearchInput();
+        }, true);
+
         window.addEventListener('shnuk:screen-settings-changed', function() { applyScreenSettings(); });
-        window.addEventListener('storage', function(e) { if (e.key === SCREEN_SETTINGS_KEY) applyScreenSettings(); });
+        window.addEventListener('shnuk:search-intelligence-changed', function() {
+            if (appsSearchInput && appsSearchInput.value) {
+                performAppsMenuSearch(appsSearchInput.value);
+            }
+        });
+        window.addEventListener('storage', function(e) {
+            if (e.key === SCREEN_SETTINGS_KEY) applyScreenSettings();
+            if (e.key === SEARCH_INTELLIGENCE_KEY) {
+                if (appsSearchInput && appsSearchInput.value) {
+                    performAppsMenuSearch(appsSearchInput.value);
+                }
+            }
+        });
+
+        window.addEventListener('shnuk:file-highlight', function(e) {
+            const detail = e.detail || {};
+            const fileId = detail.id;
+            if (!fileId) return;
+            let tries = 0;
+            const iv = setInterval(function() {
+                tries++;
+                if (tries > 30) { clearInterval(iv); return; }
+                const items = document.querySelectorAll('#fileContent .file-item');
+                if (items.length === 0) return;
+                clearInterval(iv);
+            }, 100);
+        });
 
         function isFullscreen() {
             return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
@@ -1280,6 +2100,8 @@
             if (direct && direct.parentNode) return direct;
             const guess = document.getElementById(appId + 'App');
             if (guess && guess.parentNode) return guess;
+            const htmlWin = document.querySelector('.html-app-window[data-app-id="' + appId + '"]');
+            if (htmlWin) return htmlWin;
             return null;
         }
 
@@ -1316,13 +2138,16 @@
             const startRect = targetEl.getBoundingClientRect();
             if (startRect.width === 0 || startRect.height === 0) { if (onDone) onDone(); return; }
 
+            const wasOpenedFromNotification = (appId && window.__notificationOpenedAppId === appId);
             const openedFrom = window.__appOpenedFrom || 'desktop';
+            const useMenuAnimation = (openedFrom === 'menu') || wasOpenedFromNotification;
+
             targetEl.style.transformOrigin = 'center center';
             targetEl.style.willChange = 'transform, opacity, filter';
             targetEl.style.pointerEvents = 'none';
             targetEl.style.transition = 'none';
 
-            if (openedFrom === 'menu' || openedFrom === 'notification') {
+            if (useMenuAnimation) {
                 const distanceY = window.innerHeight - startRect.top + 40;
                 const duration = 380;
                 const startTime = performance.now();
@@ -1340,6 +2165,7 @@
                     else {
                         if (targetEl.parentNode) targetEl.parentNode.removeChild(targetEl);
                         window.__appOpenedFrom = 'desktop';
+                        if (wasOpenedFromNotification) window.__notificationOpenedAppId = null;
                         if (onDone) onDone();
                     }
                 }
@@ -1444,6 +2270,11 @@
                 whiteBox.style.opacity = '0';
                 whiteBox.style.filter = 'blur(20px)';
                 setTimeout(function() { if (whiteBox.parentNode) whiteBox.parentNode.removeChild(whiteBox); }, 40);
+
+                if (wasOpenedFromNotification) {
+                    window.__notificationOpenedAppId = null;
+                }
+
                 if (!iconEl) {
                     window.__appOpenedFrom = 'desktop';
                     if (onDone) onDone();
@@ -1509,7 +2340,10 @@
 
             closeAllApps(appId);
             isAppAnimating = true;
-            window.__appOpenedFrom = fromMenu ? 'menu' : 'desktop';
+
+            if (window.__appOpenedFrom !== 'notification') {
+                window.__appOpenedFrom = fromMenu ? 'menu' : 'desktop';
+            }
 
             let iconPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
             let iconRect = null;
@@ -1592,6 +2426,10 @@
                         else {
                             const script = document.createElement('script');
                             script.src = appData.file + '?t=' + Date.now();
+                            if (window.__SRI && window.__SRI[appData.file]) {
+                                script.integrity = window.__SRI[appData.file];
+                                script.crossOrigin = 'anonymous';
+                            }
                             script.onload = function() {
                                 if (typeof window[appData.id + 'Init'] === 'function') {
                                     window[appData.id + 'Init']();
@@ -1607,27 +2445,156 @@
             requestAnimationFrame(animateIcon);
         }
 
+        window.ShnukOpenAppById = function(appId, appName) {
+            if (!appId && !appName) return false;
+
+            if (appId) {
+                const alreadyOpen = findOpenAppElement(appId);
+                if (alreadyOpen) {
+                    bringToFront(alreadyOpen);
+                    return true;
+                }
+            }
+
+            let appData = null;
+            if (appId) appData = getAppData(appId);
+            if (!appData && appName) appData = allApps.find(a => a.name === appName);
+
+            if (!appData) {
+                if (window.AppScanner && AppScanner.getApps) {
+                    AppScanner.getApps().then(function(apps) {
+                        let found = null;
+                        if (appId) found = apps.find(a => a.id === appId);
+                        if (!found && appName) found = apps.find(a => a.name === appName);
+                        if (!found) return;
+                        window.__appOpenedFrom = 'notification';
+                        window.__notificationOpenedAppId = found.id;
+                        if (found.type === 'html') {
+                            openHtmlApp(found);
+                        } else if (found.file) {
+                            const script = document.createElement('script');
+                            script.src = found.file + '?t=' + Date.now();
+                            if (window.__SRI && window.__SRI[found.file]) {
+                                script.integrity = window.__SRI[found.file];
+                                script.crossOrigin = 'anonymous';
+                            }
+                            script.onload = function() {
+                                const initFn = window[found.id + 'Init'] ||
+                                    window[found.id.replace(/-/g, '') + 'Init'];
+                                if (typeof initFn === 'function') {
+                                    try { initFn(); } catch(e) {}
+                                }
+                            };
+                            document.head.appendChild(script);
+                        }
+                    }).catch(function() {});
+                }
+                return false;
+            }
+
+            window.__appOpenedFrom = 'notification';
+            window.__notificationOpenedAppId = appData.id;
+
+            if (appData.type === 'html') {
+                openHtmlApp(appData);
+                return true;
+            }
+
+            const rect = (function() {
+                const btn = document.querySelector('.btn[data-id="' + appData.id + '"]');
+                if (btn) {
+                    const r = btn.getBoundingClientRect();
+                    if (r.width > 0 || r.height > 0) return r;
+                }
+                return null;
+            })();
+            openAppWithAnimation(appData.id, rect, false);
+            return true;
+        };
+
         function openHtmlApp(appData) {
+            if (!appData || !appData.html) return;
+
+            const existing = document.querySelector('.html-app-window[data-app-id="' + appData.id + '"]');
+            if (existing) {
+                bringToFront(existing);
+                try {
+                    const prev = existing.style.transition;
+                    existing.style.transition = 'filter 0.25s ease';
+                    existing.style.filter = 'brightness(1.15)';
+                    setTimeout(function() {
+                        existing.style.filter = '';
+                        existing.style.transition = prev;
+                    }, 250);
+                } catch(e) {}
+                return;
+            }
+
+            const token = (window.crypto && window.crypto.randomUUID)
+                ? window.crypto.randomUUID()
+                : 'tok_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
             const container = document.createElement('div');
             container.className = 'html-app-window';
+            container.dataset.appId = appData.id;
+
             const closeBtn = document.createElement('button');
             closeBtn.className = 'html-app-close-btn';
             closeBtn.textContent = '✕';
             closeBtn.addEventListener('click', function() {
                 window.ShnukCloseAnimation(container, appData.id, function() {
                     if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
+                    try { delete window.__collTokens[token]; } catch(e) {}
+                    try { window.removeEventListener('message', onMessage); } catch(e) {}
                 });
             });
+
             const iframe = document.createElement('iframe');
-            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
-            iframe.srcdoc = appData.html || '<html><body></body></html>';
+            iframe.sandbox = 'allow-scripts allow-forms allow-popups allow-modals';
+            iframe.name = token;
+
+            let html = appData.html;
+            const tokenScript = '<script>window.__collToken=' + JSON.stringify(token) + ';<\/script>';
+            if (/<head[^>]*>/i.test(html)) {
+                html = html.replace(/<head[^>]*>/i, function(m) { return m + tokenScript; });
+            } else {
+                html = tokenScript + html;
+            }
+
+            iframe.srcdoc = html;
+
             container.appendChild(iframe);
             document.body.appendChild(container);
             document.body.appendChild(closeBtn);
+
+            if (!window.__collTokens) window.__collTokens = {};
+            window.__collTokens[token] = { appId: appData.id, created: Date.now() };
+
+            const onMessage = function(e) {
+                const d = e.data;
+                if (!d || !d.__coll) return;
+                if (!d.token || !window.__collTokens[d.token]) return;
+                if (d.type === 'notify') {
+                    if (window.LiveBar && typeof window.LiveBar.notify === 'function') {
+                        window.LiveBar.notify({
+                            title: d.data.title || '',
+                            body: d.data.body || '',
+                            type: d.data.type || 'info',
+                            appId: appData.id,
+                            appName: appData.name || ''
+                        });
+                    }
+                }
+            };
+            window.addEventListener('message', onMessage);
+            container.__onMessage = onMessage;
+
             const onEsc = function(e) {
                 if (e.key === 'Escape') {
                     window.ShnukCloseAnimation(container, appData.id, function() {
                         if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
+                        window.removeEventListener('message', onMessage);
+                        try { delete window.__collTokens[token]; } catch(e) {}
                     });
                     document.removeEventListener('keydown', onEsc);
                 }
@@ -1644,9 +2611,20 @@
                 renderDesktop();
                 renderAllApps();
                 applyScreenSettings();
+                rebuildCollarRegistry();
             }).catch(function(err) {
                 if (desktopLoader) desktopLoader.innerHTML = '<span style="color:#cc0000;">' + T('Ошибка') + '</span>';
             });
+        }
+
+        function rebuildCollarRegistry() {
+            const reg = {};
+            allApps.forEach(function(a) {
+                if (a && a.author === 'Collaris' && a.name) {
+                    reg[a.name] = { id: a.id, name: a.name };
+                }
+            });
+            window.__collarAppRegistry = reg;
         }
 
         function refreshApps() {
@@ -1659,6 +2637,7 @@
                     saveDesktop();
                     renderDesktop();
                     renderAllApps();
+                    rebuildCollarRegistry();
                 });
             }
         }
@@ -1804,7 +2783,9 @@
                 iconGrid.appendChild(div);
             });
             bottomPanel.classList.toggle('editing', isEditMode);
-            if (appsSearchInput) filterApps(appsSearchInput.value);
+            if (appsSearchInput && appsSearchInput.value.trim()) {
+                performAppsMenuSearch(appsSearchInput.value);
+            }
         }
 
         let pickerBackdrop = null;
@@ -2047,8 +3028,7 @@
             topPanel.classList.add('swiped-down');
             renderAllApps();
 
-            const s = loadScreenSettings();
-            if (s.appsSearch) appsSearchBar.classList.add('visible');
+            if (appsSearchBar) appsSearchBar.classList.add('visible');
             updateAddDesktopBtn();
 
             requestAnimationFrame(function() {
@@ -2067,7 +3047,9 @@
             bottomPanel.classList.remove('visible');
             appBackground.classList.remove('blurred');
             topPanel.classList.remove('swiped-down');
-            appsSearchBar.classList.remove('visible');
+            if (appsSearchBar) appsSearchBar.classList.remove('visible');
+            hideSearchResults();
+            if (appsSearchInput) appsSearchInput.value = '';
             if (addDesktopBtn) addDesktopBtn.classList.remove('visible');
             closePicker();
             setTimeout(function() {
@@ -2107,6 +3089,7 @@
             if (target.closest('.desktop-search')) return true;
             if (target.closest('.bottom-panel')) return true;
             if (target.closest('.apps-search-bar')) return true;
+            if (target.closest('.apps-search-results')) return true;
             if (target.closest('.add-desktop-btn')) return true;
             if (target.closest('.picker-backdrop')) return true;
             if (target.closest('.html-app-window')) return true;
@@ -2151,6 +3134,120 @@
         appBackground.addEventListener('click', function(e) {
             if (isEditMode && !isInteractiveTarget(e.target)) toggleEditMode();
         });
+
+        (function bindDesktopShadeSwipe() {
+            let startX = 0;
+            let startY = 0;
+            let tracking = false;
+            let moved = false;
+            const DIRECTION_LOCK_PX = 12;
+
+            function anyAppOpen() {
+                for (const domId of Object.values(APP_DOM_MAP)) {
+                    const el = document.getElementById(domId);
+                    if (el && el.parentNode) return true;
+                }
+                if (document.querySelector('.html-app-window')) return true;
+                if (document.querySelector('.win-backdrop')) return true;
+                const shade = document.getElementById('liveBarShade');
+                if (shade && shade.style.pointerEvents === 'auto') return true;
+                return false;
+            }
+
+            function getPoint(e) {
+                if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+                return { x: e.clientX, y: e.clientY };
+            }
+
+            function onStart(e) {
+                if (isEditMode) return;
+                if (isBottomVisible) return;
+                if (anyAppOpen()) return;
+                if (isInteractiveTarget(e.target)) return;
+
+                const p = getPoint(e);
+                startX = p.x;
+                startY = p.y;
+                tracking = true;
+                moved = false;
+            }
+
+            function onMove(e) {
+                if (!tracking) return;
+                const p = getPoint(e);
+                const dx = p.x - startX;
+                const dy = p.y - startY;
+
+                if (!moved && (Math.abs(dx) > DIRECTION_LOCK_PX || Math.abs(dy) > DIRECTION_LOCK_PX)) {
+                    moved = true;
+                    if (Math.abs(dx) > Math.abs(dy)) { tracking = false; return; }
+                    if (dy < 0) { tracking = false; return; }
+                }
+                if (!moved) return;
+
+                if (dy > 60 && dy > Math.abs(dx)) {
+                    tracking = false;
+                    if (e.cancelable) e.preventDefault();
+                    if (window.LiveBar && typeof window.LiveBar.openShade === 'function') {
+                        window.LiveBar.openShade();
+                    }
+                }
+            }
+
+            function onEnd() {
+                tracking = false;
+                moved = false;
+            }
+
+            appBackground.addEventListener('touchstart', onStart, { passive: true });
+            appBackground.addEventListener('touchmove', onMove, { passive: false });
+            appBackground.addEventListener('touchend', onEnd, { passive: true });
+            appBackground.addEventListener('touchcancel', onEnd, { passive: true });
+
+            topPanel.addEventListener('touchstart', onStart, { passive: true });
+            topPanel.addEventListener('touchmove', onMove, { passive: false });
+            topPanel.addEventListener('touchend', onEnd, { passive: true });
+            topPanel.addEventListener('touchcancel', onEnd, { passive: true });
+
+            let mouseTracking = false;
+            let mouseStartX = 0;
+            let mouseStartY = 0;
+            let mouseMoved = false;
+
+            function onMouseDown(e) {
+                if (isEditMode) return;
+                if (isBottomVisible) return;
+                if (anyAppOpen()) return;
+                if (isInteractiveTarget(e.target)) return;
+                mouseStartX = e.clientX;
+                mouseStartY = e.clientY;
+                mouseTracking = true;
+                mouseMoved = false;
+            }
+            function onMouseMove(e) {
+                if (!mouseTracking) return;
+                const dx = e.clientX - mouseStartX;
+                const dy = e.clientY - mouseStartY;
+                if (!mouseMoved && (Math.abs(dx) > DIRECTION_LOCK_PX || Math.abs(dy) > DIRECTION_LOCK_PX)) {
+                    mouseMoved = true;
+                    if (Math.abs(dx) > Math.abs(dy)) { mouseTracking = false; return; }
+                    if (dy < 0) { mouseTracking = false; return; }
+                }
+                if (!mouseMoved) return;
+                if (dy > 60 && dy > Math.abs(dx)) {
+                    mouseTracking = false;
+                    if (window.LiveBar && typeof window.LiveBar.openShade === 'function') {
+                        window.LiveBar.openShade();
+                    }
+                }
+            }
+            function onMouseUp() { mouseTracking = false; mouseMoved = false; }
+
+            appBackground.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        })();
 
         let startY = 0, isSwiping = false;
         app.addEventListener('touchstart', function(e) { startY = e.touches[0].clientY; isSwiping = true; }, { passive: true });
