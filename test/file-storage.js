@@ -12,18 +12,6 @@
         } catch(e) {}
     }
 
-    async function waitForApl() {
-        // Ждём Apl, если он ещё не загрузился.
-        let tries = 0;
-        while (!window.Apl && tries < 100) {
-            tries++;
-            await new Promise(function(r) { setTimeout(r, 50); });
-        }
-        if (window.Apl && typeof window.Apl.ready === 'function') {
-            try { await window.Apl.ready(); } catch(e) {}
-        }
-    }
-
     async function ensureReady() {
         if (cache !== null) return;
         if (!window.OSStorage) {
@@ -43,7 +31,6 @@
             cache = [];
             return;
         }
-        await waitForApl();
         try {
             cache = await window.OSStorage.files.getAll();
             if (!Array.isArray(cache)) cache = [];
@@ -65,7 +52,6 @@
 
     async function set(list) {
         await ensureReady();
-        await waitForApl();
         const arr = Array.isArray(list) ? list.slice() : [];
         if (!window.OSStorage) {
             cache = arr;
@@ -89,7 +75,6 @@
     async function add(fileData) {
         if (!fileData || !fileData.name) return false;
         await ensureReady();
-        await waitForApl();
         if (!window.OSStorage) return false;
         try {
             await window.OSStorage.files.put(fileData);
@@ -105,7 +90,6 @@
     async function update(fileData) {
         if (!fileData || !fileData.id) return false;
         await ensureReady();
-        await waitForApl();
         if (!window.OSStorage) return false;
         try {
             await window.OSStorage.files.put(fileData);

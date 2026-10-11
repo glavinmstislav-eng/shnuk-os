@@ -116,6 +116,34 @@
             display: none !important;
         }
 
+        #osSplash {
+            position: fixed;
+            inset: 0;
+            background: #000000;
+            z-index: 2147483647;
+            overflow: hidden;
+            transition: opacity 0.8s ease;
+            pointer-events: none;
+        }
+        #osSplash.hidden {
+            opacity: 0;
+        }
+        #osSplash video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            min-width: 100%;
+            min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover;
+            display: block;
+            background: #000000;
+            pointer-events: none;
+            -webkit-user-drag: none;
+        }
+
         #osApp { display: none; position: relative; width: 100%; height: 100%; overflow: hidden; }
         #osApp.visible { display: block; }
 
@@ -908,17 +936,14 @@
         }
     </style>
 
-    <script>
-    window.__SRI = {
-        // Сюда вписать хэши sha384 после их вычисления.
-        // Пример формата: 'apl.js': 'sha384-XXXX...'
-    };
-    </script>
-
-    <script src="apl.js"></script>
     <script src="os-storage.js"></script>
+    <script src="file-storage.js"></script>
 </head>
 <body>
+
+    <div id="osSplash">
+        <video id="osSplashVideo" src="start.mp4" autoplay muted playsinline preload="auto"></video>
+    </div>
 
     <div id="osApp">
         <div class="app-background" id="appBackground"></div>
@@ -995,18 +1020,96 @@
         }, 1000);
 
         const osApp = document.getElementById('osApp');
+        const osSplash = document.getElementById('osSplash');
+        const splashVideo = document.getElementById('osSplashVideo');
+
+        let splashHidden = false;
+
+        function hideSplash() {
+            if (splashHidden) return;
+            splashHidden = true;
+            if (!osSplash) return;
+            osSplash.classList.add('hidden');
+            setTimeout(function() {
+                if (osSplash.parentNode) osSplash.parentNode.removeChild(osSplash);
+            }, 900);
+        }
+
+        window.__hideSplash = hideSplash;
+
+        function armVideo() {
+            if (!splashVideo) {
+                setTimeout(hideSplash, 500);
+                return;
+            }
+
+            let ended = false;
+
+            function finish() {
+                if (ended) return;
+                ended = true;
+                try { splashVideo.pause(); } catch(e) {}
+                hideSplash();
+            }
+
+            splashVideo.addEventListener('ended', finish);
+            splashVideo.addEventListener('error', function() {
+                setTimeout(finish, 400);
+            });
+
+            // Попытка запустить видео.
+            function tryPlay() {
+                const p = splashVideo.play();
+                if (p && typeof p.catch === 'function') {
+                    p.catch(function() {
+                        // Автоплей отклонён — ждём первого взаимодействия.
+                        const kick = function() {
+                            try {
+                                const q = splashVideo.play();
+                                if (q && typeof q.catch === 'function') q.catch(function() {});
+                            } catch(e) {}
+                            document.removeEventListener('click', kick);
+                            document.removeEventListener('touchstart', kick);
+                            document.removeEventListener('keydown', kick);
+                        };
+                        document.addEventListener('click', kick, { once: true });
+                        document.addEventListener('touchstart', kick, { once: true });
+                        document.addEventListener('keydown', kick, { once: true });
+                    });
+                }
+            }
+
+            tryPlay();
+
+            // Страховка: если видео не смогло воспроизвестись за 15 секунд — скрываем.
+            setTimeout(function() {
+                if (!ended) {
+                    if (splashVideo.readyState < 2 || splashVideo.paused) {
+                        finish();
+                    }
+                }
+            }, 15000);
+        }
+
+        armVideo();
 
         function loadScriptWithFallback(src) {
             return new Promise(function(resolve) {
+                const timeoutId = setTimeout(function() {
+                    resolve(false);
+                }, 15000);
+
                 const script = document.createElement('script');
                 script.src = src + '?t=' + Date.now();
                 script.async = false;
-                if (window.__SRI && window.__SRI[src]) {
-                    script.integrity = window.__SRI[src];
-                    script.crossOrigin = 'anonymous';
-                }
-                script.onload = function() { resolve(true); };
-                script.onerror = function() { resolve(false); };
+                script.onload = function() {
+                    clearTimeout(timeoutId);
+                    resolve(true);
+                };
+                script.onerror = function() {
+                    clearTimeout(timeoutId);
+                    resolve(false);
+                };
                 document.head.appendChild(script);
             });
         }
@@ -1063,10 +1166,8 @@
         }
 
         const MIN_SCRIPTS = [
-            'apl.js',
             'l10n.js',
             'l.js',
-            'file-storage.js',
             'windows.js',
             'security.js'
         ];
@@ -1112,12 +1213,6 @@
 
             await loadScriptsSequentially(MIN_SCRIPTS);
 
-            // Apl сам создаёт или разворачивает vault.
-            if (window.Apl && typeof window.Apl.ready === 'function') {
-                try { await window.Apl.ready(); } catch(e) {}
-            }
-
-            // Вторичная защита (пароль/графический ключ), если установлена.
             let hasSec = false;
             try {
                 if (window.Security && typeof window.Security.hasSecurityAsync === 'function') {
@@ -1152,6 +1247,9 @@
             }
 
             if (typeof window.initOS === 'function') window.initOS();
+
+            // Система готова. Если видео уже доиграло — splash скрыт.
+            // Если ещё играет — пусть доиграет.
         }
 
         if (document.readyState === 'loading') {
@@ -1159,6 +1257,9 @@
         } else {
             launchOS();
         }
+
+        // Абсолютная страховка: если через 25 секунд splash ещё видим, скрываем.
+        setTimeout(hideSplash, 25000);
     })();
     </script>
 
@@ -2426,10 +2527,6 @@
                         else {
                             const script = document.createElement('script');
                             script.src = appData.file + '?t=' + Date.now();
-                            if (window.__SRI && window.__SRI[appData.file]) {
-                                script.integrity = window.__SRI[appData.file];
-                                script.crossOrigin = 'anonymous';
-                            }
                             script.onload = function() {
                                 if (typeof window[appData.id + 'Init'] === 'function') {
                                     window[appData.id + 'Init']();
@@ -2474,10 +2571,6 @@
                         } else if (found.file) {
                             const script = document.createElement('script');
                             script.src = found.file + '?t=' + Date.now();
-                            if (window.__SRI && window.__SRI[found.file]) {
-                                script.integrity = window.__SRI[found.file];
-                                script.crossOrigin = 'anonymous';
-                            }
                             script.onload = function() {
                                 const initFn = window[found.id + 'Init'] ||
                                     window[found.id.replace(/-/g, '') + 'Init'];

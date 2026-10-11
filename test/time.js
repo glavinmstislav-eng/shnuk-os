@@ -3,6 +3,18 @@
 (function() {
     'use strict';
 
+    // Защита от повторной загрузки модуля. Если time.js был подключён дважды,
+    // первый экземпляр уничтожает свои интервалы и не создаёт новых.
+    if (window.__timeModuleLoaded) {
+        try {
+            if (window.Time && typeof window.Time.destroy === 'function') {
+                window.Time.destroy();
+            }
+        } catch(e) {}
+        return;
+    }
+    window.__timeModuleLoaded = true;
+
     let isOpen = false;
     let timerInterval = null;
     let stopwatchInterval = null;
@@ -19,6 +31,15 @@
     let currentPanel = 'main';
     let isTransitioning = false;
 
+    // Идентификатор сессии. Меняется при открытии и при сбросах.
+    let sessionId = 0;
+
+    // Идентификаторы активностей в LiveBar. Сохраняются при set(),
+    // передаются в update() для защиты от запоздавших вызовов.
+    let timerActivityId = 0;
+    let stopwatchActivityId = 0;
+    let alarmActivityId = 0;
+
     const FONT_MAIN = "'TTPaplane', monospace";
 
     function playSfx(name) {
@@ -31,26 +52,103 @@
         } catch(e) {}
     }
 
-    function pushLiveBar() {
-        if (!window.LiveBar) return;
-        if (stopwatchRunning) {
-            window.LiveBar.set({
-                type: 'stopwatch', appId: 'time',
-                payload: { elapsed: stopwatchSeconds }
-            });
-        } else if (timerRunning) {
-            window.LiveBar.set({
-                type: 'timer', appId: 'time',
-                payload: { remaining: timerSeconds, total: timerTotal }
-            });
-        } else if (alarmActive && alarmTime) {
-            window.LiveBar.set({
-                type: 'alarm', appId: 'time',
-                payload: { time: alarmTime }
-            });
-        } else {
-            window.LiveBar.clear();
+    // Полная остановка всех интервалов и сброс всех счётчиков.
+    // Используется при повторном ОТКРЫТИИ часов, чтобы стереть всё старое.
+    function haltEverything() {
+        sessionId++;
+
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
+        if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+        if (alarmTimeout) { clearTimeout(alarmTimeout); alarmTimeout = null; }
+        if (alarmCheckInterval) { clearInterval(alarmCheckInterval); alarmCheckInterval = null; }
+
+        timerRunning = false;
+        stopwatchRunning = false;
+        timerSeconds = 0;
+        timerTotal = 0;
+        stopwatchSeconds = 0;
+        alarmTime = null;
+        alarmActive = false;
+
+        timerActivityId = 0;
+        stopwatchActivityId = 0;
+        alarmActivityId = 0;
+
+        try {
+            if (window.LiveBar && typeof window.LiveBar.clear === 'function') {
+                window.LiveBar.clear();
+            }
+        } catch(e) {}
+    }
+
+    function resetTimerState() {
+        sessionId++;
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        timerRunning = false;
+        timerSeconds = 0;
+        timerTotal = 0;
+        timerActivityId = 0;
+
+        if (isOpen) {
+            const startBtn = document.getElementById('timerStartBtn');
+            if (startBtn) startBtn.textContent = 'Старт';
+            const minInp = document.getElementById('timerMinutes');
+            if (minInp) minInp.value = 1;
+            const secInp = document.getElementById('timerSeconds');
+            if (secInp) secInp.value = 0;
+            const disp = document.getElementById('timerDisplay');
+            if (disp) disp.textContent = '00:00';
         }
+
+        syncLiveBar();
+    }
+
+    function resetStopwatchState() {
+        sessionId++;
+        if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
+        stopwatchRunning = false;
+        stopwatchSeconds = 0;
+        stopwatchActivityId = 0;
+
+        if (isOpen) {
+            const btn = document.getElementById('stopwatchStartBtn');
+            if (btn) btn.textContent = 'Старт';
+            const disp = document.getElementById('stopwatchDisplay');
+            if (disp) disp.textContent = '00:00.0';
+        }
+
+        syncLiveBar();
+    }
+
+    function syncLiveBar() {
+        if (!window.LiveBar) return;
+        try {
+            if (stopwatchRunning && stopwatchActivityId) {
+                window.LiveBar.set({
+                    type: 'stopwatch', appId: 'time',
+                    payload: { elapsed: stopwatchSeconds }
+                });
+                stopwatchActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+            } else if (timerRunning && timerActivityId) {
+                window.LiveBar.set({
+                    type: 'timer', appId: 'time',
+                    payload: { remaining: timerSeconds, total: timerTotal }
+                });
+                timerActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+            } else if (alarmActive && alarmTime) {
+                window.LiveBar.set({
+                    type: 'alarm', appId: 'time',
+                    payload: { time: alarmTime }
+                });
+                alarmActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+            } else {
+                window.LiveBar.clear();
+                timerActivityId = 0;
+                stopwatchActivityId = 0;
+                alarmActivityId = 0;
+            }
+        } catch(e) {}
     }
 
     function openTime() {
@@ -61,20 +159,25 @@
             const ex = document.getElementById('timeApp');
             if (ex) { ex.style.display = 'flex'; ex.style.opacity = '1'; return; }
         }
-        // При открытии всегда начинаем с главного экрана
+
+        haltEverything();
+
         currentPanel = 'main';
         isTransitioning = false;
+
         createUI();
     }
 
+    // Закрытие окна. Интервалы НЕ убиваются — таймер, секундомер и будильник
+    // продолжают работать в фоне, Live Bar остаётся активным.
     function closeTime() {
         isOpen = false;
 
-        // Возвращаемся на главную — при следующем открытии покажется она
         currentPanel = 'main';
         isTransitioning = false;
 
         if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+
         document.removeEventListener('keydown', onKeyDown);
 
         const el = document.getElementById('timeApp');
@@ -94,24 +197,12 @@
 
     function destroy() {
         isOpen = false;
-
-        // Сбрасываем состояние навигации
         currentPanel = 'main';
         isTransitioning = false;
-
-        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-        if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
-        if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
-        if (alarmTimeout) { clearTimeout(alarmTimeout); alarmTimeout = null; }
-        if (alarmCheckInterval) { clearInterval(alarmCheckInterval); alarmCheckInterval = null; }
-        timerRunning = false;
-        stopwatchRunning = false;
-        alarmActive = false;
-        alarmTime = null;
+        haltEverything();
         document.removeEventListener('keydown', onKeyDown);
         const el = document.getElementById('timeApp');
         if (el && el.parentNode) el.parentNode.removeChild(el);
-        if (window.LiveBar) window.LiveBar.clear();
     }
 
     function createUI() {
@@ -120,6 +211,8 @@
             return;
         }
         isOpen = true;
+
+        const mySession = sessionId;
 
         const app = document.createElement('div');
         app.id = 'timeApp';
@@ -579,7 +672,6 @@
         const stage = document.createElement('div');
         stage.className = 'time-stage';
 
-        // Панель "Часы"
         const mainView = document.createElement('div');
         mainView.className = 'time-panel-view';
         mainView.id = 'viewMain';
@@ -591,7 +683,6 @@
         `;
         stage.appendChild(mainView);
 
-        // Панель "Таймер"
         const timerView = document.createElement('div');
         timerView.className = 'time-panel-view';
         timerView.id = 'viewTimer';
@@ -611,7 +702,6 @@
         `;
         stage.appendChild(timerView);
 
-        // Панель "Секундомер"
         const stopwatchView = document.createElement('div');
         stopwatchView.className = 'time-panel-view';
         stopwatchView.id = 'viewStopwatch';
@@ -625,7 +715,6 @@
         `;
         stage.appendChild(stopwatchView);
 
-        // Панель "Будильник"
         const alarmView = document.createElement('div');
         alarmView.className = 'time-panel-view';
         alarmView.id = 'viewAlarm';
@@ -656,6 +745,8 @@
         document.body.appendChild(app);
 
         function updateTime() {
+            if (!isOpen) return;
+            if (sessionId !== mySession) return;
             const now = new Date();
             const hoursEl = document.getElementById('digitalHours');
             if (hoursEl) hoursEl.textContent = String(now.getHours()).padStart(2, '0');
@@ -672,7 +763,16 @@
         }
 
         updateTime();
-        clockInterval = setInterval(updateTime, 1000);
+        if (clockInterval) clearInterval(clockInterval);
+        const localClockId = setInterval(function() {
+            if (sessionId !== mySession) {
+                clearInterval(localClockId);
+                if (clockInterval === localClockId) clockInterval = null;
+                return;
+            }
+            updateTime();
+        }, 1000);
+        clockInterval = localClockId;
 
         function getViewByPanel(id) {
             if (id === 'timer') return document.getElementById('viewTimer');
@@ -831,8 +931,34 @@
             if (el) el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
         }
 
+        function updateStopwatchDisplay() {
+            const m = Math.floor(stopwatchSeconds / 60);
+            const s = Math.floor(stopwatchSeconds % 60);
+            const t = Math.floor((stopwatchSeconds % 1) * 10);
+            const el = document.getElementById('stopwatchDisplay');
+            if (el) el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + t;
+        }
+
+        // ---------- ТАЙМЕР ----------
+
         function startTimer() {
             if (timerInterval) return;
+
+            // Секундомер должен быть полностью сброшен.
+            if (stopwatchRunning || stopwatchSeconds > 0 || stopwatchInterval) {
+                sessionId++;
+                if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
+                stopwatchRunning = false;
+                stopwatchSeconds = 0;
+                stopwatchActivityId = 0;
+                if (isOpen) {
+                    const btn = document.getElementById('stopwatchStartBtn');
+                    if (btn) btn.textContent = 'Старт';
+                    const disp = document.getElementById('stopwatchDisplay');
+                    if (disp) disp.textContent = '00:00.0';
+                }
+            }
+
             if (timerSeconds === 0) {
                 const m = parseInt(document.getElementById('timerMinutes').value) || 0;
                 const s = parseInt(document.getElementById('timerSeconds').value) || 0;
@@ -842,37 +968,76 @@
                 updateTimerDisplay();
             }
             timerRunning = true;
-            timerInterval = setInterval(() => {
+
+            const localSession = ++sessionId;
+            let localId = null;
+
+            localId = setInterval(function() {
+                // Самоуничтожение при смене сессии.
+                if (sessionId !== localSession) {
+                    clearInterval(localId);
+                    if (timerInterval === localId) timerInterval = null;
+                    return;
+                }
+
                 timerSeconds--;
-                if (isOpen) updateTimerDisplay();
-                if (window.LiveBar) window.LiveBar.update({ remaining: timerSeconds });
+
+                // Обновляем LiveBar, передавая id активности.
+                // Старые интервалы с чужим id будут отброшены самим LiveBar.
+                if (timerRunning && timerActivityId) {
+                    if (window.LiveBar) {
+                        window.LiveBar.update(
+                            { remaining: timerSeconds },
+                            { activityId: timerActivityId, expectedType: 'timer', expectedAppId: 'time' }
+                        );
+                    }
+                }
+
+                if (isOpen) {
+                    updateTimerDisplay();
+                }
                 if (timerSeconds <= 0) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
+                    clearInterval(localId);
+                    if (timerInterval === localId) timerInterval = null;
                     timerRunning = false;
                     timerSeconds = 0;
                     timerTotal = 0;
-                    const startBtn = document.getElementById('timerStartBtn');
-                    if (startBtn) startBtn.textContent = 'Старт';
-                    const minInp = document.getElementById('timerMinutes');
-                    if (minInp) minInp.value = 1;
-                    const secInp = document.getElementById('timerSeconds');
-                    if (secInp) secInp.value = 0;
-                    if (isOpen) updateTimerDisplay();
+                    timerActivityId = 0;
+                    if (isOpen) {
+                        const startBtn = document.getElementById('timerStartBtn');
+                        if (startBtn) startBtn.textContent = 'Старт';
+                        const minInp = document.getElementById('timerMinutes');
+                        if (minInp) minInp.value = 1;
+                        const secInp = document.getElementById('timerSeconds');
+                        if (secInp) secInp.value = 0;
+                        updateTimerDisplay();
+                    }
                     playSfx('aria.mp3');
                     if (window.LiveBar) window.LiveBar.clear();
                 }
             }, 1000);
+            timerInterval = localId;
+
             const startBtn = document.getElementById('timerStartBtn');
             if (startBtn) startBtn.textContent = 'Стоп';
-            pushLiveBar();
+
+            if (window.LiveBar) {
+                window.LiveBar.clear();
+                window.LiveBar.set({
+                    type: 'timer', appId: 'time',
+                    payload: { remaining: timerSeconds, total: timerTotal }
+                });
+                timerActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+            }
         }
 
         function pauseTimer() {
             if (timerInterval) {
+                sessionId++;
                 clearInterval(timerInterval);
                 timerInterval = null;
                 timerRunning = false;
+                timerActivityId = 0;
                 const startBtn = document.getElementById('timerStartBtn');
                 if (startBtn) startBtn.textContent = 'Продолжить';
                 if (window.LiveBar) window.LiveBar.clear();
@@ -880,42 +1045,101 @@
         }
 
         function resetTimer() {
+            sessionId++;
             if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
             timerRunning = false;
             timerSeconds = 0;
             timerTotal = 0;
-            if (isOpen) updateTimerDisplay();
-            const startBtn = document.getElementById('timerStartBtn');
-            if (startBtn) startBtn.textContent = 'Старт';
+            timerActivityId = 0;
+
+            if (isOpen) {
+                const startBtn = document.getElementById('timerStartBtn');
+                if (startBtn) startBtn.textContent = 'Старт';
+                const minInp = document.getElementById('timerMinutes');
+                if (minInp) minInp.value = 1;
+                const secInp = document.getElementById('timerSeconds');
+                if (secInp) secInp.value = 0;
+                const disp = document.getElementById('timerDisplay');
+                if (disp) disp.textContent = '00:00';
+            }
+
             if (window.LiveBar) window.LiveBar.clear();
         }
 
-        function updateStopwatchDisplay() {
-            const m = Math.floor(stopwatchSeconds / 60);
-            const s = Math.floor(stopwatchSeconds % 60);
-            const t = Math.floor((stopwatchSeconds % 1) * 10);
-            const el = document.getElementById('stopwatchDisplay');
-            if (el) el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + t;
-        }
+        // ---------- СЕКУНДОМЕР ----------
 
         function startStopwatch() {
             if (stopwatchInterval) return;
+
+            // Таймер должен быть полностью сброшен.
+            if (timerRunning || timerSeconds > 0 || timerTotal > 0 || timerInterval) {
+                sessionId++;
+                if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+                timerRunning = false;
+                timerSeconds = 0;
+                timerTotal = 0;
+                timerActivityId = 0;
+                if (isOpen) {
+                    const startBtn = document.getElementById('timerStartBtn');
+                    if (startBtn) startBtn.textContent = 'Старт';
+                    const minInp = document.getElementById('timerMinutes');
+                    if (minInp) minInp.value = 1;
+                    const secInp = document.getElementById('timerSeconds');
+                    if (secInp) secInp.value = 0;
+                    const disp = document.getElementById('timerDisplay');
+                    if (disp) disp.textContent = '00:00';
+                }
+            }
+
             stopwatchRunning = true;
-            stopwatchInterval = setInterval(() => {
+
+            const localSession = ++sessionId;
+            let localId = null;
+
+            localId = setInterval(function() {
+                if (sessionId !== localSession) {
+                    clearInterval(localId);
+                    if (stopwatchInterval === localId) stopwatchInterval = null;
+                    return;
+                }
+
                 stopwatchSeconds += 0.1;
-                if (isOpen) updateStopwatchDisplay();
-                if (window.LiveBar) window.LiveBar.update({ elapsed: stopwatchSeconds });
+
+                if (stopwatchRunning && stopwatchActivityId) {
+                    if (window.LiveBar) {
+                        window.LiveBar.update(
+                            { elapsed: stopwatchSeconds },
+                            { activityId: stopwatchActivityId, expectedType: 'stopwatch', expectedAppId: 'time' }
+                        );
+                    }
+                }
+
+                if (isOpen) {
+                    updateStopwatchDisplay();
+                }
             }, 100);
+            stopwatchInterval = localId;
+
             const btn = document.getElementById('stopwatchStartBtn');
             if (btn) btn.textContent = 'Стоп';
-            pushLiveBar();
+
+            if (window.LiveBar) {
+                window.LiveBar.clear();
+                window.LiveBar.set({
+                    type: 'stopwatch', appId: 'time',
+                    payload: { elapsed: stopwatchSeconds }
+                });
+                stopwatchActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+            }
         }
 
         function pauseStopwatch() {
             if (stopwatchInterval) {
+                sessionId++;
                 clearInterval(stopwatchInterval);
                 stopwatchInterval = null;
                 stopwatchRunning = false;
+                stopwatchActivityId = 0;
                 const btn = document.getElementById('stopwatchStartBtn');
                 if (btn) btn.textContent = 'Продолжить';
                 if (window.LiveBar) window.LiveBar.clear();
@@ -923,13 +1147,36 @@
         }
 
         function resetStopwatch() {
+            sessionId++;
             if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
             stopwatchRunning = false;
             stopwatchSeconds = 0;
-            if (isOpen) updateStopwatchDisplay();
-            const btn = document.getElementById('stopwatchStartBtn');
-            if (btn) btn.textContent = 'Старт';
+            stopwatchActivityId = 0;
+
+            if (isOpen) {
+                const btn = document.getElementById('stopwatchStartBtn');
+                if (btn) btn.textContent = 'Старт';
+                const disp = document.getElementById('stopwatchDisplay');
+                if (disp) disp.textContent = '00:00.0';
+            }
+
             if (window.LiveBar) window.LiveBar.clear();
+        }
+
+        // ---------- БУДИЛЬНИК ----------
+
+        function syncAlarmUI() {
+            const tg = document.getElementById('alarmToggle');
+            if (tg) tg.classList.toggle('active', alarmActive);
+            const at = document.getElementById('alarmTimeDisplay');
+            if (at) at.textContent = alarmTime || '--:--';
+            const st = document.getElementById('alarmStatus');
+            if (st) {
+                if (alarmActive && alarmTime) st.textContent = 'Будильник включён на ' + alarmTime;
+                else st.textContent = 'Будильник выключен';
+            }
+            const sb = document.getElementById('alarmSetBtn');
+            if (sb) sb.textContent = alarmTime ? 'Изменить' : 'Установить';
         }
 
         function setAlarm() {
@@ -937,49 +1184,73 @@
             const m = parseInt(document.getElementById('alarmMinute').value);
             if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return;
             alarmTime = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-            if (isOpen) {
-                const at = document.getElementById('alarmTimeDisplay');
-                if (at) at.textContent = alarmTime;
-                const st = document.getElementById('alarmStatus');
-                if (st) st.textContent = 'Будильник установлен на ' + alarmTime;
-                const tg = document.getElementById('alarmToggle');
-                if (tg) tg.classList.add('active');
-                const sb = document.getElementById('alarmSetBtn');
-                if (sb) sb.textContent = 'Изменить';
-            }
             alarmActive = true;
-            pushLiveBar();
+
+            const at = document.getElementById('alarmTimeDisplay');
+            if (at) at.textContent = alarmTime;
+            const st = document.getElementById('alarmStatus');
+            if (st) st.textContent = 'Будильник установлен на ' + alarmTime;
+            const tg = document.getElementById('alarmToggle');
+            if (tg) tg.classList.add('active');
+            const sb = document.getElementById('alarmSetBtn');
+            if (sb) sb.textContent = 'Изменить';
+
+            if (window.LiveBar) {
+                window.LiveBar.clear();
+                window.LiveBar.set({
+                    type: 'alarm', appId: 'time',
+                    payload: { time: alarmTime }
+                });
+                alarmActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+            }
+
+            const localSession = ++sessionId;
             if (alarmCheckInterval) clearInterval(alarmCheckInterval);
-            alarmCheckInterval = setInterval(function() {
+            let localId = null;
+            localId = setInterval(function() {
+                if (sessionId !== localSession) {
+                    clearInterval(localId);
+                    if (alarmCheckInterval === localId) alarmCheckInterval = null;
+                    return;
+                }
                 if (!alarmActive || !alarmTime) return;
                 const now = new Date();
                 const cur = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                 if (cur === alarmTime && now.getSeconds() === 0) triggerAlarm();
             }, 1000);
+            alarmCheckInterval = localId;
         }
 
         function toggleAlarm() {
             alarmActive = !alarmActive;
-            if (isOpen) {
-                const tg = document.getElementById('alarmToggle');
-                if (tg) tg.classList.toggle('active', alarmActive);
-                const st = document.getElementById('alarmStatus');
-                if (st) {
-                    if (alarmActive && alarmTime) st.textContent = 'Будильник включён на ' + alarmTime;
-                    else st.textContent = 'Будильник выключен';
+            const tg = document.getElementById('alarmToggle');
+            if (tg) tg.classList.toggle('active', alarmActive);
+            const st = document.getElementById('alarmStatus');
+            if (st) {
+                if (alarmActive && alarmTime) st.textContent = 'Будильник включён на ' + alarmTime;
+                else st.textContent = 'Будильник выключен';
+            }
+            if (window.LiveBar) {
+                if (alarmActive && alarmTime) {
+                    window.LiveBar.clear();
+                    window.LiveBar.set({
+                        type: 'alarm', appId: 'time',
+                        payload: { time: alarmTime }
+                    });
+                    alarmActivityId = window.LiveBar.getActivityId ? window.LiveBar.getActivityId() : 0;
+                } else {
+                    window.LiveBar.clear();
+                    alarmActivityId = 0;
                 }
             }
-            pushLiveBar();
         }
 
         function triggerAlarm() {
             if (alarmTimeout) return;
-            if (isOpen) {
-                const st = document.getElementById('alarmStatus');
-                if (st) {
-                    st.textContent = 'Будильник сработал';
-                    st.style.color = 'var(--accent)';
-                }
+            const st = document.getElementById('alarmStatus');
+            if (st) {
+                st.textContent = 'Будильник сработал';
+                st.style.color = 'var(--accent)';
             }
             playSfx('aria.mp3');
             try {
@@ -998,11 +1269,12 @@
                 alarmTimeout = null;
                 alarmActive = false;
                 alarmTime = null;
+                alarmActivityId = 0;
                 if (isOpen) {
-                    const st = document.getElementById('alarmStatus');
-                    if (st) {
-                        st.textContent = 'Будильник выключен';
-                        st.style.color = 'var(--text-muted)';
+                    const st2 = document.getElementById('alarmStatus');
+                    if (st2) {
+                        st2.textContent = 'Будильник выключен';
+                        st2.style.color = 'var(--text-muted)';
                     }
                     const tg = document.getElementById('alarmToggle');
                     if (tg) tg.classList.remove('active');
@@ -1027,10 +1299,13 @@
 
         document.addEventListener('keydown', onKeyDown);
 
-        // Показываем главную без анимации
         const mainEl = document.getElementById('viewMain');
         mainEl.classList.add('active', 'entered');
         mainEl.style.display = 'flex';
+
+        updateTimerDisplay();
+        updateStopwatchDisplay();
+        syncAlarmUI();
     }
 
     function onKeyDown(e) {

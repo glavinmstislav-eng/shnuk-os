@@ -1,11 +1,10 @@
-// cooop.js — Cooop: ссылки на файлы через сжатие + base64url
-
 (function() {
     'use strict';
 
     const MAX_FILE_SIZE = 4 * 1024 * 1024;
     const FONT_MAIN = "'TTPaplane', monospace";
-    const LINK_BASE = location.origin + location.pathname.replace(/[^/]*$/, '') + 'cooop.html';
+
+    const LINK_BASE = location.origin + location.pathname.replace(/[^/]*$/, '') + 'cooopshare.html';
 
     let isOpen = false;
     let mode = 'menu';
@@ -107,39 +106,6 @@
         }
     }
 
-    async function decompressBytes(bytes) {
-        if (!supportsCompression()) return null;
-        const types = ['deflate-raw', 'deflate', 'gzip'];
-        for (const t of types) {
-            try {
-                const ds = new DecompressionStream(t);
-                const writer = ds.writable.getWriter();
-                writer.write(bytes);
-                writer.close();
-
-                const reader = ds.readable.getReader();
-                const chunks = [];
-                let total = 0;
-                while (true) {
-                    const r = await reader.read();
-                    if (r.done) break;
-                    chunks.push(r.value);
-                    total += r.value.length;
-                }
-                const out = new Uint8Array(total);
-                let off = 0;
-                for (const c of chunks) {
-                    out.set(c, off);
-                    off += c.length;
-                }
-                return out;
-            } catch(e) {
-                continue;
-            }
-        }
-        return null;
-    }
-
     function rleEncode(bytes) {
         const out = [];
         let i = 0;
@@ -167,30 +133,6 @@
         return new Uint8Array(out);
     }
 
-    function rleDecode(bytes) {
-        const out = [];
-        let i = 0;
-        const n = bytes.length;
-        while (i < n) {
-            const b = bytes[i];
-            if (b === 0xFF) {
-                if (i + 2 >= n) break;
-                const count = bytes[i + 1];
-                const val = bytes[i + 2];
-                if (count === 0) {
-                    out.push(0xFF);
-                } else {
-                    for (let k = 0; k < count; k++) out.push(val);
-                }
-                i += 3;
-            } else {
-                out.push(b);
-                i++;
-            }
-        }
-        return new Uint8Array(out);
-    }
-
     async function packFile(bytes) {
         const deflated = await compressBytes(bytes);
         const rleOnly = rleEncode(bytes);
@@ -210,29 +152,6 @@
         }
 
         return { data: best.data, method: best.method, originalSize: bytes.length };
-    }
-
-    async function unpackFile(bytes, method) {
-        const tryOrder = [method, 'dr', 'd', 'r', 'n'];
-
-        for (const m of tryOrder) {
-            try {
-                let data = bytes;
-
-                if (m === 'r' || m === 'dr') {
-                    data = rleDecode(data);
-                }
-                if (m === 'd' || m === 'dr') {
-                    const dec = await decompressBytes(data);
-                    if (!dec) continue;
-                    data = dec;
-                }
-                if (data && data.length > 0) return data;
-            } catch(e) {
-                continue;
-            }
-        }
-        return null;
     }
 
     function base64UrlEncode(bytes) {
@@ -327,103 +246,6 @@
         }
     }
 
-    async function downloadFromParsed(parsed, onStatus) {
-        try {
-            if (onStatus) onStatus('Распаковка...');
-            const packedBytes = base64UrlDecode(parsed.b64);
-            const unpacked = await unpackFile(packedBytes, parsed.method);
-
-            if (!unpacked || unpacked.length === 0) {
-                if (onStatus) onStatus('Не удалось распаковать');
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify('Не удалось распаковать файл', { type: 'error' });
-                }
-                return;
-            }
-
-            const blob = new Blob([unpacked], { type: parsed.mime });
-
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = parsed.name;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(function() {
-                URL.revokeObjectURL(url);
-                if (a.parentNode) a.parentNode.removeChild(a);
-            }, 500);
-
-            try {
-                const reader = new FileReader();
-                reader.onload = async function() {
-                    const dataUrl = reader.result;
-                    if (!dataUrl) return;
-
-                    if (window.FileApp && typeof window.FileApp.saveToCooopDownloads === 'function') {
-                        const ok = await window.FileApp.saveToCooopDownloads({
-                            name: parsed.name,
-                            type: parsed.mime,
-                            size: blob.size,
-                            data: dataUrl
-                        });
-                        if (ok) {
-                            if (window.Win && window.Win.notify) {
-                                window.Win.notify('Файл сохранён в Cooop Downloads', { type: 'success' });
-                            }
-                        }
-                    } else if (window.SharedFiles && typeof window.SharedFiles.add === 'function') {
-                        if (window.SharedFiles.ready) {
-                            try { await window.SharedFiles.ready(); } catch(e) {}
-                        }
-                        const all = window.SharedFiles.get() || [];
-                        let folder = all.find(f => f.isFolder && f.parentId === null && f.name === 'Cooop Downloads');
-                        if (!folder) {
-                            folder = {
-                                id: 'folder_cooop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-                                name: 'Cooop Downloads',
-                                isFolder: true,
-                                parentId: null,
-                                date: new Date().toISOString(),
-                                size: 0,
-                                type: 'folder',
-                                data: '',
-                                extension: ''
-                            };
-                            await window.SharedFiles.add(folder);
-                        }
-                        const ext = (parsed.name.split('.').pop() || '').toLowerCase();
-                        await window.SharedFiles.add({
-                            id: 'cooop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8),
-                            name: parsed.name,
-                            size: blob.size,
-                            type: parsed.mime,
-                            data: dataUrl,
-                            date: new Date().toISOString(),
-                            extension: ext,
-                            parentId: folder.id,
-                            isFolder: false
-                        });
-                        if (window.Win && window.Win.notify) {
-                            window.Win.notify('Файл сохранён в Cooop Downloads', { type: 'success' });
-                        }
-                    }
-                };
-                reader.readAsDataURL(blob);
-            } catch(e) {
-                log('save to filemanager error', e);
-            }
-
-            if (onStatus) onStatus('Файл: ' + parsed.name + ' (' + formatSize(unpacked.length) + ')');
-        } catch(e) {
-            log('downloadFromParsed', e);
-            if (onStatus) onStatus('Ошибка: ' + e.message);
-            if (window.Win && window.Win.notify) {
-                window.Win.notify('Ошибка: ' + e.message, { type: 'error' });
-            }
-        }
-    }
-
     function openCooop() {
         if (isOpen) {
             const ex = document.getElementById('cooopApp');
@@ -436,16 +258,12 @@
         isOpen = false;
         const el = document.getElementById('cooopApp');
         if (!el) return;
-        if (location.pathname.indexOf('cooop.html') !== -1) {
-            el.innerHTML = '';
-        } else {
-            if (window.ShnukCloseAnimation) {
-                window.ShnukCloseAnimation(el, 'cooop', function() {
-                    el.remove();
-                });
-            } else {
+        if (window.ShnukCloseAnimation) {
+            window.ShnukCloseAnimation(el, 'cooop', function() {
                 el.remove();
-            }
+            });
+        } else {
+            el.remove();
         }
     }
 
@@ -634,8 +452,11 @@
                 <div class="cooop-section-title">Вставьте ссылку Cooop</div>
                 <div class="cooop-desc">Ссылка должна содержать #cooop=</div>
                 <textarea class="cooop-link" id="cooopInputLink" placeholder="Вставьте ссылку сюда..."></textarea>
-                <button class="cooop-btn" id="cooopDownloadBtn">СКАЧАТЬ ФАЙЛ</button>
-                <div class="cooop-status" id="cooopRecvStatus" style="margin-top:12px;"></div>
+                <button class="cooop-btn" id="cooopOpenReceiveBtn">ОТКРЫТЬ ССЫЛКУ</button>
+                <div class="cooop-desc" style="margin-top:12px;">
+                    Ссылка откроется в отдельной странице cooopshare.html,
+                    которая распакует и скачает файл.
+                </div>
             </div>
 
             <div class="cooop-back-row">
@@ -644,29 +465,23 @@
         `;
 
         const input = document.getElementById('cooopInputLink');
-        const btn = document.getElementById('cooopDownloadBtn');
-        const status = document.getElementById('cooopRecvStatus');
 
-        btn.addEventListener('click', async function() {
+        document.getElementById('cooopOpenReceiveBtn').addEventListener('click', function() {
             const link = input.value.trim();
             if (!link) {
-                status.textContent = 'Вставьте ссылку';
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Вставьте ссылку', { type: 'error' });
+                }
                 return;
             }
-
             const parsed = parseLink(link);
             if (!parsed) {
-                status.textContent = 'Неверный формат ссылки';
                 if (window.Win && window.Win.notify) {
                     window.Win.notify('Неверный формат ссылки', { type: 'error' });
                 }
                 return;
             }
-
-            status.textContent = 'Распаковка...';
-            await downloadFromParsed(parsed, function(s) {
-                status.textContent = s;
-            });
+            window.open(link, '_blank');
         });
 
         document.getElementById('cooopRecvBack').addEventListener('click', function() {
@@ -680,13 +495,6 @@
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    }
-
-    function checkHashOnLoad() {
-        if (!location.hash || location.hash.indexOf('#cooop=') !== 0) return;
-        const parsed = parseLink(location.hash);
-        if (!parsed) return;
-        pendingHashParse = parsed;
     }
 
     function createUI() {
@@ -740,22 +548,7 @@
         document.addEventListener('keydown', onKeyDown);
 
         isOpen = true;
-
-        if (pendingHashParse) {
-            switchScreen('receive');
-            const input = document.getElementById('cooopInputLink');
-            if (input) input.value = location.href;
-            const status = document.getElementById('cooopRecvStatus');
-            if (status) status.textContent = 'Файл: ' + pendingHashParse.name;
-            if (window.Win && window.Win.notify) {
-                window.Win.notify('Получен файл: ' + pendingHashParse.name, { type: 'info' });
-            }
-            downloadFromParsed(pendingHashParse, function(s) {
-                if (status) status.textContent = s;
-            });
-        } else {
-            switchScreen('menu');
-        }
+        switchScreen('menu');
     }
 
     function injectStyles() {
@@ -1001,21 +794,6 @@
         `;
         document.head.appendChild(style);
     }
-
-    checkHashOnLoad();
-
-    window.addEventListener('hashchange', function() {
-        if (!location.hash || location.hash.indexOf('#cooop=') !== 0) return;
-        const parsed = parseLink(location.hash);
-        if (!parsed) return;
-        pendingHashParse = parsed;
-        if (isOpen) {
-            downloadFromParsed(parsed, function(s) {
-                const status = document.getElementById('cooopRecvStatus');
-                if (status) status.textContent = s;
-            });
-        }
-    });
 
     window.Cooop = {
         destroy: destroy,

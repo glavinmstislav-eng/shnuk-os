@@ -1,6 +1,5 @@
 // security.js — защита системы: пароль, графический ключ, доп. безопасность, стирание.
-// Хэширование пароля/ключа — через Apl.deriveSecret (Argon2id/PBKDF2-SHA-512).
-// Секреты хранятся в IndexedDB (shnuk_os.system) в зашифрованном виде.
+// Хэширование через Web Crypto (PBKDF2-SHA-256).
 
 (function() {
     'use strict';
@@ -14,6 +13,10 @@
 
     const SESSION_TOKENS_KEY = 'shnuk_session_tokens';
     const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+    const PBKDF2_ITERATIONS = 200000;
+    const PBKDF2_HASH = 'SHA-256';
+    const SALT_BYTES = 16;
 
     const FONT_MAIN = "'TTPaplane', monospace";
 
@@ -43,6 +46,96 @@
         for (let i = 0; i < b.length; i++) out += b[i].toString(16).padStart(2, '0');
         return out;
     }
+
+    function toBase64(bytes) {
+        let binary = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return btoa(binary);
+    }
+
+    function fromBase64(str) {
+        const binary = atob(str);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    }
+
+    function randomBytes(n) {
+        const arr = new Uint8Array(n);
+        if (window.crypto && window.crypto.getRandomValues) {
+            window.crypto.getRandomValues(arr);
+        } else {
+            for (let i = 0; i < n; i++) arr[i] = Math.floor(Math.random() * 256);
+        }
+        return arr;
+    }
+
+    async function deriveSecret(secret) {
+        const s = String(secret);
+        const salt = randomBytes(SALT_BYTES);
+        const baseKey = await window.crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(s),
+            { name: 'PBKDF2' },
+            false,
+            ['deriveBits']
+        );
+        const bits = await window.crypto.subtle.deriveBits(
+            {
+                name: 'PBKDF2',
+                salt: salt,
+                iterations: PBKDF2_ITERATIONS,
+                hash: PBKDF2_HASH
+            },
+            baseKey,
+            256
+        );
+        return {
+            hash: toBase64(new Uint8Array(bits)),
+            salt: toBase64(salt),
+            method: 'pbkdf2-sha256',
+            iterations: PBKDF2_ITERATIONS,
+            created: Date.now()
+        };
+    }
+
+    async function verifySecret(secret, stored) {
+        if (!stored || !stored.hash || !stored.salt) return false;
+        const s = String(secret);
+        const salt = fromBase64(stored.salt);
+        const iter = stored.iterations || PBKDF2_ITERATIONS;
+        const baseKey = await window.crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(s),
+            { name: 'PBKDF2' },
+            false,
+            ['deriveBits']
+        );
+        const bits = await window.crypto.subtle.deriveBits(
+            {
+                name: 'PBKDF2',
+                salt: salt,
+                iterations: iter,
+                hash: PBKDF2_HASH
+            },
+            baseKey,
+            256
+        );
+        const candidate = toBase64(new Uint8Array(bits));
+        if (candidate.length !== stored.hash.length) return false;
+        let diff = 0;
+        for (let i = 0; i < candidate.length; i++) {
+            diff |= candidate.charCodeAt(i) ^ stored.hash.charCodeAt(i);
+        }
+        return diff === 0;
+    }
+
+    // ============================================
+    // Сессионные токены
+    // ============================================
 
     function ensureSessionTokens() {
         if (sessionTokens) return sessionTokens;
@@ -107,7 +200,7 @@
     }
 
     // ============================================
-    // ХРАНЕНИЕ СЕКРЕТА — только в IndexedDB, в зашифрованном виде
+    // ХРАНЕНИЕ СЕКРЕТА — в IndexedDB
     // ============================================
 
     async function loadSecurity() {
@@ -164,16 +257,13 @@
     // ============================================
 
     async function setPassword(password) {
-        if (!window.Apl || typeof window.Apl.deriveSecret !== 'function') return false;
-        const derived = await window.Apl.deriveSecret(password);
+        const derived = await deriveSecret(password);
         const data = {
             type: 'password',
             hash: derived.hash,
             salt: derived.salt,
             method: derived.method,
-            argon2Ops: derived.argon2Ops,
-            argon2Mem: derived.argon2Mem,
-            pbkdf2Iter: derived.pbkdf2Iter,
+            iterations: derived.iterations,
             created: Date.now()
         };
         return await saveSecurity(data);
@@ -182,23 +272,19 @@
     async function checkPassword(password) {
         const sec = await loadSecurity();
         if (!sec || sec.type !== 'password') return false;
-        if (!window.Apl || typeof window.Apl.verifySecret !== 'function') return false;
-        return await window.Apl.verifySecret(password, sec);
+        return await verifySecret(password, sec);
     }
 
     async function setPattern(pattern) {
         if (!pattern || pattern.length < 4) return false;
-        if (!window.Apl || typeof window.Apl.deriveSecret !== 'function') return false;
         const secret = pattern.join('-');
-        const derived = await window.Apl.deriveSecret(secret);
+        const derived = await deriveSecret(secret);
         const data = {
             type: 'pattern',
             hash: derived.hash,
             salt: derived.salt,
             method: derived.method,
-            argon2Ops: derived.argon2Ops,
-            argon2Mem: derived.argon2Mem,
-            pbkdf2Iter: derived.pbkdf2Iter,
+            iterations: derived.iterations,
             created: Date.now()
         };
         return await saveSecurity(data);
@@ -207,9 +293,8 @@
     async function checkPattern(pattern) {
         const sec = await loadSecurity();
         if (!sec || sec.type !== 'pattern') return false;
-        if (!window.Apl || typeof window.Apl.verifySecret !== 'function') return false;
         const secret = pattern.join('-');
-        return await window.Apl.verifySecret(secret, sec);
+        return await verifySecret(secret, sec);
     }
 
     async function removeSecurity() {
@@ -306,15 +391,13 @@
             const secret = (type === 'pattern')
                 ? (Array.isArray(value) ? value.join('-') : String(value))
                 : String(value);
-            const derived = await window.Apl.deriveSecret(secret);
+            const derived = await deriveSecret(secret);
             cfg.wipeCode = {
                 type: type,
                 hash: derived.hash,
                 salt: derived.salt,
                 method: derived.method,
-                argon2Ops: derived.argon2Ops,
-                argon2Mem: derived.argon2Mem,
-                pbkdf2Iter: derived.pbkdf2Iter
+                iterations: derived.iterations
             };
         }
         return await setExtra(cfg);
@@ -333,7 +416,7 @@
         const secret = (type === 'pattern')
             ? (Array.isArray(value) ? value.join('-') : String(value))
             : String(value);
-        return await window.Apl.verifySecret(secret, cfg.wipeCode);
+        return await verifySecret(secret, cfg.wipeCode);
     }
 
     async function setWipePending() {
@@ -380,12 +463,6 @@
                 req.onblocked = function() { resolve(); };
                 setTimeout(resolve, 1500);
             });
-        } catch(e) {}
-
-        try {
-            if (window.Apl && typeof window.Apl.destroy === 'function') {
-                await window.Apl.destroy();
-            }
         } catch(e) {}
 
         try { localStorage.clear(); } catch(e) {}

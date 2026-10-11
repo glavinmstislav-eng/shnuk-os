@@ -21,6 +21,18 @@
     let overlayEl = null;
     let anonMode = false;
 
+    // Уникальный идентификатор текущей активности в LiveBar.
+    // При каждом set() генерируется новый. update() может передавать
+    // ожидаемый activityId — если он не совпадает с текущим,
+    // обновление игнорируется. Это защищает от запоздавших вызовов
+    // update() от старых интервалов.
+    let currentActivityId = 0;
+
+    // Уникальный идентификатор сессии панели.
+    // Увеличивается при каждом clear() — все "зависшие" update()
+    // от старых активностей будут отброшены.
+    let activityGeneration = 0;
+
     let recordingWaveCanvas = null;
     let recordingWaveCtx = null;
     let recordingWaveAnimId = null;
@@ -35,6 +47,8 @@
     let notifications = [];
     let shadeEl = null;
     let shadeOpen = false;
+
+    let forceOpaqueBg = false;
 
     const _origSetItem = Storage.prototype.setItem;
     const _origRemoveItem = Storage.prototype.removeItem;
@@ -86,24 +100,33 @@
     function getThemeColors() {
         const theme = getTheme();
         if (theme === 'evening') {
-            return { bg: '#2a2a2a', text: '#ffffff', activeBg: 'rgba(30,30,30,0.85)', activeText: '#ffffff' };
+            return { bg: '#2a2a2a', text: '#ffffff', activeBg: '#1e1e1e', activeText: '#ffffff' };
         }
         if (theme === 'warm-night') {
-            return { bg: '#000000', text: '#ffffff', activeBg: 'rgba(0,0,0,0.85)', activeText: '#ffffff' };
+            return { bg: '#000000', text: '#ffffff', activeBg: '#000000', activeText: '#ffffff' };
         }
-        return { bg: '#ffffff', text: '#1a1a1a', activeBg: 'rgba(20,20,28,0.72)', activeText: '#ffffff' };
+        return { bg: '#ffffff', text: '#1a1a1a', activeBg: '#14141c', activeText: '#ffffff' };
     }
 
     function applyBarColors() {
         if (!barEl) return;
         const c = getThemeColors();
+
         if (currentActivity) {
-            barEl.style.background = c.activeBg;
             barEl.style.color = c.activeText;
+            barEl.style.background = c.activeBg;
         } else {
-            barEl.style.background = c.bg;
             barEl.style.color = c.text;
+            barEl.style.background = c.bg;
         }
+
+        barEl.style.backdropFilter = 'none';
+        barEl.style.webkitBackdropFilter = 'none';
+    }
+
+    function setForceOpaque(on) {
+        forceOpaqueBg = !!on;
+        applyBarColors();
     }
 
     function ensureOverlay() {
@@ -502,6 +525,7 @@
 
         if (!activity) {
             currentActivity = null;
+            currentActivityId = 0;
             clearLeftContent();
             barEl.style.height = BAR_HEIGHT + 'px';
             barEl.style.alignItems = 'center';
@@ -520,6 +544,7 @@
         }
 
         currentActivity = activity;
+        currentActivityId++;
         barEl.style.height = BAR_HEIGHT_ACTIVE + 'px';
         barEl.style.alignItems = 'flex-end';
         barEl.style.padding = '0 20px 14px';
@@ -544,8 +569,40 @@
         updateShadeActivity();
     }
 
+    // Очищает любые временные состояния (transient-уведомления).
+    function clearTransient() {
+        if (transientTimer) {
+            clearTimeout(transientTimer);
+            transientTimer = null;
+        }
+        if (leftSlot) {
+            const parent = leftSlot.parentNode;
+            if (!parent) return;
+            const clone = leftSlot.cloneNode(false);
+            while (leftSlot.firstChild) {
+                clone.appendChild(leftSlot.firstChild);
+            }
+            parent.replaceChild(clone, leftSlot);
+            leftSlot = clone;
+            leftSlot.style.opacity = '0';
+            leftSlot.style.transform = 'translateY(-4px)';
+            leftSlot.style.pointerEvents = 'none';
+        }
+    }
+
+    // Публичный метод set() — устанавливает новую активность.
+    // Возвращает идентификатор активности, который можно передавать
+    // в update() для проверки, что обновляется именно эта активность.
     function setActivity(data) {
-        if (!data || !data.type) { clearActivity(); return; }
+        if (!data || !data.type) { clearActivity(); return 0; }
+
+        // Жёстко увеличиваем поколение — все запоздавшие update()
+        // от предыдущих активностей будут отброшены.
+        activityGeneration++;
+
+        // Убираем все временные состояния и старые обработчики.
+        clearTransient();
+
         applyActivity({
             type: data.type,
             appId: data.appId || null,
@@ -553,10 +610,28 @@
             payload: data.payload || {},
             startedAt: data.startedAt || Date.now()
         });
+
+        return currentActivityId;
     }
 
-    function updateActivity(payload) {
-        if (!currentActivity) return;
+    // Публичный метод update() — обновляет payload текущей активности.
+    // Опциональный activityId: если он передан и не совпадает с
+    // текущим — обновление игнорируется.
+    // Опциональный expectedType: если он передан и не совпадает
+    // с типом текущей активности — обновление игнорируется.
+    // Опциональный expectedAppId: если он передан и не совпадает
+    // с appId текущей активности — обновление игнорируется.
+    function updateActivity(payload, opts) {
+        if (!currentActivity) return false;
+
+        opts = opts || {};
+
+        if (typeof opts.activityId === 'number' && opts.activityId > 0) {
+            if (opts.activityId !== currentActivityId) return false;
+        }
+        if (opts.expectedType && currentActivity.type !== opts.expectedType) return false;
+        if (opts.expectedAppId && currentActivity.appId !== opts.expectedAppId) return false;
+
         currentActivity.payload = Object.assign({}, currentActivity.payload, payload || {});
         if (currentActivity.type === 'recording') {
             if (leftSlot) {
@@ -577,9 +652,15 @@
             if (leftSlot) leftSlot.textContent = buildLeftContent(currentActivity);
         }
         updateShadeActivity();
+        return true;
     }
 
-    function clearActivity() { applyActivity(null); }
+    function clearActivity() {
+        // Увеличиваем поколение — все старые update() будут отброшены.
+        activityGeneration++;
+        clearTransient();
+        applyActivity(null);
+    }
 
     function suspend(appId) {}
     function resume(appId) {}
@@ -680,12 +761,19 @@
     function showTransientInBar(n) {
         ensureBar();
         const prevActivity = currentActivity;
+        const prevActivityId = currentActivityId;
+
+        if (transientTimer) {
+            clearTimeout(transientTimer);
+            transientTimer = null;
+        }
 
         barEl.style.height = BAR_HEIGHT_ACTIVE + 'px';
         barEl.style.alignItems = 'flex-end';
         barEl.style.padding = '0 20px 14px';
 
         leftSlot.innerHTML = '';
+
         const wrap = document.createElement('div');
         wrap.style.cssText = `
             display:flex;align-items:center;gap:10px;
@@ -714,13 +802,16 @@
         };
         leftSlot.addEventListener('click', handleClick);
 
-        if (transientTimer) clearTimeout(transientTimer);
         transientTimer = setTimeout(function() {
             leftSlot.removeEventListener('click', handleClick);
-            if (prevActivity) {
+            transientTimer = null;
+            // Возвращаем предыдущую активность только если она всё ещё
+            // актуальна (id не изменился за время показа уведомления).
+            if (prevActivity && prevActivityId === currentActivityId) {
                 applyActivity(prevActivity);
-            } else {
+            } else if (!prevActivity) {
                 currentActivity = null;
+                currentActivityId = 0;
                 clearLeftContent();
                 barEl.style.height = BAR_HEIGHT + 'px';
                 barEl.style.alignItems = 'center';
@@ -806,12 +897,12 @@
     function getShadeBackdrop() {
         const theme = getTheme();
         if (theme === 'evening') {
-            return { bg: 'rgba(20,20,20,0.55)', blur: '24px', text: '#ffffff', border: 'rgba(255,255,255,0.12)' };
+            return { bg: 'rgba(20,20,20,0.65)', blur: '24px', text: '#ffffff', border: 'rgba(255,255,255,0.12)' };
         }
         if (theme === 'warm-night') {
-            return { bg: 'rgba(0,0,0,0.6)', blur: '24px', text: '#ffffff', border: 'rgba(255,255,255,0.12)' };
+            return { bg: 'rgba(0,0,0,0.7)', blur: '24px', text: '#ffffff', border: 'rgba(255,255,255,0.12)' };
         }
-        return { bg: 'rgba(255,255,255,0.55)', blur: '24px', text: '#1a1a1a', border: 'rgba(0,0,0,0.08)' };
+        return { bg: 'rgba(255,255,255,0.65)', blur: '24px', text: '#1a1a1a', border: 'rgba(0,0,0,0.08)' };
     }
 
     function getShadeItemColors() {
@@ -1339,9 +1430,13 @@
         renderShade();
         if (barEl) {
             barEl.style.pointerEvents = 'none';
-            barEl.style.opacity = '0';
         }
         shadeEl.style.pointerEvents = 'auto';
+
+        try {
+            window.dispatchEvent(new CustomEvent('shnuk:shade-opened'));
+        } catch(e) {}
+
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
                 shadeEl.style.opacity = '1';
@@ -1359,8 +1454,11 @@
         shadeEl.style.pointerEvents = 'none';
         if (barEl) {
             barEl.style.pointerEvents = 'auto';
-            barEl.style.opacity = '1';
         }
+
+        try {
+            window.dispatchEvent(new CustomEvent('shnuk:shade-closed'));
+        } catch(e) {}
     }
 
     window.LiveBar = {
@@ -1377,6 +1475,10 @@
         setBrightness: setBrightness,
         optimizeSystem: optimizeSystem,
 
+        // Возвращает id текущей активности. Можно сохранить и передавать
+        // в update({...}, { activityId }) для защиты от запоздавших обновлений.
+        getActivityId: function() { return currentActivityId; },
+
         notify: function(data) {
             return addNotification(data);
         },
@@ -1386,7 +1488,9 @@
         removeNotification: removeNotification,
         clearNotifications: clearAllNotifications,
         openShade: openShade,
-        closeShade: closeShade
+        closeShade: closeShade,
+
+        setForceOpaque: setForceOpaque
     };
 
     if (document.readyState === 'loading') {
@@ -1412,7 +1516,6 @@
                 shadeEl.style.pointerEvents = 'auto';
                 if (barEl) {
                     barEl.style.pointerEvents = 'none';
-                    barEl.style.opacity = '0';
                 }
             }
         }
@@ -1431,6 +1534,19 @@
             if (btn) btn.textContent = T('Очистить');
             if (shadeOpen) renderShade();
         }
+    });
+
+    window.addEventListener('shnuk:bottom-panel-opened', function() {
+        setForceOpaque(true);
+    });
+    window.addEventListener('shnuk:bottom-panel-closed', function() {
+        setForceOpaque(false);
+    });
+    window.addEventListener('shnuk:shade-opened', function() {
+        setForceOpaque(true);
+    });
+    window.addEventListener('shnuk:shade-closed', function() {
+        setForceOpaque(false);
     });
 
 })();

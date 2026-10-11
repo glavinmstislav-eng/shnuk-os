@@ -1,5 +1,3 @@
-// coll.js — Collaris: визуальный конструктор приложений
-
 (function() {
     'use strict';
 
@@ -215,16 +213,17 @@
         wrap.style.fontFamily = font;
         wrap.style.display = 'block';
         wrap.style.width = '100%';
+        wrap.style.maxWidth = '100%';
         wrap.style.boxSizing = 'border-box';
         wrap.style.minHeight = '1px';
-        wrap.style.clear = 'both';
+        wrap.style.position = 'relative';
+        wrap.style.overflow = 'hidden';
+        wrap.style.touchAction = 'manipulation';
 
         if (!isPreviewOnly) {
-            wrap.style.position = 'relative';
             wrap.style.padding = '10px';
             wrap.style.border = '2px dashed transparent';
             wrap.style.transition = 'border-color 0.15s';
-            wrap.style.overflow = 'visible';
             wrap.addEventListener('mouseenter', function() {
                 wrap.style.borderColor = 'var(--border-color)';
             });
@@ -237,27 +236,23 @@
 
             const badge = document.createElement('div');
             badge.textContent = def.name;
-            badge.style.cssText = 'position:absolute;top:-1px;left:-1px;background:' + def.color + ';color:#fff;font-size:9px;padding:2px 6px;letter-spacing:0.5px;z-index:2;font-family:' + FONT_DEFAULT + ';cursor:grab;touch-action:none;user-select:none;';
+            badge.style.cssText = 'position:absolute;top:-1px;left:-1px;background:' + def.color + ';color:#fff;font-size:9px;padding:2px 6px;letter-spacing:0.5px;z-index:2;font-family:' + FONT_DEFAULT + ';cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;';
             wrap.appendChild(badge);
-            badge.addEventListener('mousedown', function(e) {
+            badge.addEventListener('pointerdown', function(e) {
                 e.stopPropagation();
-                e.preventDefault();
                 startUiDrag(e, el.id);
             });
-            badge.addEventListener('touchstart', function(e) {
-                e.stopPropagation();
-                if (e.cancelable) e.preventDefault();
-                startUiDrag(e, el.id);
-            }, { passive: false });
 
             const rm = document.createElement('button');
             rm.textContent = '✕';
             rm.title = 'Удалить';
-            rm.style.cssText = 'position:absolute;top:-1px;right:-1px;width:22px;height:22px;background:#cc0000;color:#fff;border:none;font-size:11px;cursor:pointer;padding:0;z-index:2;';
+            rm.style.cssText = 'position:absolute;top:-1px;right:-1px;min-width:24px;min-height:24px;background:#cc0000;color:#fff;border:none;font-size:12px;cursor:pointer;padding:0;z-index:3;-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
             rm.addEventListener('click', function(e) { e.stopPropagation(); removeElement(el.id); });
+            rm.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
             wrap.appendChild(rm);
 
             wrap.addEventListener('click', function(e) {
+                if (e.target === rm) return;
                 e.stopPropagation();
                 selectElement(el.id);
             });
@@ -266,6 +261,7 @@
         const inner = document.createElement('div');
         inner.style.fontFamily = font;
         inner.style.width = '100%';
+        inner.style.maxWidth = '100%';
         inner.style.boxSizing = 'border-box';
         inner.style.overflow = 'hidden';
 
@@ -282,6 +278,7 @@
                 h.style.color = 'var(--text-primary)';
                 h.style.wordBreak = 'break-word';
                 h.style.whiteSpace = 'normal';
+                h.style.maxWidth = '100%';
                 inner.appendChild(h);
                 break;
             }
@@ -295,6 +292,7 @@
                 p.style.color = 'var(--text-primary)';
                 p.style.wordBreak = 'break-word';
                 p.style.whiteSpace = 'pre-wrap';
+                p.style.maxWidth = '100%';
                 inner.appendChild(p);
                 break;
             }
@@ -316,7 +314,7 @@
                 const out = document.createElement('div');
                 out.dataset.varName = f.varName || 'input1';
                 out.textContent = '· вывод ' + (f.varName || 'input1') + ' ·';
-                out.style.cssText = 'padding:10px 14px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;font-family:' + font + ';text-align:center;word-break:break-word;width:100%;box-sizing:border-box;display:block;';
+                out.style.cssText = 'padding:10px 14px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;font-family:' + font + ';text-align:center;word-break:break-word;width:100%;max-width:100%;box-sizing:border-box;display:block;';
                 if (!isPreviewOnly) {
                     out.addEventListener('click', function(e) { e.stopPropagation(); selectElement(el.id); });
                 } else {
@@ -337,7 +335,7 @@
             }
             case 'image': {
                 const imgWrap = document.createElement('div');
-                imgWrap.style.cssText = 'display:block; width:100%; box-sizing:border-box;';
+                imgWrap.style.cssText = 'display:block; width:100%; max-width:100%; box-sizing:border-box;';
                 if (f.align === 'center') imgWrap.style.textAlign = 'center';
                 else if (f.align === 'right') imgWrap.style.textAlign = 'right';
                 const img = document.createElement('img');
@@ -360,7 +358,7 @@
             }
             case 'video': {
                 const vidWrap = document.createElement('div');
-                vidWrap.style.cssText = 'display:block; width:100%; box-sizing:border-box;';
+                vidWrap.style.cssText = 'display:block; width:100%; max-width:100%; box-sizing:border-box;';
                 if (f.src) {
                     const vid = document.createElement('video');
                     vid.src = f.src;
@@ -378,7 +376,7 @@
                 } else {
                     const ph = document.createElement('div');
                     ph.textContent = '· видео не выбрано ·';
-                    ph.style.cssText = 'padding:24px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;text-align:center;width:100%;box-sizing:border-box;';
+                    ph.style.cssText = 'padding:24px;background:var(--bg-secondary);border:2px dashed var(--border-color);color:var(--text-muted);font-size:13px;text-align:center;width:100%;max-width:100%;box-sizing:border-box;';
                     vidWrap.appendChild(ph);
                 }
                 if (!isPreviewOnly) {
@@ -389,7 +387,7 @@
             }
             case 'slider': {
                 const sWrap = document.createElement('div');
-                sWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;width:100%;box-sizing:border-box;';
+                sWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;width:100%;max-width:100%;box-sizing:border-box;';
                 const s = document.createElement('input');
                 s.type = 'range';
                 s.min = f.min || '0';
@@ -478,6 +476,7 @@
         head.style.cursor = 'grab';
         head.style.touchAction = 'none';
         head.style.userSelect = 'none';
+        head.style.webkitUserSelect = 'none';
 
         const title = document.createElement('span');
         title.textContent = def.name;
@@ -491,29 +490,30 @@
         rmBtn.className = 'coll-logic-btn danger';
         rmBtn.textContent = '✕';
         rmBtn.title = 'Удалить';
+        rmBtn.style.cssText = 'min-width:24px;min-height:24px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
         rmBtn.addEventListener('click', function(e) { e.stopPropagation(); removeElement(el.id); });
+        rmBtn.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
         headActions.appendChild(rmBtn);
 
         head.appendChild(headActions);
         wrap.appendChild(head);
 
-        head.addEventListener('mousedown', function(e) {
+        head.addEventListener('pointerdown', function(e) {
             if (e.target.closest('button')) return;
-            e.stopPropagation();
-            e.preventDefault();
             startLogicDrag(e, el.id);
         });
-        head.addEventListener('touchstart', function(e) {
-            if (e.target.closest('button')) return;
-            e.stopPropagation();
-            if (e.cancelable) e.preventDefault();
-            startLogicDrag(e, el.id);
-        }, { passive: false });
 
         const summary = document.createElement('div');
         summary.className = 'coll-logic-summary';
         summary.textContent = buildLogicSummary(el);
         wrap.appendChild(summary);
+
+        if (isTopLevelLogic(el) && !isContainerElement(el)) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'padding:6px 12px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border-color);line-height:1.4;';
+            hint.textContent = 'Выполняется один раз при запуске приложения в порядке сверху вниз.';
+            wrap.appendChild(hint);
+        }
 
         if (isContainerElement(el)) {
             const children = Array.isArray(el.fields.children) ? el.fields.children : [];
@@ -535,7 +535,7 @@
 
             const addBtn = document.createElement('button');
             addBtn.className = 'coll-btn';
-            addBtn.style.cssText = 'align-self:flex-start;margin-top:6px;';
+            addBtn.style.cssText = 'align-self:flex-start;margin-top:6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
             addBtn.textContent = '+ Добавить дочерний блок';
             addBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -558,6 +558,13 @@
         });
 
         return wrap;
+    }
+
+    function isTopLevelLogic(el) {
+        if (!appState || !el) return false;
+        const page = getCurrentPage();
+        if (!page) return false;
+        return page.elements.some(function(x) { return x.id === el.id; });
     }
 
     function buildLogicSummary(el) {
@@ -662,8 +669,12 @@
             moved: false,
             targetList: null,
             targetIndex: -1,
-            targetParentId: null
+            targetParentId: null,
+            pointerId: e.pointerId !== undefined ? e.pointerId : null
         };
+        if (e.target && e.target.setPointerCapture && dragCtx.pointerId !== null) {
+            try { e.target.setPointerCapture(dragCtx.pointerId); } catch(err) {}
+        }
         attachDragListeners();
     }
 
@@ -678,12 +689,19 @@
             moved: false,
             targetList: null,
             targetIndex: -1,
-            targetParentId: null
+            targetParentId: null,
+            pointerId: e.pointerId !== undefined ? e.pointerId : null
         };
+        if (e.target && e.target.setPointerCapture && dragCtx.pointerId !== null) {
+            try { e.target.setPointerCapture(dragCtx.pointerId); } catch(err) {}
+        }
         attachDragListeners();
     }
 
     function attachDragListeners() {
+        document.addEventListener('pointermove', onDragMove, { passive: false });
+        document.addEventListener('pointerup', onDragEnd);
+        document.addEventListener('pointercancel', onDragEnd);
         document.addEventListener('mousemove', onDragMove, { passive: false });
         document.addEventListener('mouseup', onDragEnd);
         document.addEventListener('touchmove', onDragMove, { passive: false });
@@ -692,6 +710,9 @@
     }
 
     function detachDragListeners() {
+        document.removeEventListener('pointermove', onDragMove);
+        document.removeEventListener('pointerup', onDragEnd);
+        document.removeEventListener('pointercancel', onDragEnd);
         document.removeEventListener('mousemove', onDragMove);
         document.removeEventListener('mouseup', onDragEnd);
         document.removeEventListener('touchmove', onDragMove);
@@ -701,16 +722,16 @@
 
     function onDragMove(e) {
         if (!dragCtx) return;
+
+        if (dragCtx.pointerId !== null && e.pointerId !== undefined && e.pointerId !== dragCtx.pointerId) return;
+
         const p = getDragPoint(e);
         const dx = p.x - dragCtx.startX;
         const dy = p.y - dragCtx.startY;
-        if (!dragCtx.moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        if (!dragCtx.moved && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
             dragCtx.moved = true;
-            const src = findElementById(dragCtx.elementId);
-            if (src) {
-                const node = document.querySelector('[data-element-id="' + dragCtx.elementId + '"]');
-                if (node) node.classList.add('dragging');
-            }
+            const node = document.querySelector('[data-element-id="' + dragCtx.elementId + '"]');
+            if (node) node.classList.add('dragging');
         }
         if (!dragCtx.moved) return;
         if (e.cancelable) e.preventDefault();
@@ -797,7 +818,6 @@
 
         const r = bestEl.getBoundingClientRect();
         if (isContainerElement(target)) {
-            const childArea = bestEl.querySelector('.coll-logic-children');
             const isInsideBody = y > r.top + 24;
             if (isInsideBody) {
                 if (!Array.isArray(target.fields.children)) target.fields.children = [];
@@ -904,6 +924,7 @@
                 const btn = document.createElement('button');
                 btn.className = 'coll-btn';
                 btn.textContent = el.fields.src ? 'Заменить файл' : 'Выбрать файл';
+                btn.style.cssText = '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
                 btn.addEventListener('click', function() {
                     const inp = document.createElement('input');
                     inp.type = 'file';
@@ -940,6 +961,7 @@
                 const btn = document.createElement('button');
                 btn.className = 'coll-btn';
                 btn.textContent = el.fields.src ? 'Заменить файл' : 'Выбрать файл';
+                btn.style.cssText = '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
                 btn.addEventListener('click', function() {
                     const inp = document.createElement('input');
                     inp.type = 'file';
@@ -1017,6 +1039,7 @@
         const rmBtn = document.createElement('button');
         rmBtn.className = 'coll-btn danger';
         rmBtn.textContent = '✕ Удалить';
+        rmBtn.style.cssText = '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
         rmBtn.addEventListener('click', function() { removeElement(el.id); });
         actions.appendChild(rmBtn);
 
@@ -1039,6 +1062,7 @@
         const l = document.createElement('label'); l.textContent = label; wrap.appendChild(l);
         const input = document.createElement('input');
         input.type = 'text'; input.value = value;
+        input.style.cssText = '-webkit-tap-highlight-color:transparent;';
         input.addEventListener('input', function() {
             const el = getSelectedElement();
             if (!el) return;
@@ -1057,6 +1081,7 @@
         const l = document.createElement('label'); l.textContent = label; wrap.appendChild(l);
         const input = document.createElement('textarea');
         input.value = value; input.rows = 3;
+        input.style.cssText = '-webkit-tap-highlight-color:transparent;';
         input.addEventListener('input', function() {
             const el = getSelectedElement();
             if (!el) return;
@@ -1075,6 +1100,7 @@
         const l = document.createElement('label'); l.textContent = label; wrap.appendChild(l);
         const input = document.createElement('input');
         input.type = 'number'; input.value = value;
+        input.style.cssText = '-webkit-tap-highlight-color:transparent;';
         input.addEventListener('input', function() {
             const el = getSelectedElement();
             if (!el) return;
@@ -1098,6 +1124,7 @@
             sel.appendChild(opt);
         });
         sel.value = value;
+        sel.style.cssText = '-webkit-tap-highlight-color:transparent;';
         sel.addEventListener('change', function() {
             const el = getSelectedElement();
             if (!el) return;
@@ -1118,6 +1145,7 @@
         const inp = document.createElement('input');
         inp.type = 'checkbox';
         inp.checked = !!checked;
+        inp.style.cssText = 'min-width:24px;min-height:24px;-webkit-tap-highlight-color:transparent;';
         inp.addEventListener('change', function() {
             const el = getSelectedElement();
             if (!el) return;
@@ -1150,14 +1178,14 @@
 
             const rn = document.createElement('button');
             rn.textContent = '✎';
-            rn.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;font-size:12px;padding:0 4px;';
+            rn.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;font-size:14px;padding:4px 6px;min-width:24px;min-height:24px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
             rn.addEventListener('click', function(e) { e.stopPropagation(); renamePage(p.id); });
             item.appendChild(rn);
 
             if (appState.pages.length > 1) {
                 const rm = document.createElement('button');
                 rm.textContent = '✕';
-                rm.style.cssText = 'background:none;border:none;color:#cc0000;cursor:pointer;font-size:12px;padding:0 4px;';
+                rm.style.cssText = 'background:none;border:none;color:#cc0000;cursor:pointer;font-size:14px;padding:4px 6px;min-width:24px;min-height:24px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
                 rm.addEventListener('click', function(e) { e.stopPropagation(); deletePage(p.id); });
                 item.appendChild(rm);
             }
@@ -1239,10 +1267,6 @@
             if (typeof JSZip !== 'undefined') { resolve(true); return; }
             const s = document.createElement('script');
             s.src = JSZIP_LOCAL;
-            if (window.__SRI && window.__SRI[JSZIP_LOCAL]) {
-                s.integrity = window.__SRI[JSZIP_LOCAL];
-                s.crossOrigin = 'anonymous';
-            }
             s.onload = function() { resolve(true); };
             s.onerror = function() { resolve(false); };
             document.head.appendChild(s);
@@ -1366,6 +1390,10 @@
             'const __timers = [];',
             'const __appToken = (typeof window.__collToken === "string") ? window.__collToken : "";',
             '',
+            'function __log() {',
+            '  try { console.log.apply(console, ["[Collaris]"].concat(Array.prototype.slice.call(arguments))); } catch(e) {}',
+            '}',
+            '',
             'function __postToParent(type, data) {',
             '  try {',
             '    window.parent.postMessage({',
@@ -1394,12 +1422,13 @@
             '}',
             '',
             'function __sendNotification(title, body, type) {',
+            '  __log("notify:", title, body, type);',
             '  __postToParent("notify", { title: title || "Уведомление", body: body || "", type: type || "info" });',
             '}',
             '',
-            'function __setVar(name, value) {',
-            '  __vars[name] = value;',
+            'function __updateOutputsForVar(name) {',
             '  const outs = document.querySelectorAll("[data-var-name=\\"" + name + "\\"][data-coll-output]");',
+            '  const value = __vars[name] !== undefined ? __vars[name] : "";',
             '  outs.forEach(function(o) {',
             '    o.textContent = value;',
             '    o.style.color = "#1a1a1a";',
@@ -1408,9 +1437,37 @@
             '  });',
             '}',
             '',
+            'function __setVar(name, value) {',
+            '  __log("setVar:", name, "=", value);',
+            '  __vars[name] = value;',
+            '  __updateOutputsForVar(name);',
+            '  __recheckConditions();',
+            '}',
+            '',
+            'function __recheckConditions() {',
+            '  const page = __pages.find(p => p.id === __currentPage);',
+            '  if (!page) return;',
+            '  function walkList(list) {',
+            '    list.forEach(function(el) {',
+            '      if (el.type === "ifb") {',
+            '        const f = el.fields || {};',
+            '        if (__evalCond(f.varName || "x", f.op || "==", f.value || "0")) {',
+            '          const kids = Array.isArray(f.children) ? f.children : [];',
+            '          kids.forEach(__runLogic);',
+            '        }',
+            '      }',
+            '      if (Array.isArray(el.fields && el.fields.children)) {',
+            '        walkList(el.fields.children);',
+            '      }',
+            '    });',
+            '  }',
+            '  walkList(page.elements);',
+            '}',
+            '',
             'function __runLogic(el) {',
             '  if (!el || !el.type) return;',
             '  const f = el.fields || {};',
+            '  __log("runLogic:", el.type, f);',
             '  if (el.type === "setvar") {',
             '    __setVar(f.varName || "x", f.value || "0");',
             '  } else if (el.type === "varb") {',
@@ -1425,6 +1482,7 @@
             '  } else if (el.type === "timerb") {',
             '    const sec = Math.max(0.5, parseFloat(f.interval || "5") || 5) * 1000;',
             '    const kids = Array.isArray(f.children) ? f.children : [];',
+            '    kids.forEach(__runLogic);',
             '    const id = setInterval(function() {',
             '      kids.forEach(__runLogic);',
             '    }, sec);',
@@ -1464,12 +1522,16 @@
             '    node.dataset.varName = f.varName || "input1";',
             '    node.dataset.collInput = "1";',
             '    node.style.cssText = "padding:10px 14px;border:2px solid #e0e0e0;background:#fff;color:#1a1a1a;font-family:inherit;font-size:14px;width:100%;max-width:100%;box-sizing:border-box;margin:8px 0;display:block;";',
+            '    node.addEventListener("input", function() {',
+            '      __setVar(node.dataset.varName, node.value);',
+            '    });',
             '  } else if (el.type === "output") {',
             '    node = document.createElement("div");',
             '    node.dataset.varName = f.varName || "input1";',
             '    node.dataset.collOutput = "1";',
-            '    node.textContent = "· вывод " + (f.varName || "input1") + " ·";',
-            '    node.style.cssText = "padding:10px 14px;background:#f5f5f5;border:2px dashed #ccc;color:#888;font-size:13px;text-align:center;margin:8px 0;word-break:break-word;width:100%;box-sizing:border-box;display:block;";',
+            '    const initVal = __vars[f.varName || "input1"];',
+            '    node.textContent = initVal !== undefined ? initVal : "· вывод " + (f.varName || "input1") + " ·";',
+            '    node.style.cssText = "padding:10px 14px;background:#f5f5f5;border:2px dashed #ccc;color:#888;font-size:13px;text-align:center;margin:8px 0;word-break:break-word;width:100%;max-width:100%;box-sizing:border-box;display:block;";',
             '  } else if (el.type === "spacer") {',
             '    node = document.createElement("div");',
             '    node.style.height = (f.size || "20") + "px";',
@@ -1512,6 +1574,7 @@
             '  } else if (el.type === "slider") {',
             '    const wrap = document.createElement("div");',
             '    wrap.style.width = "100%";',
+            '    wrap.style.maxWidth = "100%";',
             '    wrap.style.boxSizing = "border-box";',
             '    wrap.style.display = "block";',
             '    const s = document.createElement("input");',
@@ -1536,18 +1599,22 @@
             '  return node;',
             '}',
             '',
+            'function __isLogic(el) {',
+            '  return el.type === "onstart" || el.type === "ifb" || el.type === "timerb" || el.type === "setvar" || el.type === "notifyb" || el.type === "varb";',
+            '}',
+            '',
             'function __render() {',
             '  const page = __pages.find(p => p.id === __currentPage);',
             '  if (!page) return;',
             '  const root = document.getElementById("collRoot");',
             '  root.innerHTML = "";',
             '  page.elements.forEach(function(el) {',
-            '    if (el.type === "onstart" || el.type === "ifb" || el.type === "timerb" || el.type === "setvar" || el.type === "notifyb" || el.type === "varb") return;',
+            '    if (__isLogic(el)) return;',
             '    const node = __renderElement(el);',
             '    if (node) root.appendChild(node);',
             '  });',
             '  page.elements.forEach(function(el) {',
-            '    if (el.type === "onstart" || el.type === "ifb" || el.type === "timerb" || el.type === "setvar" || el.type === "notifyb" || el.type === "varb") {',
+            '    if (__isLogic(el)) {',
             '      __runLogic(el);',
             '    }',
             '  });',
@@ -1886,12 +1953,14 @@ prelude +
             reinstallBtn.className = 'coll-btn';
             reinstallBtn.textContent = 'Обновить';
             reinstallBtn.title = 'Заменить HTML приложения текущим проектом';
+            reinstallBtn.style.cssText = '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
             reinstallBtn.addEventListener('click', function() { reinstallCollarisApp(app.id); });
             actions.appendChild(reinstallBtn);
 
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'coll-btn danger';
             deleteBtn.textContent = 'Удалить';
+            deleteBtn.style.cssText = '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
             deleteBtn.addEventListener('click', function() { uninstallCollarisApp(app.id, app.name); });
             actions.appendChild(deleteBtn);
 
@@ -1917,6 +1986,7 @@ prelude +
         const closeBtn = document.createElement('button');
         closeBtn.className = 'coll-close';
         closeBtn.textContent = '✕';
+        closeBtn.style.cssText = '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
         closeBtn.addEventListener('click', function() { panel.style.display = 'none'; });
         header.appendChild(closeBtn);
         panel.appendChild(header);
@@ -2008,6 +2078,8 @@ prelude +
                 font-weight: 600;
                 transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
                 white-space: nowrap;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
             }
             .coll-btn:hover { border-color: var(--accent); color: var(--accent); }
             .coll-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
@@ -2020,14 +2092,18 @@ prelude +
                 border: 2px solid var(--accent);
                 background: none; color: var(--accent);
                 cursor: pointer; font-size: 15px; padding: 0; flex-shrink: 0;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
             }
             .coll-close:hover { background: var(--accent); color: var(--text-on-accent); }
 
             .coll-mobile-tabs { display: none; background: var(--bg-secondary); border-bottom: 2px solid var(--border-color); flex-shrink: 0; }
             .coll-mobile-tab {
-                flex: 1; padding: 10px; background: none; border: none;
+                flex: 1; padding: 12px; background: none; border: none;
                 border-bottom: 3px solid transparent; cursor: pointer;
                 font-family: ${FONT_DEFAULT}; font-size: 12px; color: var(--text-muted);
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
             }
             .coll-mobile-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
 
@@ -2049,18 +2125,21 @@ prelude +
             .coll-page-item.active { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); font-weight: 700; }
             .coll-page-item:hover { border-color: var(--accent); }
 
-            .coll-palette { flex: 1; overflow-y: auto; padding: 0 12px 12px; min-height: 0; }
+            .coll-palette { flex: 1; overflow-y: auto; padding: 0 12px 12px; min-height: 0; -webkit-overflow-scrolling: touch; }
             .coll-palette-group-title { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin: 10px 0 6px; }
             .coll-palette-item {
                 display: flex; align-items: center; gap: 8px;
-                padding: 8px 10px; margin-bottom: 6px;
+                padding: 10px 12px; margin-bottom: 6px;
                 background: var(--bg-primary); border: 2px solid var(--border-color);
                 cursor: pointer;
                 transition: border-color 0.15s ease;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
             }
             .coll-palette-item:hover { border-color: var(--accent); }
+            .coll-palette-item:active { background: var(--bg-hover); }
             .coll-palette-icon {
-                width: 22px; height: 22px;
+                width: 24px; height: 24px;
                 display: flex; align-items: center; justify-content: center;
                 color: #fff; font-size: 12px; font-weight: 700; flex-shrink: 0;
             }
@@ -2075,26 +2154,33 @@ prelude +
                 align-items: center;
                 min-height: 0;
                 -webkit-overflow-scrolling: touch;
+                touch-action: pan-y;
             }
             .coll-preview-frame {
                 width: 100%; max-width: 640px; background: var(--bg-primary);
                 border: 3px solid var(--border-color); padding: 20px;
                 min-height: 400px; box-sizing: border-box; position: relative;
-                overflow: visible;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                touch-action: pan-y;
             }
             .coll-preview-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; text-align: center; max-width: 640px; width: 100%; }
             .coll-element {
                 position: relative;
                 display: block;
                 width: 100%;
+                max-width: 100%;
                 box-sizing: border-box;
                 min-height: 1px;
-                clear: both;
+                overflow: hidden;
+                touch-action: manipulation;
             }
             .coll-element.dragging { opacity: 0.4; }
             .coll-element.drop-target { box-shadow: inset 0 0 0 3px var(--accent); }
 
-            .coll-right { background: var(--bg-secondary); border-left: 2px solid var(--border-color); overflow-y: auto; padding: 12px; min-height: 0; }
+            .coll-right { background: var(--bg-secondary); border-left: 2px solid var(--border-color); overflow-y: auto; padding: 12px; min-height: 0; -webkit-overflow-scrolling: touch; }
             .coll-inspector-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 40px 12px; line-height: 1.6; }
             .coll-inspector-title { font-size: 13px; font-weight: 700; color: var(--text-primary); padding: 8px 10px; background: var(--bg-primary); margin-bottom: 12px; }
             .coll-inspector-fields { display: flex; flex-direction: column; gap: 10px; }
@@ -2103,14 +2189,15 @@ prelude +
             .coll-inspector-row input,
             .coll-inspector-row textarea,
             .coll-inspector-row select {
-                width: 100%; padding: 8px 10px;
+                width: 100%; padding: 10px 12px;
                 border: 2px solid var(--border-color);
                 background: var(--bg-primary); color: var(--text-primary);
-                font-family: ${FONT_DEFAULT}; font-size: 12px;
+                font-family: ${FONT_DEFAULT}; font-size: 14px;
                 outline: none; box-sizing: border-box; resize: vertical;
+                -webkit-tap-highlight-color: transparent;
             }
             .coll-inspector-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 2px solid var(--border-color); }
-            .coll-inspector-actions .coll-btn { width: 100%; text-align: left; }
+            .coll-inspector-actions .coll-btn { width: 100%; text-align: left; padding: 10px 14px; font-size: 13px; }
 
             .coll-installed-panel { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-primary); z-index: 100; display: flex; flex-direction: column; }
             .coll-installed-header {
@@ -2119,7 +2206,7 @@ prelude +
                 color: var(--header-text);
             }
             .coll-installed-title { font-size: 15px; font-weight: 700; }
-            .coll-installed-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+            .coll-installed-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
             .coll-installed-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 40px 16px; }
             .coll-installed-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-secondary); border: 2px solid var(--border-color); }
             .coll-installed-info { flex: 1; min-width: 0; }
@@ -2162,8 +2249,9 @@ prelude +
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 6px 10px;
+                padding: 8px 10px;
                 color: #fff;
+                touch-action: none;
             }
             .coll-logic-summary {
                 padding: 10px 12px;
@@ -2172,15 +2260,17 @@ prelude +
                 font-family: ${FONT_DEFAULT};
             }
             .coll-logic-btn {
-                width: 22px;
-                height: 22px;
+                min-width: 26px;
+                min-height: 26px;
                 background: rgba(255,255,255,0.2);
                 border: none;
                 color: #fff;
                 cursor: pointer;
-                font-size: 10px;
+                font-size: 11px;
                 padding: 0;
                 font-family: ${FONT_DEFAULT};
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
             }
             .coll-logic-btn:hover { background: rgba(255,255,255,0.35); }
             .coll-logic-btn.danger { background: rgba(0,0,0,0.25); }
@@ -2210,10 +2300,12 @@ prelude +
                 .coll-root[data-mobile-panel="logic"] .coll-center { display: block; padding: 12px; }
                 .coll-mobile-tabs { display: flex; }
                 .coll-pages-list { max-height: none; }
-                .coll-preview-frame { padding: 12px; min-height: 300px; overflow: visible; }
+                .coll-preview-frame { padding: 12px; min-height: 300px; overflow: hidden; touch-action: pan-y; }
                 .coll-installed-card { flex-direction: column; align-items: stretch; }
                 .coll-installed-actions { width: 100%; }
                 .coll-installed-actions .coll-btn { flex: 1; }
+                .coll-header-actions .coll-btn { padding: 8px 10px; font-size: 11px; }
+                .coll-element { padding: 14px !important; }
             }
         `;
         document.head.appendChild(style);
@@ -2255,8 +2347,8 @@ prelude +
         const headerActions = document.createElement('div');
         headerActions.className = 'coll-header-actions';
         headerActions.innerHTML =
-            '<button class="coll-btn ghost" id="collInstalledBtn">Мои приложения</button>' +
-            '<button class="coll-btn ghost" id="collSaveBtn">Скачать ZIP</button>' +
+            '<button class="coll-btn ghost" id="collInstalledBtn">Мои</button>' +
+            '<button class="coll-btn ghost" id="collSaveBtn">ZIP</button>' +
             '<button class="coll-btn primary" id="collInstallBtn">Установить</button>' +
             '<button class="coll-close" id="collCloseBtn">✕</button>';
 
