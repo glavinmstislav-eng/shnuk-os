@@ -41,6 +41,23 @@
             justify-content: center;
             padding: 40px 20px;
             min-height: 100vh;
+            position: relative;
+            isolation: isolate;
+        }
+
+        body.scroll-blur::after {
+            content: '';
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 80px;
+            pointer-events: none;
+            z-index: 20;
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+            -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
         }
 
         .cs-wrap {
@@ -174,16 +191,16 @@
         }
     </style>
 </head>
-<body>
+<body class="scroll-blur">
     <div class="cs-wrap">
         <div class="cs-header">
             <div class="cs-logo">Cooop</div>
-            <div class="cs-title">Поделиться файлом</div>
+            <div class="cs-title">P2P-скачивание</div>
         </div>
 
         <div class="cs-card">
             <div class="cs-file-name" id="csFileName">—</div>
-            <div class="cs-file-meta" id="csFileMeta">Ожидание данных...</div>
+            <div class="cs-file-meta" id="csFileMeta">Ожидание подключения...</div>
             <div class="cs-progress" id="csProgress">
                 <div class="cs-progress-bar" id="csProgressBar"></div>
             </div>
@@ -193,13 +210,19 @@
         <button class="cs-btn" id="csDownloadBtn" disabled>СКАЧАТЬ ФАЙЛ</button>
 
         <div class="cs-hint" id="csHint">
-            Файл будет распакован и сохранён в папку загрузок браузера.
+            Файл скачивается напрямую с устройства раздающего по WebRTC.
         </div>
     </div>
 
     <script>
     (function() {
         'use strict';
+
+        const SIGNAL_URL = 'wss://relay.ws/';
+        const ICE_SERVERS = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ];
 
         const nameEl = document.getElementById('csFileName');
         const metaEl = document.getElementById('csFileMeta');
@@ -209,7 +232,20 @@
         const downloadBtn = document.getElementById('csDownloadBtn');
         const hintEl = document.getElementById('csHint');
 
-        let parsed = null;
+        let params = null;
+        let pc = null;
+        let dc = null;
+        let socket = null;
+        let receivedChunks = [];
+        let receivedBytes = 0;
+        let expectedMeta = null;
+        let finalBlob = null;
+        let connected = false;
+        let finished = false;
+
+        function log() {
+            try { console.log.apply(console, ['[CooopShare]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
+        }
 
         function setStatus(text, cls) {
             statusEl.textContent = text;
@@ -234,114 +270,160 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        function base64UrlDecode(str) {
-            let b64 = String(str).replace(/\s+/g, '');
-            b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
-            while (b64.length % 4) b64 += '=';
-            const binary = atob(b64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            return bytes;
-        }
-
-        function rleDecode(bytes) {
-            const out = [];
-            let i = 0;
-            const n = bytes.length;
-            while (i < n) {
-                const b = bytes[i];
-                if (b === 0xFF) {
-                    if (i + 2 >= n) break;
-                    const count = bytes[i + 1];
-                    const val = bytes[i + 2];
-                    if (count === 0) {
-                        out.push(0xFF);
-                    } else {
-                        for (let k = 0; k < count; k++) out.push(val);
-                    }
-                    i += 3;
-                } else {
-                    out.push(b);
-                    i++;
-                }
-            }
-            return new Uint8Array(out);
-        }
-
-        async function decompressBytes(bytes) {
-            if (typeof DecompressionStream === 'undefined') return null;
-            const types = ['deflate-raw', 'deflate', 'gzip'];
-            for (const t of types) {
-                try {
-                    const ds = new DecompressionStream(t);
-                    const writer = ds.writable.getWriter();
-                    writer.write(bytes);
-                    writer.close();
-
-                    const reader = ds.readable.getReader();
-                    const chunks = [];
-                    let total = 0;
-                    while (true) {
-                        const r = await reader.read();
-                        if (r.done) break;
-                        chunks.push(r.value);
-                        total += r.value.length;
-                    }
-                    const out = new Uint8Array(total);
-                    let off = 0;
-                    for (const c of chunks) {
-                        out.set(c, off);
-                        off += c.length;
-                    }
-                    return out;
-                } catch(e) {
-                    continue;
-                }
-            }
-            return null;
-        }
-
-        async function unpackFile(bytes, method) {
-            const tryOrder = [method, 'dr', 'd', 'r', 'n'];
-
-            for (const m of tryOrder) {
-                try {
-                    let data = bytes;
-
-                    if (m === 'r' || m === 'dr') {
-                        data = rleDecode(data);
-                    }
-                    if (m === 'd' || m === 'dr') {
-                        const dec = await decompressBytes(data);
-                        if (!dec) continue;
-                        data = dec;
-                    }
-                    if (data && data.length > 0) return data;
-                } catch(e) {
-                    continue;
-                }
-            }
-            return null;
-        }
-
-        function parseLink(hash) {
+        function parseHash(hash) {
             if (!hash) return null;
-            const idx = hash.indexOf('#cooop=');
-            if (idx === -1) return null;
-            let payload = hash.substring(idx + 7);
-            payload = payload.replace(/\s+/g, '');
-            const parts = payload.split('|');
-            if (parts.length !== 4) return null;
-            try {
-                return {
-                    name: decodeURIComponent(parts[0]),
-                    mime: decodeURIComponent(parts[1]),
-                    method: parts[2],
-                    b64: parts[3]
-                };
-            } catch(e) {
-                return null;
+            let payload = hash.replace(/^#/, '');
+            if (payload.indexOf('room=') === -1) return null;
+            const parts = payload.split('&');
+            const obj = {};
+            for (const p of parts) {
+                const idx = p.indexOf('=');
+                if (idx === -1) continue;
+                const key = p.substring(0, idx);
+                const val = p.substring(idx + 1);
+                obj[key] = decodeURIComponent(val);
             }
+            if (!obj.room) return null;
+            return obj;
+        }
+
+        function openSignaling(roomId) {
+            return new Promise(function(resolve, reject) {
+                try {
+                    const url = SIGNAL_URL + '?room=' + encodeURIComponent(roomId) + '&role=guest';
+                    const ws = new WebSocket(url);
+                    let opened = false;
+                    const timeout = setTimeout(function() {
+                        if (!opened) {
+                            try { ws.close(); } catch(e) {}
+                            reject(new Error('Сигнальный сервер не отвечает'));
+                        }
+                    }, 8000);
+                    ws.onopen = function() {
+                        opened = true;
+                        clearTimeout(timeout);
+                        resolve(ws);
+                    };
+                    ws.onerror = function() {
+                        if (!opened) {
+                            clearTimeout(timeout);
+                            reject(new Error('Ошибка подключения к сигнальному серверу'));
+                        }
+                    };
+                    ws.onclose = function() {
+                        if (!opened) {
+                            clearTimeout(timeout);
+                            reject(new Error('Соединение закрыто'));
+                        }
+                    };
+                } catch(e) {
+                    reject(e);
+                }
+            });
+        }
+
+        function startPeer(roomId, onOffer) {
+            pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+            pc.onicecandidate = function(e) {
+                if (e.candidate && socket && socket.readyState === 1) {
+                    try {
+                        socket.send(JSON.stringify({
+                            type: 'signal',
+                            data: e.candidate
+                        }));
+                    } catch(err) {}
+                }
+            };
+
+            pc.ondatachannel = function(event) {
+                attachDataChannel(event.channel);
+            };
+
+            pc.onconnectionstatechange = function() {
+                const state = pc.connectionState;
+                log('connection', state);
+                if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+                    if (!finished) {
+                        setStatus('Соединение разорвано', 'error');
+                    }
+                }
+            };
+        }
+
+        function attachDataChannel(channel) {
+            dc = channel;
+            dc.binaryType = 'arraybuffer';
+
+            dc.onopen = function() {
+                log('guest DC open');
+                connected = true;
+                setStatus('Получение файла...');
+                setProgress(1);
+            };
+
+            dc.onmessage = function(event) {
+                const data = event.data;
+                if (typeof data === 'string') {
+                    let msg;
+                    try { msg = JSON.parse(data); } catch(e) { return; }
+                    if (msg.done) {
+                        finishDownload();
+                        return;
+                    }
+                    if (msg.name) {
+                        expectedMeta = msg;
+                        nameEl.textContent = msg.name;
+                        metaEl.innerHTML = 'Размер: <b>' + formatSize(msg.size) + '</b> • Тип: <b>' + (msg.type || 'application/octet-stream') + '</b>';
+                    }
+                    return;
+                }
+                if (data instanceof ArrayBuffer) {
+                    receivedChunks.push(new Uint8Array(data));
+                    receivedBytes += data.byteLength;
+                    if (expectedMeta && expectedMeta.size > 0) {
+                        const pct = Math.min(99, Math.round((receivedBytes / expectedMeta.size) * 100));
+                        setProgress(pct);
+                        setStatus('Получено: ' + formatSize(receivedBytes) + ' из ' + formatSize(expectedMeta.size));
+                    } else {
+                        setStatus('Получено: ' + formatSize(receivedBytes));
+                    }
+                }
+            };
+
+            dc.onclose = function() {
+                log('guest DC closed');
+                if (!finished) {
+                    setStatus('Раздающий отключился', 'error');
+                }
+            };
+
+            dc.onerror = function(e) {
+                log('guest DC error', e);
+            };
+        }
+
+        function finishDownload() {
+            if (finished) return;
+            finished = true;
+            setProgress(100);
+
+            let total = 0;
+            for (const c of receivedChunks) total += c.length;
+            const merged = new Uint8Array(total);
+            let off = 0;
+            for (const c of receivedChunks) {
+                merged.set(c, off);
+                off += c.length;
+            }
+            receivedChunks = [];
+
+            const mime = (expectedMeta && expectedMeta.type) || 'application/octet-stream';
+            finalBlob = new Blob([merged], { type: mime });
+
+            setStatus('Файл готов к скачиванию', 'success');
+            downloadBtn.disabled = false;
+            hintEl.textContent = 'Нажмите кнопку, чтобы сохранить файл.';
         }
 
         function triggerDownload(blob, filename) {
@@ -357,70 +439,87 @@
             }, 800);
         }
 
-        async function unpackAndPrepare() {
-            if (!parsed) return;
+        async function connect() {
+            setStatus('Подключение к сигнальному серверу...');
+            setProgress(5);
 
+            let ws;
+            try {
+                ws = await openSignaling(params.room);
+            } catch(e) {
+                setStatus(e.message || 'Сигнальный сервер недоступен', 'error');
+                setProgress(0);
+                return;
+            }
+            socket = ws;
+
+            startPeer(params.room);
+
+            setStatus('Ожидание раздающего...');
             setProgress(10);
-            setStatus('Распаковка...');
 
-            let packedBytes;
-            try {
-                packedBytes = base64UrlDecode(parsed.b64);
-            } catch(e) {
-                setStatus('Не удалось декодировать base64: ' + e.message, 'error');
-                setProgress(0);
-                return;
-            }
+            ws.onmessage = async function(event) {
+                let msg;
+                try { msg = JSON.parse(event.data); } catch(e) { return; }
+                if (!msg || !msg.type) return;
 
-            setProgress(40);
-            let unpacked;
-            try {
-                unpacked = await unpackFile(packedBytes, parsed.method);
-            } catch(e) {
-                setStatus('Ошибка распаковки: ' + e.message, 'error');
-                setProgress(0);
-                return;
-            }
-
-            if (!unpacked || unpacked.length === 0) {
-                setStatus('Не удалось распаковать файл', 'error');
-                setProgress(0);
-                return;
-            }
-
-            setProgress(100);
-            const blob = new Blob([unpacked], { type: parsed.mime });
-            metaEl.innerHTML =
-                'Размер: <b>' + formatSize(unpacked.length) + '</b> • ' +
-                'Тип: <b>' + parsed.mime + '</b>';
-            hintEl.textContent = 'Файл готов к скачиванию.';
-
-            downloadBtn.disabled = false;
-            downloadBtn.onclick = function() {
-                triggerDownload(blob, parsed.name);
-                setStatus('Файл скачан', 'success');
+                if (msg.type === 'signal') {
+                    const data = msg.data;
+                    if (!data) return;
+                    try {
+                        if (data.type === 'offer') {
+                            await pc.setRemoteDescription(new RTCSessionDescription(data));
+                            const answer = await pc.createAnswer();
+                            await pc.setLocalDescription(answer);
+                            ws.send(JSON.stringify({ type: 'signal', data: pc.localDescription }));
+                            setStatus('Установка соединения...');
+                            setProgress(15);
+                        } else if (data.type === 'answer') {
+                            await pc.setRemoteDescription(new RTCSessionDescription(data));
+                        } else if (data.candidate !== undefined) {
+                            try { await pc.addIceCandidate(data); } catch(e) {}
+                        }
+                    } catch(e) {
+                        log('signal error', e);
+                    }
+                } else if (msg.type === 'host-left') {
+                    if (!finished) {
+                        setStatus('Раздающий отключился', 'error');
+                    }
+                }
             };
 
-            setStatus('Файл готов', 'success');
+            ws.onclose = function() {
+                log('signaling closed');
+            };
         }
 
         function init() {
             const hash = location.hash;
-            parsed = parseLink(hash);
+            params = parseHash(hash);
 
-            if (!parsed) {
+            if (!params || !params.room) {
                 nameEl.textContent = 'Ошибка';
                 metaEl.textContent = 'Ссылка не содержит данных Cooop';
-                setStatus('Убедитесь, что ссылка содержит #cooop=', 'error');
+                setStatus('Ссылка повреждена или недействительна', 'error');
                 hintEl.style.display = 'none';
                 return;
             }
 
-            nameEl.textContent = parsed.name;
-            metaEl.textContent = 'Готовим распаковку...';
-            setStatus('Подготовка...');
+            nameEl.textContent = params.name || 'Файл';
+            if (params.size) {
+                metaEl.innerHTML = 'Размер: <b>' + formatSize(parseInt(params.size, 10) || 0) + '</b> • Тип: <b>' + (params.mime || 'application/octet-stream') + '</b>';
+            } else {
+                metaEl.textContent = 'Ожидание метаданных...';
+            }
 
-            unpackAndPrepare();
+            connect();
+
+            downloadBtn.addEventListener('click', function() {
+                if (!finalBlob) return;
+                triggerDownload(finalBlob, params.name || 'file');
+                setStatus('Файл сохранён', 'success');
+            });
         }
 
         if (document.readyState === 'loading') {

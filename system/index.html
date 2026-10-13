@@ -1057,12 +1057,10 @@
                 setTimeout(finish, 400);
             });
 
-            // Попытка запустить видео.
             function tryPlay() {
                 const p = splashVideo.play();
                 if (p && typeof p.catch === 'function') {
                     p.catch(function() {
-                        // Автоплей отклонён — ждём первого взаимодействия.
                         const kick = function() {
                             try {
                                 const q = splashVideo.play();
@@ -1081,7 +1079,6 @@
 
             tryPlay();
 
-            // Страховка: если видео не смогло воспроизвестись за 15 секунд — скрываем.
             setTimeout(function() {
                 if (!ended) {
                     if (splashVideo.readyState < 2 || splashVideo.paused) {
@@ -1174,13 +1171,13 @@
 
         const REST_SCRIPTS = [
             'system-v.js',
+            'shnuk-account.js',
             'onboarding.js',
             'live-bar.js',
             'app-scanner.js',
             'store.js',
             'settings.js',
             'cooop.js',
-            'cooop-messenger.js',
             'my-shnuk.js',
             'audio.js'
         ];
@@ -1247,9 +1244,6 @@
             }
 
             if (typeof window.initOS === 'function') window.initOS();
-
-            // Система готова. Если видео уже доиграло — splash скрыт.
-            // Если ещё играет — пусть доиграет.
         }
 
         if (document.readyState === 'loading') {
@@ -1258,7 +1252,6 @@
             launchOS();
         }
 
-        // Абсолютная страховка: если через 25 секунд splash ещё видим, скрываем.
         setTimeout(hideSplash, 25000);
     })();
     </script>
@@ -1535,10 +1528,10 @@
             'cameraApp': 'Camera',
             'recorderApp': 'Recorder',
             'cooopApp': 'Cooop',
-            'cooopMessengerApp': 'CooopMessenger',
             'gameCenterApp': 'GameCenter',
             'collApp': 'Collaris',
-            'browserApp': 'Browser'
+            'browserApp': 'Browser',
+            'shnukAccountApp': 'ShnukAccount'
         };
 
         const APP_DOM_MAP = {
@@ -1551,10 +1544,10 @@
             'camera': 'cameraApp',
             'recorder': 'recorderApp',
             'cooop': 'cooopApp',
-            'cooop-messenger': 'cooopMessengerApp',
             'gamecenter': 'gameCenterApp',
             'coll': 'collApp',
-            'browser': 'browserApp'
+            'browser': 'browserApp',
+            'shnuk-account': 'shnukAccountApp'
         };
 
         window.__notificationOpenedAppId = window.__notificationOpenedAppId || null;

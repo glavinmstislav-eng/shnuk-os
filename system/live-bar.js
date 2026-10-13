@@ -21,16 +21,7 @@
     let overlayEl = null;
     let anonMode = false;
 
-    // Уникальный идентификатор текущей активности в LiveBar.
-    // При каждом set() генерируется новый. update() может передавать
-    // ожидаемый activityId — если он не совпадает с текущим,
-    // обновление игнорируется. Это защищает от запоздавших вызовов
-    // update() от старых интервалов.
     let currentActivityId = 0;
-
-    // Уникальный идентификатор сессии панели.
-    // Увеличивается при каждом clear() — все "зависшие" update()
-    // от старых активностей будут отброшены.
     let activityGeneration = 0;
 
     let recordingWaveCanvas = null;
@@ -569,7 +560,6 @@
         updateShadeActivity();
     }
 
-    // Очищает любые временные состояния (transient-уведомления).
     function clearTransient() {
         if (transientTimer) {
             clearTimeout(transientTimer);
@@ -590,19 +580,10 @@
         }
     }
 
-    // Публичный метод set() — устанавливает новую активность.
-    // Возвращает идентификатор активности, который можно передавать
-    // в update() для проверки, что обновляется именно эта активность.
     function setActivity(data) {
         if (!data || !data.type) { clearActivity(); return 0; }
-
-        // Жёстко увеличиваем поколение — все запоздавшие update()
-        // от предыдущих активностей будут отброшены.
         activityGeneration++;
-
-        // Убираем все временные состояния и старые обработчики.
         clearTransient();
-
         applyActivity({
             type: data.type,
             appId: data.appId || null,
@@ -610,22 +591,12 @@
             payload: data.payload || {},
             startedAt: data.startedAt || Date.now()
         });
-
         return currentActivityId;
     }
 
-    // Публичный метод update() — обновляет payload текущей активности.
-    // Опциональный activityId: если он передан и не совпадает с
-    // текущим — обновление игнорируется.
-    // Опциональный expectedType: если он передан и не совпадает
-    // с типом текущей активности — обновление игнорируется.
-    // Опциональный expectedAppId: если он передан и не совпадает
-    // с appId текущей активности — обновление игнорируется.
     function updateActivity(payload, opts) {
         if (!currentActivity) return false;
-
         opts = opts || {};
-
         if (typeof opts.activityId === 'number' && opts.activityId > 0) {
             if (opts.activityId !== currentActivityId) return false;
         }
@@ -656,7 +627,6 @@
     }
 
     function clearActivity() {
-        // Увеличиваем поколение — все старые update() будут отброшены.
         activityGeneration++;
         clearTransient();
         applyActivity(null);
@@ -805,8 +775,6 @@
         transientTimer = setTimeout(function() {
             leftSlot.removeEventListener('click', handleClick);
             transientTimer = null;
-            // Возвращаем предыдущую активность только если она всё ещё
-            // актуальна (id не изменился за время показа уведомления).
             if (prevActivity && prevActivityId === currentActivityId) {
                 applyActivity(prevActivity);
             } else if (!prevActivity) {
@@ -1474,11 +1442,7 @@
         getBrightness: getBrightness,
         setBrightness: setBrightness,
         optimizeSystem: optimizeSystem,
-
-        // Возвращает id текущей активности. Можно сохранить и передавать
-        // в update({...}, { activityId }) для защиты от запоздавших обновлений.
         getActivityId: function() { return currentActivityId; },
-
         notify: function(data) {
             return addNotification(data);
         },
@@ -1489,7 +1453,6 @@
         clearNotifications: clearAllNotifications,
         openShade: openShade,
         closeShade: closeShade,
-
         setForceOpaque: setForceOpaque
     };
 

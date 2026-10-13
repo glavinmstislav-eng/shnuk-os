@@ -1503,15 +1503,68 @@
                     display: flex; justify-content: space-between; align-items: center;
                     max-width: 720px; margin: 0 auto 28px;
                     padding-bottom: 18px; border-bottom: 2px solid var(--border-color);
+                    gap: 12px;
                 }
-                .settings-header h1 {
+                .settings-header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    min-width: 0;
+                    flex: 1;
+                }
+                .settings-header-left h1 {
                     font-size: 30px; font-weight: 700; color: var(--text-primary);
                     letter-spacing: -0.3px;
+                    margin: 0;
                 }
+                .settings-account-btn {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
+                    border: 2px solid var(--border-color);
+                    cursor: pointer;
+                    padding: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                    flex-shrink: 0;
+                    transition: transform 0.15s ease, border-color 0.2s ease;
+                    -webkit-tap-highlight-color: transparent;
+                    outline: none;
+                }
+                .settings-account-btn:hover {
+                    transform: scale(1.08);
+                    border-color: var(--accent);
+                }
+                .settings-account-inner {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: ${FONT_MAIN};
+                    font-weight: 700;
+                    font-size: 18px;
+                    color: inherit;
+                    overflow: hidden;
+                    border-radius: 50%;
+                }
+                .settings-account-inner img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    display: block;
+                    border-radius: 50%;
+                }
+
                 .settings-header-actions {
                     display: flex;
                     gap: 8px;
                     align-items: center;
+                    flex-shrink: 0;
                 }
                 .settings-icon-btn {
                     background: none; border: none; cursor: pointer;
@@ -1921,7 +1974,9 @@
                 }
                 @media (max-width: 500px) {
                     #settingsApp { padding: 24px 16px 60px; }
-                    .settings-header h1 { font-size: 24px; }
+                    .settings-header-left h1 { font-size: 24px; }
+                    .settings-account-btn { width: 38px; height: 38px; }
+                    .settings-account-inner { font-size: 15px; }
                     .settings-dropdown { top: calc(var(--livebar-h, 44px) + 16px); right: 16px; min-width: 220px; }
                     .system-image { max-width: 390px; max-height: 390px; }
                     .system-image-wrap { padding: 12px 0 20px; }
@@ -1945,7 +2000,12 @@
 
         container.innerHTML = `
             <div class="settings-header">
-                <h1>Настройки</h1>
+                <div class="settings-header-left">
+                    <button class="settings-account-btn" id="settingsAccountBtn" title="Shnuk Account">
+                        <span class="settings-account-inner" id="settingsAccountInner">?</span>
+                    </button>
+                    <h1>Настройки</h1>
+                </div>
                 <div class="settings-header-actions">
                     <button class="settings-icon-btn" id="settingsMenuBtn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2011,6 +2071,43 @@
 
         document.body.appendChild(container);
         isOpen = true;
+
+        function refreshHeaderAccount() {
+            const inner = document.getElementById('settingsAccountInner');
+            if (!inner) return;
+            inner.innerHTML = '';
+            const acc = window.ShnukAccount;
+            if (!acc) { inner.textContent = '?'; return; }
+            try { acc.ensure(); } catch(e) {}
+            const avatar = acc.getAvatar ? acc.getAvatar() : null;
+            if (avatar) {
+                const img = document.createElement('img');
+                img.src = avatar;
+                img.alt = '';
+                inner.appendChild(img);
+            } else {
+                const name = acc.getName ? acc.getName() : '';
+                inner.textContent = name ? name.charAt(0).toUpperCase() : '?';
+            }
+        }
+
+        refreshHeaderAccount();
+
+        const accBtn = document.getElementById('settingsAccountBtn');
+        if (accBtn) {
+            accBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (window.ShnukAccount && typeof window.ShnukAccount.open === 'function') {
+                    window.ShnukAccount.open();
+                } else {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Shnuk Account недоступен', { type: 'error' });
+                    }
+                }
+            });
+        }
+
+        window.addEventListener('shnuk:account-changed', refreshHeaderAccount);
 
         let dropdownMenu = null;
         let isDropdownOpen = false;

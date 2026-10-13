@@ -59,6 +59,17 @@
             initFn: 'tinyInit',
             destroyFn: 'TinyWalls',
             installed: false
+        },
+        {
+            id: 'sh',
+            name: 'Шумомер',
+            description: 'Измеряет шум микрофоном. Громкий звук подбрасывает шарик на верёвке. Слишком громко — шарик лопается.',
+            icon: null,
+            file: 'sh.js',
+            initFn: 'shInit',
+            destroyFn: 'Sh',
+            installed: true,
+            requiresType: 'other'
         }
     ];
 
@@ -221,6 +232,16 @@
             return;
         }
 
+        if (game.requiresType) {
+            const accType = (window.ShnukAccount && window.ShnukAccount.getType) ? window.ShnukAccount.getType() : 'personal';
+            if (accType !== game.requiresType) {
+                if (window.Win && window.Win.notify) {
+                    window.Win.notify('Эта игра недоступна для вашего типа аккаунта', { type: 'error' });
+                }
+                return;
+            }
+        }
+
         activeGameId = id;
 
         const listEl = document.getElementById('gameCenterList');
@@ -340,6 +361,14 @@
         renderGameList();
     }
 
+    function getVisibleGames() {
+        const accType = (window.ShnukAccount && window.ShnukAccount.getType) ? window.ShnukAccount.getType() : 'personal';
+        return GAMES.filter(function(g) {
+            if (g.requiresType && g.requiresType !== accType) return false;
+            return true;
+        });
+    }
+
     function buildGameCard(game) {
         const installed = isGameInstalled(game.id);
         const card = document.createElement('div');
@@ -395,13 +424,15 @@
         const container = document.getElementById('gameCenterListInner');
         if (!container) return;
 
-        if (GAMES.length === 0) {
-            container.innerHTML = '<div class="gc-empty">Нет игр</div>';
+        const visibleGames = getVisibleGames();
+
+        if (visibleGames.length === 0) {
+            container.innerHTML = '<div class="gc-empty">Нет доступных игр</div>';
             return;
         }
 
         container.innerHTML = '';
-        GAMES.forEach(function(game) {
+        visibleGames.forEach(function(game) {
             container.appendChild(buildGameCard(game));
         });
     }
@@ -714,6 +745,11 @@
 
         renderGameList();
     }
+
+    window.addEventListener('shnuk:account-changed', function() {
+        const listInner = document.getElementById('gameCenterListInner');
+        if (listInner) renderGameList();
+    });
 
     window.GameCenter = {
         destroy: destroy,
