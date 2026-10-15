@@ -206,6 +206,12 @@
         saveTheme(next);
     }
 
+    function getThemeLabel(themeId) {
+        if (themeId === 'evening') return 'Активна тёмная тема';
+        if (themeId === 'warm-night') return 'Активна тёплая тема';
+        return 'Активна светлая тема';
+    }
+
     function renderThemeToggle() {
         const container = document.getElementById('themeGrid');
         if (!container) return;
@@ -225,17 +231,7 @@
         sunEl.className = 'theme-toggle-icon theme-toggle-icon-sun';
         sunEl.innerHTML =
             '<svg viewBox="0 0 24 24" aria-hidden="true">' +
-                '<circle cx="12" cy="12" r="4.2" fill="currentColor"/>' +
-                '<g stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
-                    '<line x1="12" y1="2.4" x2="12" y2="5"/>' +
-                    '<line x1="12" y1="19" x2="12" y2="21.6"/>' +
-                    '<line x1="2.4" y1="12" x2="5" y2="12"/>' +
-                    '<line x1="19" y1="12" x2="21.6" y2="12"/>' +
-                    '<line x1="4.9" y1="4.9" x2="6.8" y2="6.8"/>' +
-                    '<line x1="17.2" y1="17.2" x2="19.1" y2="19.1"/>' +
-                    '<line x1="4.9" y1="19.1" x2="6.8" y2="17.2"/>' +
-                    '<line x1="17.2" y1="6.8" x2="19.1" y2="4.9"/>' +
-                '</g>' +
+                '<circle cx="12" cy="12" r="9" fill="#888888" stroke="#bbbbbb" stroke-width="1.5"/>' +
             '</svg>';
 
         const moonEl = document.createElement('span');
@@ -253,6 +249,12 @@
         });
 
         wrap.appendChild(btn);
+
+        const label = document.createElement('div');
+        label.className = 'theme-toggle-label';
+        label.textContent = getThemeLabel(currentTheme);
+        wrap.appendChild(label);
+
         container.appendChild(wrap);
     }
 
@@ -555,7 +557,7 @@
 
         container.innerHTML = `
             <div class="system-image-wrap">
-                <img src="system.png" alt="System" class="system-image" onerror="this.parentNode.style.display='none'" />
+                <div class="system-image-text">Shnuk OS 3.2</div>
             </div>
             <div class="info-row">
                 <span class="info-label">Файлов в менеджере</span>
@@ -582,6 +584,21 @@
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function renderPCMode() {
+        const container = document.getElementById('pcModeContent');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (window.ShnukPCMode && typeof window.ShnukPCMode.renderSettingsSection === 'function') {
+            window.ShnukPCMode.renderSettingsSection(container);
+        } else {
+            const fallback = document.createElement('div');
+            fallback.style.cssText = 'font-size:14px;color:var(--text-muted);line-height:1.5;';
+            fallback.textContent = 'Модуль Shnuk PC Mode недоступен.';
+            container.appendChild(fallback);
+        }
     }
 
     async function renderSecurity() {
@@ -1503,15 +1520,68 @@
                     display: flex; justify-content: space-between; align-items: center;
                     max-width: 720px; margin: 0 auto 28px;
                     padding-bottom: 18px; border-bottom: 2px solid var(--border-color);
+                    gap: 12px;
                 }
-                .settings-header h1 {
+                .settings-header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    min-width: 0;
+                    flex: 1;
+                }
+                .settings-header-left h1 {
                     font-size: 30px; font-weight: 700; color: var(--text-primary);
                     letter-spacing: -0.3px;
+                    margin: 0;
                 }
+                .settings-account-btn {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    background: var(--accent);
+                    color: var(--text-on-accent);
+                    border: 2px solid var(--border-color);
+                    cursor: pointer;
+                    padding: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                    flex-shrink: 0;
+                    transition: transform 0.15s ease, border-color 0.2s ease;
+                    -webkit-tap-highlight-color: transparent;
+                    outline: none;
+                }
+                .settings-account-btn:hover {
+                    transform: scale(1.08);
+                    border-color: var(--accent);
+                }
+                .settings-account-inner {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: ${FONT_MAIN};
+                    font-weight: 700;
+                    font-size: 18px;
+                    color: inherit;
+                    overflow: hidden;
+                    border-radius: 50%;
+                }
+                .settings-account-inner img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    display: block;
+                    border-radius: 50%;
+                }
+
                 .settings-header-actions {
                     display: flex;
                     gap: 8px;
                     align-items: center;
+                    flex-shrink: 0;
                 }
                 .settings-icon-btn {
                     background: none; border: none; cursor: pointer;
@@ -1605,13 +1675,15 @@
 
                 .theme-toggle-wrap {
                     display: flex;
-                    justify-content: center;
                     align-items: center;
-                    padding: 24px 0 8px;
+                    justify-content: flex-start;
+                    gap: 5px;
+                    padding: 12px 0 4px;
+                    flex-wrap: wrap;
                 }
 
                 .theme-toggle-btn {
-                    --size: 220px;
+                    --size: 160px;
                     width: var(--size);
                     height: var(--size);
                     border: none;
@@ -1619,27 +1691,28 @@
                     padding: 0;
                     position: relative;
                     border-radius: 50%;
-                    background: #cc0000;
-                    color: #ffffff;
+                    background: transparent;
+                    color: #cc0000;
                     -webkit-tap-highlight-color: transparent;
                     outline: none;
                     overflow: hidden;
-                    transition: background 0.4s ease, color 0.4s ease, transform 0.2s ease;
+                    transition: color 0.4s ease, transform 0.2s ease;
+                    flex-shrink: 0;
                 }
                 .theme-toggle-btn:active {
-                    transform: scale(0.97);
+                    transform: scale(0.95);
                 }
                 .theme-toggle-btn.dark-active {
-                    background: #ffffff;
-                    color: #000000;
+                    background: transparent;
+                    color: #ffffff;
                 }
 
                 .theme-toggle-icon {
                     position: absolute;
                     top: 50%;
                     left: 50%;
-                    width: 45%;
-                    height: 45%;
+                    width: 70%;
+                    height: 70%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -1666,9 +1739,18 @@
                     opacity: 1;
                 }
 
+                .theme-toggle-label {
+                    font-size: 28px;
+                    font-weight: 700;
+                    color: var(--text-primary);
+                    letter-spacing: 0.3px;
+                    line-height: 1.3;
+                }
+
                 @media (max-width: 500px) {
-                    .theme-toggle-btn { --size: 160px; }
-                    .theme-toggle-wrap { padding: 12px 0 4px; }
+                    .theme-toggle-btn { --size: 120px; }
+                    .theme-toggle-wrap { padding: 8px 0 4px; gap: 4px; }
+                    .theme-toggle-label { font-size: 22px; }
                 }
 
                 .system-image-wrap {
@@ -1677,14 +1759,18 @@
                     align-items: center;
                     padding: 24px 0 32px;
                 }
-                .system-image {
-                    max-width: 540px;
-                    max-height: 540px;
-                    width: auto;
-                    height: auto;
-                    object-fit: contain;
-                    display: block;
-                    image-rendering: auto;
+                .system-image-text {
+                    font-family: ${FONT_MAIN};
+                    font-weight: 700;
+                    font-size: 56px;
+                    line-height: 1.1;
+                    color: var(--text-primary);
+                    letter-spacing: 2px;
+                    text-align: center;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    text-shadow: 0 2px 12px rgba(0,0,0,0.08);
+                    word-break: break-word;
                 }
 
                 .system-info {
@@ -1917,13 +2003,15 @@
                 }
 
                 @media (max-width: 900px) {
-                    .system-image { max-width: 360px; max-height: 360px; }
+                    .system-image-text { font-size: 40px; }
                 }
                 @media (max-width: 500px) {
                     #settingsApp { padding: 24px 16px 60px; }
-                    .settings-header h1 { font-size: 24px; }
+                    .settings-header-left h1 { font-size: 24px; }
+                    .settings-account-btn { width: 38px; height: 38px; }
+                    .settings-account-inner { font-size: 15px; }
                     .settings-dropdown { top: calc(var(--livebar-h, 44px) + 16px); right: 16px; min-width: 220px; }
-                    .system-image { max-width: 390px; max-height: 390px; }
+                    .system-image-text { font-size: 32px; letter-spacing: 1.5px; }
                     .system-image-wrap { padding: 12px 0 20px; }
                     .system-info { padding: 14px 16px; }
                     .system-info .info-row { padding: 10px 0; font-size: 18px; }
@@ -1937,6 +2025,9 @@
                     .security-choice-btn .scb-title { font-size: 20px; }
                     .security-choice-btn .scb-desc { font-size: 15px; }
                 }
+                @media (max-width: 360px) {
+                    .system-image-text { font-size: 26px; letter-spacing: 1px; }
+                }
             `;
             document.head.appendChild(style);
         }
@@ -1945,7 +2036,12 @@
 
         container.innerHTML = `
             <div class="settings-header">
-                <h1>Настройки</h1>
+                <div class="settings-header-left">
+                    <button class="settings-account-btn" id="settingsAccountBtn" title="Shnuk Account">
+                        <span class="settings-account-inner" id="settingsAccountInner">?</span>
+                    </button>
+                    <h1>Настройки</h1>
+                </div>
                 <div class="settings-header-actions">
                     <button class="settings-icon-btn" id="settingsMenuBtn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1973,6 +2069,11 @@
                 <div class="settings-section-view" id="viewSearchIntel">
                     <div class="settings-section-title">Shnuk Search Intelligence</div>
                     <div id="searchIntelContent"></div>
+                </div>
+
+                <div class="settings-section-view" id="viewPCMode">
+                    <div class="settings-section-title">Shnuk PC Mode</div>
+                    <div id="pcModeContent"></div>
                 </div>
 
                 <div class="settings-section-view" id="viewSecurity">
@@ -2012,11 +2113,49 @@
         document.body.appendChild(container);
         isOpen = true;
 
+        function refreshHeaderAccount() {
+            const inner = document.getElementById('settingsAccountInner');
+            if (!inner) return;
+            inner.innerHTML = '';
+            const acc = window.ShnukAccount;
+            if (!acc) { inner.textContent = '?'; return; }
+            try { acc.ensure(); } catch(e) {}
+            const avatar = acc.getAvatar ? acc.getAvatar() : null;
+            if (avatar) {
+                const img = document.createElement('img');
+                img.src = avatar;
+                img.alt = '';
+                inner.appendChild(img);
+            } else {
+                const name = acc.getName ? acc.getName() : '';
+                inner.textContent = name ? name.charAt(0).toUpperCase() : '?';
+            }
+        }
+
+        refreshHeaderAccount();
+
+        const accBtn = document.getElementById('settingsAccountBtn');
+        if (accBtn) {
+            accBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (window.ShnukAccount && typeof window.ShnukAccount.open === 'function') {
+                    window.ShnukAccount.open();
+                } else {
+                    if (window.Win && window.Win.notify) {
+                        window.Win.notify('Shnuk Account недоступен', { type: 'error' });
+                    }
+                }
+            });
+        }
+
+        window.addEventListener('shnuk:account-changed', refreshHeaderAccount);
+
         let dropdownMenu = null;
         let isDropdownOpen = false;
 
         function getViewByTab(tab) {
             if (tab === 'searchIntel') return document.getElementById('viewSearchIntel');
+            if (tab === 'pcMode') return document.getElementById('viewPCMode');
             if (tab === 'security') return document.getElementById('viewSecurity');
             if (tab === 'system') return document.getElementById('viewSystem');
             return document.getElementById('viewTheme');
@@ -2030,6 +2169,9 @@
             }
             else if (tab === 'searchIntel') {
                 renderSearchIntelligence();
+            }
+            else if (tab === 'pcMode') {
+                renderPCMode();
             }
             else if (tab === 'theme') {
                 renderThemeToggle();
@@ -2107,6 +2249,7 @@
             const sections = [
                 { id: 'theme', name: 'Темы' },
                 { id: 'searchIntel', name: 'Shnuk Search Intelligence' },
+                { id: 'pcMode', name: 'Shnuk PC Mode' },
                 { id: 'security', name: 'Безопасность' },
                 { id: 'system', name: 'Система' }
             ];
@@ -2252,7 +2395,7 @@
             setTimeout(function() {
                 const container = document.getElementById('settingsApp');
                 if (!container) return;
-                const tabIds = ['theme', 'searchIntel', 'security', 'system'];
+                const tabIds = ['theme', 'searchIntel', 'pcMode', 'security', 'system'];
                 tabIds.forEach(id => {
                     const v = document.getElementById('view' + id.charAt(0).toUpperCase() + id.slice(1));
                     if (!v) return;
@@ -2273,6 +2416,9 @@
                 }
                 else if (sectionId === 'searchIntel') {
                     renderSearchIntelligence();
+                }
+                else if (sectionId === 'pcMode') {
+                    renderPCMode();
                 }
                 else if (sectionId === 'theme') {
                     renderThemeToggle();

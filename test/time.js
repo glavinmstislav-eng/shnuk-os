@@ -247,6 +247,14 @@
                 playSfx('aria.mp3');
                 if (window.LiveBar) window.LiveBar.clear();
                 saveState();
+                if (window.Win && typeof window.Win.alert === 'function') {
+                    try {
+                        window.Win.alert('Таймер завершён', {
+                            title: 'Таймер',
+                            okText: 'Понятно'
+                        });
+                    } catch(e) {}
+                }
             }
         }, 1000);
         timerInterval = localId;
@@ -1307,6 +1315,14 @@
                     playSfx('aria.mp3');
                     if (window.LiveBar) window.LiveBar.clear();
                     saveState();
+                    if (window.Win && typeof window.Win.alert === 'function') {
+                        try {
+                            window.Win.alert('Таймер завершён', {
+                                title: 'Таймер',
+                                okText: 'Понятно'
+                            });
+                        } catch(e) {}
+                    }
                 }
             }, 1000);
             timerInterval = localId;
@@ -1541,6 +1557,16 @@
                 osc.start();
                 setTimeout(() => osc.stop(), 3000);
             } catch(e) {}
+
+            if (window.Win && typeof window.Win.alert === 'function') {
+                try {
+                    window.Win.alert('Будильник сработал: ' + (alarmTime || '--:--'), {
+                        title: 'Будильник',
+                        okText: 'Понятно'
+                    });
+                } catch(e) {}
+            }
+
             alarmTimeout = setTimeout(() => {
                 alarmTimeout = null;
                 alarmActive = false;

@@ -41,6 +41,23 @@
             justify-content: center;
             padding: 40px 20px;
             min-height: 100vh;
+            position: relative;
+            isolation: isolate;
+        }
+
+        body.scroll-blur::after {
+            content: '';
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 80px;
+            pointer-events: none;
+            z-index: 20;
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+            -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
         }
 
         .cs-wrap {
@@ -174,16 +191,16 @@
         }
     </style>
 </head>
-<body>
+<body class="scroll-blur">
     <div class="cs-wrap">
         <div class="cs-header">
             <div class="cs-logo">Cooop</div>
-            <div class="cs-title">Поделиться файлом</div>
+            <div class="cs-title">P2P-скачивание</div>
         </div>
 
         <div class="cs-card">
             <div class="cs-file-name" id="csFileName">—</div>
-            <div class="cs-file-meta" id="csFileMeta">Ожидание данных...</div>
+            <div class="cs-file-meta" id="csFileMeta">Ожидание подключения...</div>
             <div class="cs-progress" id="csProgress">
                 <div class="cs-progress-bar" id="csProgressBar"></div>
             </div>
@@ -193,7 +210,7 @@
         <button class="cs-btn" id="csDownloadBtn" disabled>СКАЧАТЬ ФАЙЛ</button>
 
         <div class="cs-hint" id="csHint">
-            Файл будет распакован и сохранён в папку загрузок браузера.
+            Файл скачивается напрямую с устройства раздающего по WebRTC.
         </div>
     </div>
 
@@ -201,361 +218,11 @@
     (function() {
         'use strict';
 
-        const WORKER_CODE = `
-(function() {
-    'use strict';
-
-    function base64UrlDecode(str) {
-        let b64 = String(str).replace(/\\s+/g, '');
-        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
-        while (b64.length % 4) b64 += '=';
-        const binary = atob(b64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return bytes;
-    }
-
-    function rleDecode(bytes) {
-        const out = [];
-        const n = bytes.length;
-        let i = 0;
-        while (i < n) {
-            const b = bytes[i];
-            if (b === 0xFE) {
-                if (i + 1 >= n) break;
-                out.push(bytes[i + 1]);
-                i += 2;
-            } else if (b === 0xFF) {
-                if (i + 2 >= n) break;
-                const count = bytes[i + 1];
-                const val = bytes[i + 2];
-                if (count === 0) {
-                    out.push(0xFF);
-                } else {
-                    for (let k = 0; k < count; k++) out.push(val);
-                }
-                i += 3;
-            } else {
-                out.push(b);
-                i += 1;
-            }
-        }
-        return new Uint8Array(out);
-    }
-
-    async function inflateBytes(bytes) {
-        if (typeof DecompressionStream === 'undefined') return null;
-        const types = ['deflate-raw', 'deflate', 'gzip'];
-        for (const t of types) {
-            try {
-                const ds = new DecompressionStream(t);
-                const writer = ds.writable.getWriter();
-                writer.write(bytes);
-                writer.close();
-
-                const reader = ds.readable.getReader();
-                const chunks = [];
-                let total = 0;
-                while (true) {
-                    const r = await reader.read();
-                    if (r.done) break;
-                    chunks.push(r.value);
-                    total += r.value.length;
-                }
-                const out = new Uint8Array(total);
-                let off = 0;
-                for (const c of chunks) {
-                    out.set(c, off);
-                    off += c.length;
-                }
-                return out;
-            } catch(e) {
-                continue;
-            }
-        }
-        return null;
-    }
-
-    function mtfDecode(bytes) {
-        const symbols = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) symbols[i] = i;
-        const out = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) {
-            const pos = bytes[i];
-            const c = symbols[pos];
-            out[i] = c;
-            for (let j = pos; j > 0; j--) symbols[j] = symbols[j - 1];
-            symbols[0] = c;
-        }
-        return out;
-    }
-
-    function bwtInverse(data, primaryIndex) {
-        const n = data.length;
-        if (n === 0) return new Uint8Array(0);
-        if (n === 1) return data.slice();
-
-        const counts = new Int32Array(256);
-        for (let i = 0; i < n; i++) counts[data[i]]++;
-        const starts = new Int32Array(256);
-        let sum = 0;
-        for (let i = 0; i < 256; i++) {
-            starts[i] = sum;
-            sum += counts[i];
-        }
-        const next = new Int32Array(n);
-        const occ = new Int32Array(256);
-        for (let i = 0; i < n; i++) {
-            const c = data[i];
-            next[starts[c] + occ[c]] = i;
-            occ[c]++;
-        }
-        const out = new Uint8Array(n);
-        let p = primaryIndex;
-        for (let i = 0; i < n; i++) {
-            p = next[p];
-            out[i] = data[p];
-        }
-        return out;
-    }
-
-    function unpackIndices(bytes, count) {
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const arr = [];
-        for (let i = 0; i < count; i++) {
-            arr.push(view.getUint32(i * 4, false));
-        }
-        return arr;
-    }
-
-    function inverseBWTBlocks(bwtData, indices) {
-        const total = bwtData.length;
-        const n = indices.length;
-        const sizes = [];
-        const baseSize = Math.floor(total / n);
-        let rem = total - baseSize * n;
-        for (let i = 0; i < n; i++) {
-            let s = baseSize;
-            if (rem > 0) { s++; rem--; }
-            sizes.push(s);
-        }
-        let pos = 0;
-        const outs = [];
-        for (let i = 0; i < n; i++) {
-            const sz = sizes[i];
-            const chunk = bwtData.subarray(pos, pos + sz);
-            outs.push(bwtInverse(chunk, indices[i]));
-            pos += sz;
-        }
-        let totalOut = 0;
-        for (const o of outs) totalOut += o.length;
-        const out = new Uint8Array(totalOut);
-        let o2 = 0;
-        for (const o of outs) {
-            out.set(o, o2);
-            o2 += o.length;
-        }
-        return out;
-    }
-
-    function untokenizeText(bytes, dict) {
-        if (!dict || dict.length === 0) return bytes;
-        const out = [];
-        const n = bytes.length;
-        const map = new Map();
-        for (let i = 0; i < dict.length; i++) {
-            map.set(0x80 + i, dict[i]);
-        }
-        for (let i = 0; i < n; i++) {
-            const b = bytes[i];
-            if (b >= 0x80) {
-                const word = map.get(b);
-                if (word) {
-                    for (let k = 0; k < word.length; k++) out.push(word.charCodeAt(k) & 0xFF);
-                    continue;
-                }
-            }
-            out.push(b);
-        }
-        return new Uint8Array(out);
-    }
-
-    function parseDict(bytes) {
-        if (bytes.length < 2) return { dict: [], offset: 0 };
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const count = view.getUint16(0, false);
-        let offset = 2;
-        const dict = [];
-        for (let i = 0; i < count; i++) {
-            if (offset + 2 > bytes.length) break;
-            const len = view.getUint16(offset, false);
-            offset += 2;
-            if (offset + len > bytes.length) break;
-            let s = '';
-            for (let k = 0; k < len; k++) s += String.fromCharCode(bytes[offset + k]);
-            offset += len;
-            dict.push(s);
-        }
-        return { dict: dict, offset: offset };
-    }
-
-    function unsmoothDownsample(bytes, originalSize, factor) {
-        const out = new Uint8Array(originalSize);
-        const n = bytes.length;
-        if (n === 0 || originalSize === 0) return out;
-        if (factor <= 1) {
-            const copyLen = Math.min(n, originalSize);
-            for (let i = 0; i < copyLen; i++) out[i] = bytes[i];
-            return out;
-        }
-        for (let i = 0; i < originalSize; i++) {
-            const srcPos = i / factor;
-            const i0 = Math.floor(srcPos);
-            const i1 = Math.min(n - 1, i0 + 1);
-            const frac = srcPos - i0;
-            if (i0 >= n) {
-                out[i] = bytes[n - 1];
-                continue;
-            }
-            const a = bytes[i0];
-            const b = bytes[i1];
-            const v = a * (1 - frac) + b * frac;
-            out[i] = v > 255 ? 255 : (v < 0 ? 0 : Math.round(v));
-        }
-        return out;
-    }
-
-    async function unpackPayload(bytes, method, report) {
-        if (method === 'n') return bytes;
-        if (method === 'r') return rleDecode(bytes);
-        if (method === 'd') {
-            if (report) report(30, 'Inflate');
-            return await inflateBytes(bytes);
-        }
-        if (method === 'dr') {
-            if (report) report(30, 'Inflate');
-            const inflated = await inflateBytes(bytes);
-            if (!inflated) return null;
-            if (report) report(60, 'RLE');
-            return rleDecode(inflated);
-        }
-        if (method === 'bwr') {
-            if (bytes.length < 6) return null;
-            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-            const idxCount = view.getUint16(0, false);
-            const idxBytesLen = view.getUint32(2, false);
-            if (bytes.length < 6 + idxBytesLen) return null;
-            if (report) report(20, 'Разбор заголовка');
-            const idxBytes = bytes.subarray(6, 6 + idxBytesLen);
-            const indices = unpackIndices(idxBytes, idxCount);
-            const rleData = bytes.subarray(6 + idxBytesLen);
-            if (report) report(40, 'RLE');
-            const mtf = rleDecode(rleData);
-            if (report) report(60, 'MTF');
-            const bwtData = mtfDecode(mtf);
-            if (report) report(75, 'BWT');
-            return inverseBWTBlocks(bwtData, indices);
-        }
-        if (method === 'bwrd') {
-            if (report) report(25, 'Inflate');
-            const inflated = await inflateBytes(bytes);
-            if (!inflated) return null;
-            return await unpackPayload(inflated, 'bwr', report);
-        }
-        if (method === 'twd' || method === 'twr') {
-            let combined = bytes;
-            if (method === 'twd') {
-                if (report) report(25, 'Inflate');
-                const inflated = await inflateBytes(bytes);
-                if (!inflated) return null;
-                combined = inflated;
-            }
-            if (combined.length < 10) return null;
-            const view = new DataView(combined.buffer, combined.byteOffset, combined.byteLength);
-            const idxCount = view.getUint16(0, false);
-            const idxBytesLen = view.getUint32(2, false);
-            const dictLen = view.getUint32(6, false);
-            const headerLen = 10;
-            if (combined.length < headerLen + dictLen + idxBytesLen) return null;
-            if (report) report(40, 'Разбор заголовка');
-            const dictBytes = combined.subarray(headerLen, headerLen + dictLen);
-            const idxBytes = combined.subarray(headerLen + dictLen, headerLen + dictLen + idxBytesLen);
-            const rleData = combined.subarray(headerLen + dictLen + idxBytesLen);
-            const indices = unpackIndices(idxBytes, idxCount);
-            if (report) report(55, 'RLE');
-            const mtf = rleDecode(rleData);
-            if (report) report(70, 'MTF');
-            const bwtData = mtfDecode(mtf);
-            if (report) report(80, 'BWT');
-            const payloadAfterBWT = inverseBWTBlocks(bwtData, indices);
-            let afterInflate = payloadAfterBWT;
-            if (typeof DecompressionStream !== 'undefined') {
-                if (report) report(88, 'Inflate');
-                const maybe = await inflateBytes(payloadAfterBWT);
-                if (maybe) afterInflate = maybe;
-            }
-            if (dictLen === 0) return afterInflate;
-            if (report) report(94, 'Словарь');
-            const parsed = parseDict(dictBytes);
-            return untokenizeText(afterInflate, parsed.dict);
-        }
-        if (method === 'ds' || method === 'dsd') {
-            let payload = bytes;
-            if (method === 'dsd') {
-                if (report) report(25, 'Inflate');
-                const inflated = await inflateBytes(bytes);
-                if (!inflated) return null;
-                payload = inflated;
-            }
-            if (payload.length < 6) return null;
-            if (report) report(60, 'Разбор заголовка');
-            const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-            const originalSize = view.getUint32(0, false);
-            const factor = view.getUint16(4, false);
-            const sampled = payload.subarray(6);
-            if (report) report(70, 'Восстановление');
-            return unsmoothDownsample(sampled, originalSize, factor);
-        }
-        if (method === 'ij' || method === 'aw' || method === 'vw') {
-            return await unpackPayload(bytes, 'bwrd', report);
-        }
-        return null;
-    }
-
-    self.onmessage = async function(e) {
-        const msg = e.data || {};
-        const id = msg.id;
-        const b64 = msg.b64;
-        const method = msg.method;
-        if (!b64 || !method) {
-            self.postMessage({ id: id, ok: false, error: 'Нет данных' });
-            return;
-        }
-        try {
-            self.postMessage({ id: id, progress: 5, stage: 'Base64' });
-            const packed = base64UrlDecode(b64);
-            self.postMessage({ id: id, progress: 15, stage: 'Base64' });
-            const result = await unpackPayload(packed, method, function(p, stage) {
-                self.postMessage({ id: id, progress: p, stage: stage });
-            });
-            if (!result) {
-                self.postMessage({ id: id, ok: false, error: 'Не удалось распаковать' });
-                return;
-            }
-            self.postMessage({ id: id, progress: 100, stage: 'Готово' });
-            const buf = result.buffer;
-            self.postMessage({
-                id: id,
-                ok: true,
-                data: buf,
-                byteLength: result.length
-            }, [buf]);
-        } catch(err) {
-            self.postMessage({ id: id, ok: false, error: String(err && err.message || err) });
-        }
-    };
-})();
-        `;
+        const SIGNAL_URL = 'wss://relay.ws/';
+        const ICE_SERVERS = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ];
 
         const nameEl = document.getElementById('csFileName');
         const metaEl = document.getElementById('csFileMeta');
@@ -565,11 +232,20 @@
         const downloadBtn = document.getElementById('csDownloadBtn');
         const hintEl = document.getElementById('csHint');
 
-        let parsed = null;
-        let workerInstance = null;
-        let workerUrl = null;
-        let taskId = 0;
-        let pending = null;
+        let params = null;
+        let pc = null;
+        let dc = null;
+        let socket = null;
+        let receivedChunks = [];
+        let receivedBytes = 0;
+        let expectedMeta = null;
+        let finalBlob = null;
+        let connected = false;
+        let finished = false;
+
+        function log() {
+            try { console.log.apply(console, ['[CooopShare]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
+        }
 
         function setStatus(text, cls) {
             statusEl.textContent = text;
@@ -594,348 +270,160 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        function getWorker() {
-            if (workerInstance) return workerInstance;
-            try {
-                const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
-                workerUrl = URL.createObjectURL(blob);
-                workerInstance = new Worker(workerUrl);
-                workerInstance.onmessage = function(e) {
-                    const msg = e.data || {};
-                    if (!pending || msg.id !== pending.id) return;
-                    if (typeof msg.progress === 'number') {
-                        setProgress(msg.progress);
-                        if (msg.stage) setStatus(msg.stage + '...');
-                        return;
-                    }
-                    const p = pending;
-                    pending = null;
-                    if (msg.ok) {
-                        p.resolve({
-                            data: new Uint8Array(msg.data),
-                            byteLength: msg.byteLength
-                        });
-                    } else {
-                        p.reject(new Error(msg.error || 'worker error'));
-                    }
-                };
-                workerInstance.onerror = function(err) {
-                    const reason = (err && err.message) ? err.message : 'worker failure';
-                    if (pending) {
-                        const p = pending;
-                        pending = null;
-                        try { p.reject(new Error(reason)); } catch(e) {}
-                    }
-                    try { workerInstance.terminate(); } catch(e) {}
-                    try { URL.revokeObjectURL(workerUrl); } catch(e) {}
-                    workerInstance = null;
-                    workerUrl = null;
-                };
-            } catch(e) {
-                workerInstance = null;
-                workerUrl = null;
+        function parseHash(hash) {
+            if (!hash) return null;
+            let payload = hash.replace(/^#/, '');
+            if (payload.indexOf('room=') === -1) return null;
+            const parts = payload.split('&');
+            const obj = {};
+            for (const p of parts) {
+                const idx = p.indexOf('=');
+                if (idx === -1) continue;
+                const key = p.substring(0, idx);
+                const val = p.substring(idx + 1);
+                obj[key] = decodeURIComponent(val);
             }
-            return workerInstance;
+            if (!obj.room) return null;
+            return obj;
         }
 
-        function unpackInWorker(b64, method) {
+        function openSignaling(roomId) {
             return new Promise(function(resolve, reject) {
-                const w = getWorker();
-                if (!w) {
-                    reject(new Error('Воркер недоступен'));
-                    return;
-                }
-                const id = ++taskId;
-                pending = { id: id, resolve: resolve, reject: reject };
                 try {
-                    w.postMessage({ id: id, b64: b64, method: method });
+                    const url = SIGNAL_URL + '?room=' + encodeURIComponent(roomId) + '&role=guest';
+                    const ws = new WebSocket(url);
+                    let opened = false;
+                    const timeout = setTimeout(function() {
+                        if (!opened) {
+                            try { ws.close(); } catch(e) {}
+                            reject(new Error('Сигнальный сервер не отвечает'));
+                        }
+                    }, 8000);
+                    ws.onopen = function() {
+                        opened = true;
+                        clearTimeout(timeout);
+                        resolve(ws);
+                    };
+                    ws.onerror = function() {
+                        if (!opened) {
+                            clearTimeout(timeout);
+                            reject(new Error('Ошибка подключения к сигнальному серверу'));
+                        }
+                    };
+                    ws.onclose = function() {
+                        if (!opened) {
+                            clearTimeout(timeout);
+                            reject(new Error('Соединение закрыто'));
+                        }
+                    };
                 } catch(e) {
-                    pending = null;
-                    reject(new Error('Не удалось передать данные в воркер'));
+                    reject(e);
                 }
             });
         }
 
-        async function fallbackUnpack(b64, method) {
-            function base64UrlDecode(str) {
-                let b = String(str).replace(/\s+/g, '');
-                b = b.replace(/-/g, '+').replace(/_/g, '/');
-                while (b.length % 4) b += '=';
-                const bin = atob(b);
-                const bytes = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                return bytes;
-            }
-            async function inflate(bytes) {
-                if (typeof DecompressionStream === 'undefined') return null;
-                const types = ['deflate-raw', 'deflate', 'gzip'];
-                for (const t of types) {
+        function startPeer(roomId, onOffer) {
+            pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+            pc.onicecandidate = function(e) {
+                if (e.candidate && socket && socket.readyState === 1) {
                     try {
-                        const ds = new DecompressionStream(t);
-                        const writer = ds.writable.getWriter();
-                        writer.write(bytes);
-                        writer.close();
-                        const reader = ds.readable.getReader();
-                        const chunks = [];
-                        let total = 0;
-                        while (true) {
-                            const r = await reader.read();
-                            if (r.done) break;
-                            chunks.push(r.value);
-                            total += r.value.length;
-                        }
-                        const out = new Uint8Array(total);
-                        let off = 0;
-                        for (const c of chunks) { out.set(c, off); off += c.length; }
-                        return out;
-                    } catch(e) { continue; }
+                        socket.send(JSON.stringify({
+                            type: 'signal',
+                            data: e.candidate
+                        }));
+                    } catch(err) {}
                 }
-                return null;
-            }
-            function rleDecode(bytes) {
-                const out = [];
-                const n = bytes.length;
-                let i = 0;
-                while (i < n) {
-                    const b = bytes[i];
-                    if (b === 0xFE) {
-                        if (i + 1 >= n) break;
-                        out.push(bytes[i + 1]);
-                        i += 2;
-                    } else if (b === 0xFF) {
-                        if (i + 2 >= n) break;
-                        const count = bytes[i + 1];
-                        const val = bytes[i + 2];
-                        if (count === 0) out.push(0xFF);
-                        else for (let k = 0; k < count; k++) out.push(val);
-                        i += 3;
-                    } else {
-                        out.push(b);
-                        i += 1;
+            };
+
+            pc.ondatachannel = function(event) {
+                attachDataChannel(event.channel);
+            };
+
+            pc.onconnectionstatechange = function() {
+                const state = pc.connectionState;
+                log('connection', state);
+                if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+                    if (!finished) {
+                        setStatus('Соединение разорвано', 'error');
                     }
                 }
-                return new Uint8Array(out);
-            }
-            function mtfDecode(bytes) {
-                const symbols = new Uint8Array(256);
-                for (let i = 0; i < 256; i++) symbols[i] = i;
-                const out = new Uint8Array(bytes.length);
-                for (let i = 0; i < bytes.length; i++) {
-                    const pos = bytes[i];
-                    const c = symbols[pos];
-                    out[i] = c;
-                    for (let j = pos; j > 0; j--) symbols[j] = symbols[j - 1];
-                    symbols[0] = c;
-                }
-                return out;
-            }
-            function bwtInverse(data, primaryIndex) {
-                const n = data.length;
-                if (n === 0) return new Uint8Array(0);
-                if (n === 1) return data.slice();
-                const counts = new Int32Array(256);
-                for (let i = 0; i < n; i++) counts[data[i]]++;
-                const starts = new Int32Array(256);
-                let sum = 0;
-                for (let i = 0; i < 256; i++) { starts[i] = sum; sum += counts[i]; }
-                const next = new Int32Array(n);
-                const occ = new Int32Array(256);
-                for (let i = 0; i < n; i++) {
-                    const c = data[i];
-                    next[starts[c] + occ[c]] = i;
-                    occ[c]++;
-                }
-                const out = new Uint8Array(n);
-                let p = primaryIndex;
-                for (let i = 0; i < n; i++) {
-                    p = next[p];
-                    out[i] = data[p];
-                }
-                return out;
-            }
-            function unpackIndices(bytes, count) {
-                const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-                const arr = [];
-                for (let i = 0; i < count; i++) arr.push(view.getUint32(i * 4, false));
-                return arr;
-            }
-            function inverseBWTBlocks(bwtData, indices) {
-                const total = bwtData.length;
-                const n = indices.length;
-                const sizes = [];
-                const baseSize = Math.floor(total / n);
-                let rem = total - baseSize * n;
-                for (let i = 0; i < n; i++) {
-                    let s = baseSize;
-                    if (rem > 0) { s++; rem--; }
-                    sizes.push(s);
-                }
-                let pos = 0;
-                const outs = [];
-                for (let i = 0; i < n; i++) {
-                    const sz = sizes[i];
-                    outs.push(bwtInverse(bwtData.subarray(pos, pos + sz), indices[i]));
-                    pos += sz;
-                }
-                let totalOut = 0;
-                for (const o of outs) totalOut += o.length;
-                const out = new Uint8Array(totalOut);
-                let o2 = 0;
-                for (const o of outs) { out.set(o, o2); o2 += o.length; }
-                return out;
-            }
-            function untokenizeText(bytes, dict) {
-                if (!dict || dict.length === 0) return bytes;
-                const out = [];
-                const map = new Map();
-                for (let i = 0; i < dict.length; i++) map.set(0x80 + i, dict[i]);
-                for (let i = 0; i < bytes.length; i++) {
-                    const b = bytes[i];
-                    if (b >= 0x80) {
-                        const word = map.get(b);
-                        if (word) {
-                            for (let k = 0; k < word.length; k++) out.push(word.charCodeAt(k) & 0xFF);
-                            continue;
-                        }
-                    }
-                    out.push(b);
-                }
-                return new Uint8Array(out);
-            }
-            function parseDict(bytes) {
-                if (bytes.length < 2) return { dict: [] };
-                const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-                const count = view.getUint16(0, false);
-                let offset = 2;
-                const dict = [];
-                for (let i = 0; i < count; i++) {
-                    if (offset + 2 > bytes.length) break;
-                    const len = view.getUint16(offset, false);
-                    offset += 2;
-                    if (offset + len > bytes.length) break;
-                    let s = '';
-                    for (let k = 0; k < len; k++) s += String.fromCharCode(bytes[offset + k]);
-                    offset += len;
-                    dict.push(s);
-                }
-                return { dict: dict };
-            }
-            function unsmooth(bytes, originalSize, factor) {
-                const out = new Uint8Array(originalSize);
-                const n = bytes.length;
-                if (n === 0 || originalSize === 0) return out;
-                if (factor <= 1) {
-                    const copyLen = Math.min(n, originalSize);
-                    for (let i = 0; i < copyLen; i++) out[i] = bytes[i];
-                    return out;
-                }
-                for (let i = 0; i < originalSize; i++) {
-                    const srcPos = i / factor;
-                    const i0 = Math.floor(srcPos);
-                    const i1 = Math.min(n - 1, i0 + 1);
-                    const frac = srcPos - i0;
-                    if (i0 >= n) { out[i] = bytes[n - 1]; continue; }
-                    const a = bytes[i0];
-                    const b = bytes[i1];
-                    const v = a * (1 - frac) + b * frac;
-                    out[i] = v > 255 ? 255 : (v < 0 ? 0 : Math.round(v));
-                }
-                return out;
-            }
-            async function recurse(bytes, method) {
-                if (method === 'n') return bytes;
-                if (method === 'r') return rleDecode(bytes);
-                if (method === 'd') return await inflate(bytes);
-                if (method === 'dr') {
-                    const inf = await inflate(bytes);
-                    if (!inf) return null;
-                    return rleDecode(inf);
-                }
-                if (method === 'bwr') {
-                    if (bytes.length < 6) return null;
-                    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-                    const idxCount = view.getUint16(0, false);
-                    const idxBytesLen = view.getUint32(2, false);
-                    if (bytes.length < 6 + idxBytesLen) return null;
-                    const indices = unpackIndices(bytes.subarray(6, 6 + idxBytesLen), idxCount);
-                    const mtf = rleDecode(bytes.subarray(6 + idxBytesLen));
-                    const bwtData = mtfDecode(mtf);
-                    return inverseBWTBlocks(bwtData, indices);
-                }
-                if (method === 'bwrd') {
-                    const inf = await inflate(bytes);
-                    if (!inf) return null;
-                    return await recurse(inf, 'bwr');
-                }
-                if (method === 'twd' || method === 'twr') {
-                    let combined = bytes;
-                    if (method === 'twd') {
-                        const inf = await inflate(bytes);
-                        if (!inf) return null;
-                        combined = inf;
-                    }
-                    if (combined.length < 10) return null;
-                    const view = new DataView(combined.buffer, combined.byteOffset, combined.byteLength);
-                    const idxCount = view.getUint16(0, false);
-                    const idxBytesLen = view.getUint32(2, false);
-                    const dictLen = view.getUint32(6, false);
-                    const headerLen = 10;
-                    if (combined.length < headerLen + dictLen + idxBytesLen) return null;
-                    const dictBytes = combined.subarray(headerLen, headerLen + dictLen);
-                    const idxBytes = combined.subarray(headerLen + dictLen, headerLen + dictLen + idxBytesLen);
-                    const rleData = combined.subarray(headerLen + dictLen + idxBytesLen);
-                    const indices = unpackIndices(idxBytes, idxCount);
-                    const mtf = rleDecode(rleData);
-                    const bwtData = mtfDecode(mtf);
-                    const payloadAfterBWT = inverseBWTBlocks(bwtData, indices);
-                    let afterInflate = payloadAfterBWT;
-                    const maybe = await inflate(payloadAfterBWT);
-                    if (maybe) afterInflate = maybe;
-                    if (dictLen === 0) return afterInflate;
-                    const parsed = parseDict(dictBytes);
-                    return untokenizeText(afterInflate, parsed.dict);
-                }
-                if (method === 'ds' || method === 'dsd') {
-                    let payload = bytes;
-                    if (method === 'dsd') {
-                        const inf = await inflate(bytes);
-                        if (!inf) return null;
-                        payload = inf;
-                    }
-                    if (payload.length < 6) return null;
-                    const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-                    const originalSize = view.getUint32(0, false);
-                    const factor = view.getUint16(4, false);
-                    const sampled = payload.subarray(6);
-                    return unsmooth(sampled, originalSize, factor);
-                }
-                if (method === 'ij' || method === 'aw' || method === 'vw') {
-                    return await recurse(bytes, 'bwrd');
-                }
-                return null;
-            }
-            const packed = base64UrlDecode(b64);
-            return await recurse(packed, method);
+            };
         }
 
-        function parseLink(hash) {
-            if (!hash) return null;
-            const idx = hash.indexOf('#cooop=');
-            if (idx === -1) return null;
-            let payload = hash.substring(idx + 7);
-            payload = payload.replace(/\s+/g, '');
-            const parts = payload.split('|');
-            if (parts.length !== 4) return null;
-            try {
-                return {
-                    name: decodeURIComponent(parts[0]),
-                    mime: decodeURIComponent(parts[1]),
-                    method: parts[2],
-                    b64: parts[3]
-                };
-            } catch(e) {
-                return null;
+        function attachDataChannel(channel) {
+            dc = channel;
+            dc.binaryType = 'arraybuffer';
+
+            dc.onopen = function() {
+                log('guest DC open');
+                connected = true;
+                setStatus('Получение файла...');
+                setProgress(1);
+            };
+
+            dc.onmessage = function(event) {
+                const data = event.data;
+                if (typeof data === 'string') {
+                    let msg;
+                    try { msg = JSON.parse(data); } catch(e) { return; }
+                    if (msg.done) {
+                        finishDownload();
+                        return;
+                    }
+                    if (msg.name) {
+                        expectedMeta = msg;
+                        nameEl.textContent = msg.name;
+                        metaEl.innerHTML = 'Размер: <b>' + formatSize(msg.size) + '</b> • Тип: <b>' + (msg.type || 'application/octet-stream') + '</b>';
+                    }
+                    return;
+                }
+                if (data instanceof ArrayBuffer) {
+                    receivedChunks.push(new Uint8Array(data));
+                    receivedBytes += data.byteLength;
+                    if (expectedMeta && expectedMeta.size > 0) {
+                        const pct = Math.min(99, Math.round((receivedBytes / expectedMeta.size) * 100));
+                        setProgress(pct);
+                        setStatus('Получено: ' + formatSize(receivedBytes) + ' из ' + formatSize(expectedMeta.size));
+                    } else {
+                        setStatus('Получено: ' + formatSize(receivedBytes));
+                    }
+                }
+            };
+
+            dc.onclose = function() {
+                log('guest DC closed');
+                if (!finished) {
+                    setStatus('Раздающий отключился', 'error');
+                }
+            };
+
+            dc.onerror = function(e) {
+                log('guest DC error', e);
+            };
+        }
+
+        function finishDownload() {
+            if (finished) return;
+            finished = true;
+            setProgress(100);
+
+            let total = 0;
+            for (const c of receivedChunks) total += c.length;
+            const merged = new Uint8Array(total);
+            let off = 0;
+            for (const c of receivedChunks) {
+                merged.set(c, off);
+                off += c.length;
             }
+            receivedChunks = [];
+
+            const mime = (expectedMeta && expectedMeta.type) || 'application/octet-stream';
+            finalBlob = new Blob([merged], { type: mime });
+
+            setStatus('Файл готов к скачиванию', 'success');
+            downloadBtn.disabled = false;
+            hintEl.textContent = 'Нажмите кнопку, чтобы сохранить файл.';
         }
 
         function triggerDownload(blob, filename) {
@@ -951,88 +439,87 @@
             }, 800);
         }
 
-        function methodLabel(m) {
-            if (m === 'twd') return 'Word+BWT+Deflate';
-            if (m === 'twr') return 'Word+BWT';
-            if (m === 'dsd') return 'Downsample+Deflate (с потерей)';
-            if (m === 'ds') return 'Downsample (с потерей)';
-            if (m === 'ij') return 'JPEG (с потерей)';
-            if (m === 'aw') return 'WAV (с потерей)';
-            if (m === 'vw') return 'WebM (с потерей)';
-            if (m === 'bwrd') return 'BWT+Deflate';
-            if (m === 'bwr') return 'BWT';
-            if (m === 'dr') return 'Deflate+RLE';
-            if (m === 'd') return 'Deflate';
-            if (m === 'r') return 'RLE';
-            if (m === 'n') return 'Без сжатия';
-            return m;
-        }
-
-        async function unpackAndPrepare() {
-            if (!parsed) return;
-
+        async function connect() {
+            setStatus('Подключение к сигнальному серверу...');
             setProgress(5);
-            setStatus('Base64...');
 
-            let unpacked = null;
+            let ws;
             try {
-                unpacked = await unpackInWorker(parsed.b64, parsed.method);
+                ws = await openSignaling(params.room);
             } catch(e) {
-                try {
-                    setStatus('Резервная распаковка...');
-                    setProgress(20);
-                    const res = await fallbackUnpack(parsed.b64, parsed.method);
-                    if (res) unpacked = { data: res, byteLength: res.length };
-                } catch(e2) {
-                    setStatus('Ошибка распаковки: ' + e2.message, 'error');
-                    setProgress(0);
-                    return;
-                }
-            }
-
-            if (!unpacked || !unpacked.data || unpacked.data.length === 0) {
-                setStatus('Не удалось распаковать файл', 'error');
+                setStatus(e.message || 'Сигнальный сервер недоступен', 'error');
                 setProgress(0);
                 return;
             }
+            socket = ws;
 
-            setProgress(100);
-            setStatus('Создание файла...');
+            startPeer(params.room);
 
-            const bytes = unpacked.data;
-            const blob = new Blob([bytes], { type: parsed.mime });
-            metaEl.innerHTML =
-                'Размер: <b>' + formatSize(bytes.length) + '</b> • ' +
-                'Тип: <b>' + parsed.mime + '</b> • ' +
-                'Метод: <b>' + methodLabel(parsed.method) + '</b>';
-            hintEl.textContent = 'Файл готов к скачиванию.';
+            setStatus('Ожидание раздающего...');
+            setProgress(10);
 
-            downloadBtn.disabled = false;
-            downloadBtn.onclick = function() {
-                triggerDownload(blob, parsed.name);
-                setStatus('Файл скачан', 'success');
+            ws.onmessage = async function(event) {
+                let msg;
+                try { msg = JSON.parse(event.data); } catch(e) { return; }
+                if (!msg || !msg.type) return;
+
+                if (msg.type === 'signal') {
+                    const data = msg.data;
+                    if (!data) return;
+                    try {
+                        if (data.type === 'offer') {
+                            await pc.setRemoteDescription(new RTCSessionDescription(data));
+                            const answer = await pc.createAnswer();
+                            await pc.setLocalDescription(answer);
+                            ws.send(JSON.stringify({ type: 'signal', data: pc.localDescription }));
+                            setStatus('Установка соединения...');
+                            setProgress(15);
+                        } else if (data.type === 'answer') {
+                            await pc.setRemoteDescription(new RTCSessionDescription(data));
+                        } else if (data.candidate !== undefined) {
+                            try { await pc.addIceCandidate(data); } catch(e) {}
+                        }
+                    } catch(e) {
+                        log('signal error', e);
+                    }
+                } else if (msg.type === 'host-left') {
+                    if (!finished) {
+                        setStatus('Раздающий отключился', 'error');
+                    }
+                }
             };
 
-            setStatus('Файл готов', 'success');
+            ws.onclose = function() {
+                log('signaling closed');
+            };
         }
 
         function init() {
             const hash = location.hash;
-            parsed = parseLink(hash);
+            params = parseHash(hash);
 
-            if (!parsed) {
+            if (!params || !params.room) {
                 nameEl.textContent = 'Ошибка';
                 metaEl.textContent = 'Ссылка не содержит данных Cooop';
-                setStatus('Убедитесь, что ссылка содержит #cooop=', 'error');
+                setStatus('Ссылка повреждена или недействительна', 'error');
                 hintEl.style.display = 'none';
                 return;
             }
 
-            nameEl.textContent = parsed.name;
-            metaEl.textContent = 'Готовим распаковку...';
-            setStatus('Подготовка...');
+            nameEl.textContent = params.name || 'Файл';
+            if (params.size) {
+                metaEl.innerHTML = 'Размер: <b>' + formatSize(parseInt(params.size, 10) || 0) + '</b> • Тип: <b>' + (params.mime || 'application/octet-stream') + '</b>';
+            } else {
+                metaEl.textContent = 'Ожидание метаданных...';
+            }
 
-            unpackAndPrepare();
+            connect();
+
+            downloadBtn.addEventListener('click', function() {
+                if (!finalBlob) return;
+                triggerDownload(finalBlob, params.name || 'file');
+                setStatus('Файл сохранён', 'success');
+            });
         }
 
         if (document.readyState === 'loading') {

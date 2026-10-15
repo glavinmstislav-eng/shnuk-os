@@ -3,7 +3,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1024,6 +1024,7 @@
         const splashVideo = document.getElementById('osSplashVideo');
 
         let splashHidden = false;
+        let skipSplash = false;
 
         function hideSplash() {
             if (splashHidden) return;
@@ -1033,6 +1034,14 @@
             setTimeout(function() {
                 if (osSplash.parentNode) osSplash.parentNode.removeChild(osSplash);
             }, 900);
+        }
+
+        function hideSplashNow() {
+            if (splashHidden) return;
+            splashHidden = true;
+            if (!osSplash) return;
+            try { if (splashVideo) splashVideo.pause(); } catch(e) {}
+            if (osSplash.parentNode) osSplash.parentNode.removeChild(osSplash);
         }
 
         window.__hideSplash = hideSplash;
@@ -1057,12 +1066,10 @@
                 setTimeout(finish, 400);
             });
 
-            // Попытка запустить видео.
             function tryPlay() {
                 const p = splashVideo.play();
                 if (p && typeof p.catch === 'function') {
                     p.catch(function() {
-                        // Автоплей отклонён — ждём первого взаимодействия.
                         const kick = function() {
                             try {
                                 const q = splashVideo.play();
@@ -1081,7 +1088,6 @@
 
             tryPlay();
 
-            // Страховка: если видео не смогло воспроизвестись за 15 секунд — скрываем.
             setTimeout(function() {
                 if (!ended) {
                     if (splashVideo.readyState < 2 || splashVideo.paused) {
@@ -1091,13 +1097,11 @@
             }, 15000);
         }
 
-        armVideo();
-
         function loadScriptWithFallback(src) {
             return new Promise(function(resolve) {
                 const timeoutId = setTimeout(function() {
                     resolve(false);
-                }, 15000);
+                }, 20000);
 
                 const script = document.createElement('script');
                 script.src = src + '?t=' + Date.now();
@@ -1169,18 +1173,19 @@
             'l10n.js',
             'l.js',
             'windows.js',
-            'security.js'
+            'security.js',
+            'shnuk-pc-mode.js'
         ];
 
         const REST_SCRIPTS = [
             'system-v.js',
+            'shnuk-account.js',
             'onboarding.js',
             'live-bar.js',
             'app-scanner.js',
             'store.js',
             'settings.js',
             'cooop.js',
-            'cooop-messenger.js',
             'my-shnuk.js',
             'audio.js'
         ];
@@ -1199,6 +1204,18 @@
             }
         }
 
+        async function runPCModeStart() {
+            return new Promise(function(resolve) {
+                if (!window.ShnukPCMode || typeof window.ShnukPCMode.showPCStart !== 'function') {
+                    resolve(true);
+                    return;
+                }
+                window.ShnukPCMode.showPCStart(function(ok) {
+                    resolve(!!ok);
+                });
+            });
+        }
+
         async function launchOS() {
             osApp.classList.add('visible');
             osApp.style.display = 'block';
@@ -1212,6 +1229,28 @@
             await waitForOSStorage();
 
             await loadScriptsSequentially(MIN_SCRIPTS);
+
+            // Проверяем, запущена ли система на ПК
+            let onPC = false;
+            try {
+                if (window.ShnukPCMode && typeof window.ShnukPCMode.isPC === 'function') {
+                    onPC = window.ShnukPCMode.isPC();
+                }
+            } catch(e) {}
+
+            if (onPC) {
+                // Скрываем splash заранее, PC Mode имеет свой экран
+                hideSplashNow();
+                osApp.style.display = 'none';
+
+                await runPCModeStart();
+
+                osApp.style.display = 'block';
+                osApp.classList.add('visible');
+            } else {
+                // Обычный splash
+                armVideo();
+            }
 
             let hasSec = false;
             try {
@@ -1248,8 +1287,11 @@
 
             if (typeof window.initOS === 'function') window.initOS();
 
-            // Система готова. Если видео уже доиграло — splash скрыт.
-            // Если ещё играет — пусть доиграет.
+            if (!onPC) {
+                // На телефоне splash завершится сам по событию ended
+            } else {
+                // На ПК уже всё показано
+            }
         }
 
         if (document.readyState === 'loading') {
@@ -1258,7 +1300,6 @@
             launchOS();
         }
 
-        // Абсолютная страховка: если через 25 секунд splash ещё видим, скрываем.
         setTimeout(hideSplash, 25000);
     })();
     </script>
@@ -1535,10 +1576,10 @@
             'cameraApp': 'Camera',
             'recorderApp': 'Recorder',
             'cooopApp': 'Cooop',
-            'cooopMessengerApp': 'CooopMessenger',
             'gameCenterApp': 'GameCenter',
             'collApp': 'Collaris',
-            'browserApp': 'Browser'
+            'browserApp': 'Browser',
+            'shnukAccountApp': 'ShnukAccount'
         };
 
         const APP_DOM_MAP = {
@@ -1551,10 +1592,10 @@
             'camera': 'cameraApp',
             'recorder': 'recorderApp',
             'cooop': 'cooopApp',
-            'cooop-messenger': 'cooopMessengerApp',
             'gamecenter': 'gameCenterApp',
             'coll': 'collApp',
-            'browser': 'browserApp'
+            'browser': 'browserApp',
+            'shnuk-account': 'shnukAccountApp'
         };
 
         window.__notificationOpenedAppId = window.__notificationOpenedAppId || null;
