@@ -3,10 +3,27 @@
     'use strict';
 
     const FONT_MAIN = "'TTPaplane', monospace";
-    const TOKEN_KEY = 'shnuk_pc_mode_token';
-    const TOKEN_TTL = 5 * 60 * 1000;
     const TOKEN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const TOKEN_LEN = 6;
+    const ICE_TIMEOUT_MS = 12000;
+    const CHANNEL_TIMEOUT_MS = 45000;
+
+    const ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        {
+            urls: [
+                'turn:openrelay.metered.ca:80',
+                'turn:openrelay.metered.ca:443',
+                'turns:openrelay.metered.ca:443?transport=tcp'
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
+    ];
 
     function log() {
         try { console.log.apply(console, ['[PC-Mode]'].concat(Array.prototype.slice.call(arguments))); } catch(e) {}
@@ -39,51 +56,59 @@
         return false;
     }
 
-    function isActiveToken(token) {
-        if (!token) return false;
+    function base64UrlEncode(str) {
         try {
-            const raw = sessionStorage.getItem(TOKEN_KEY);
-            if (!raw) return false;
-            const parsed = JSON.parse(raw);
-            if (!parsed || parsed.token !== token) return false;
-            if (Date.now() - parsed.created > TOKEN_TTL) return false;
-            return true;
-        } catch(e) { return false; }
+            const bytes = new TextEncoder().encode(str);
+            let binary = '';
+            const chunk = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunk) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        } catch(e) {
+            return '';
+        }
     }
 
-    function loadToken() {
+    function base64UrlDecode(b64) {
         try {
-            const raw = sessionStorage.getItem(TOKEN_KEY);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed) return null;
-            if (Date.now() - parsed.created > TOKEN_TTL) return null;
-            return parsed;
-        } catch(e) { return null; }
+            let s = String(b64).replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+            while (s.length % 4) s += '=';
+            const binary = atob(s);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new TextDecoder().decode(bytes);
+        } catch(e) {
+            return '';
+        }
     }
 
-    function saveToken(token) {
-        try {
-            sessionStorage.setItem(TOKEN_KEY, JSON.stringify({
-                token: token,
-                created: Date.now(),
-                phoneConfirmed: false,
-                pcConfirmed: false
-            }));
-        } catch(e) {}
-    }
-
-    function updateToken(patch) {
-        try {
-            const cur = loadToken();
-            if (!cur) return;
-            const merged = Object.assign({}, cur, patch, { updated: Date.now() });
-            sessionStorage.setItem(TOKEN_KEY, JSON.stringify(merged));
-        } catch(e) {}
-    }
-
-    function clearToken() {
-        try { sessionStorage.removeItem(TOKEN_KEY); } catch(e) {}
+    function waitIceComplete(pc) {
+        return new Promise(function(resolve) {
+            if (pc.iceGatheringState === 'complete') {
+                resolve(true);
+                return;
+            }
+            let resolved = false;
+            const finish = function() {
+                if (resolved) return;
+                resolved = true;
+                pc.removeEventListener('icegatheringstatechange', onState);
+                pc.removeEventListener('icecandidate', onCand);
+                resolve(true);
+            };
+            const onState = function() {
+                if (pc.iceGatheringState === 'complete') finish();
+            };
+            const onCand = function(e) {
+                if (e && e.candidate && e.candidate.type === 'relay') {
+                    setTimeout(finish, 700);
+                }
+            };
+            pc.addEventListener('icegatheringstatechange', onState);
+            pc.addEventListener('icecandidate', onCand);
+            setTimeout(finish, ICE_TIMEOUT_MS);
+        });
     }
 
     function injectStyles() {
@@ -105,9 +130,11 @@
                 color: #1a1a1a;
                 opacity: 0;
                 animation: pcModeFadeIn 0.4s ease forwards;
+                overflow-y: auto;
             }
             #pcModeOverlay, #pcModeOverlay * {
                 font-family: ${FONT_MAIN} !important;
+                box-sizing: border-box;
             }
             @keyframes pcModeFadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes pcModeFadeOut { from { opacity: 1; } to { opacity: 0; } }
@@ -115,45 +142,78 @@
 
             .pc-mode-card {
                 width: 100%;
-                max-width: 460px;
+                max-width: 520px;
                 background: #f5f5f5;
                 border: 2px solid #e0e0e0;
-                padding: 28px 26px 24px;
-                box-sizing: border-box;
+                padding: 26px 24px 22px;
                 display: flex;
                 flex-direction: column;
-                gap: 18px;
+                gap: 16px;
+                margin: auto;
             }
 
             .pc-mode-logo {
-                font-size: 26px;
+                font-size: 24px;
                 font-weight: 700;
                 letter-spacing: 1px;
                 color: #cc0000;
                 text-align: center;
             }
             .pc-mode-title {
-                font-size: 14px;
+                font-size: 13px;
                 color: #666666;
                 text-align: center;
                 line-height: 1.5;
                 margin-top: -12px;
             }
             .pc-mode-label {
-                font-size: 12px;
+                font-size: 11px;
                 color: #888888;
                 text-transform: uppercase;
                 letter-spacing: 0.8px;
                 font-weight: 700;
             }
+            .pc-mode-steps {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 12px 14px;
+                background: #ffffff;
+                border-left: 3px solid #cc0000;
+                font-size: 12px;
+                color: #333333;
+                line-height: 1.5;
+            }
+            .pc-mode-steps b { color: #cc0000; }
+
+            .pc-mode-link {
+                width: 100%;
+                min-height: 90px;
+                max-height: 160px;
+                padding: 10px 12px;
+                border: 2px solid #e0e0e0;
+                background: #ffffff;
+                color: #1a1a1a;
+                font-family: 'Courier New', monospace;
+                font-size: 10px;
+                line-height: 1.4;
+                resize: vertical;
+                outline: none;
+                word-break: break-all;
+                -webkit-user-select: text;
+                user-select: text;
+                transition: border-color 0.2s;
+            }
+            .pc-mode-link:focus { border-color: #cc0000; }
+
             .pc-mode-code-display {
                 font-family: 'Courier New', monospace;
-                font-size: 42px;
+                font-size: 40px;
                 font-weight: 700;
-                letter-spacing: 10px;
+                letter-spacing: 9px;
                 text-align: center;
                 color: #cc0000;
-                padding: 14px 10px;
+                padding: 12px 10px;
                 background: #ffffff;
                 border: 2px dashed #cc0000;
                 user-select: text;
@@ -161,31 +221,14 @@
                 cursor: text;
                 word-break: break-all;
             }
-            .pc-mode-input {
-                width: 100%;
-                padding: 16px 14px;
-                border: 2px solid #e0e0e0;
-                background: #ffffff;
-                color: #1a1a1a;
-                font-family: 'Courier New', monospace;
-                font-size: 26px;
-                font-weight: 700;
-                letter-spacing: 8px;
-                text-align: center;
-                text-transform: uppercase;
-                outline: none;
-                box-sizing: border-box;
-                transition: border-color 0.2s;
-            }
-            .pc-mode-input:focus { border-color: #cc0000; }
 
             .pc-mode-btn {
-                padding: 14px 20px;
+                padding: 13px 20px;
                 border: none;
                 background: #cc0000;
                 color: #ffffff;
                 font-family: ${FONT_MAIN};
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 700;
                 letter-spacing: 1px;
                 cursor: pointer;
@@ -204,37 +247,40 @@
                 color: #cc0000;
                 border-color: #cc0000;
             }
+            .pc-mode-btn:disabled {
+                background: #cccccc;
+                color: #ffffff;
+                cursor: not-allowed;
+            }
+
             .pc-mode-hint {
-                font-size: 12px;
+                font-size: 11px;
                 color: #888888;
                 line-height: 1.5;
                 text-align: center;
             }
             .pc-mode-error {
-                font-size: 13px;
+                font-size: 12px;
                 color: #cc0000;
                 text-align: center;
-                min-height: 18px;
+                min-height: 16px;
                 line-height: 1.4;
             }
-            .pc-mode-steps {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                padding: 14px 16px;
-                background: #ffffff;
-                border-left: 3px solid #cc0000;
-                font-size: 13px;
-                color: #333333;
-                line-height: 1.5;
+            .pc-mode-status {
+                font-size: 12px;
+                color: #666666;
+                text-align: center;
+                min-height: 16px;
+                line-height: 1.4;
+                transition: color 0.2s;
             }
-            .pc-mode-steps b { color: #cc0000; }
+            .pc-mode-status.ok { color: #2e7d32; }
 
             @media (max-width: 500px) {
-                .pc-mode-card { padding: 20px 18px; }
-                .pc-mode-logo { font-size: 22px; }
-                .pc-mode-code-display { font-size: 30px; letter-spacing: 6px; padding: 12px 8px; }
-                .pc-mode-input { font-size: 20px; letter-spacing: 6px; padding: 14px 10px; }
+                .pc-mode-card { padding: 18px 16px; }
+                .pc-mode-logo { font-size: 20px; }
+                .pc-mode-code-display { font-size: 28px; letter-spacing: 5px; padding: 10px 8px; }
+                .pc-mode-link { font-size: 9px; min-height: 80px; }
             }
         `;
         document.head.appendChild(st);
@@ -290,8 +336,8 @@
         });
     }
 
-    // ==== Телефонная сторона: показать код ====
-    function showPhoneCode() {
+    // ==== Телефонная сторона (host) ====
+    function showPhoneStart() {
         let existing = document.getElementById('pcModeOverlay');
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
@@ -312,110 +358,96 @@
         const steps = document.createElement('div');
         steps.className = 'pc-mode-steps';
         steps.innerHTML =
-            '1. Откройте <b>Shnuk OS</b> на этом же ПК.<br>' +
-            '2. Введите код ниже в окне ввода.<br>' +
-            '3. Дождитесь ответного кода и введите его здесь.';
+            '1. Нажмите <b>Создать приглашение</b>.<br>' +
+            '2. Скопируйте строку и перенесите её на ПК любым способом.<br>' +
+            '3. Вставьте в это окно ответную строку с ПК.<br>' +
+            '4. Сверьте код — он должен совпасть на обоих устройствах.';
         card.appendChild(steps);
 
-        const cur = loadToken();
-        let token = cur && cur.token && (Date.now() - cur.created < TOKEN_TTL) ? cur.token : null;
-        if (!token) {
-            token = generateToken();
-            saveToken(token);
-        }
+        const statusEl = document.createElement('div');
+        statusEl.className = 'pc-mode-status';
+        statusEl.textContent = 'Готово к созданию приглашения';
+        card.appendChild(statusEl);
 
-        const label = document.createElement('div');
-        label.className = 'pc-mode-label';
-        label.textContent = 'Код для ПК';
-        card.appendChild(label);
+        const createBtn = document.createElement('button');
+        createBtn.className = 'pc-mode-btn';
+        createBtn.textContent = 'Создать приглашение';
+        card.appendChild(createBtn);
 
-        const codeDisplay = document.createElement('div');
-        codeDisplay.className = 'pc-mode-code-display';
-        codeDisplay.textContent = token;
-        card.appendChild(codeDisplay);
+        const inviteWrap = document.createElement('div');
+        inviteWrap.style.display = 'none';
+        inviteWrap.style.flexDirection = 'column';
+        inviteWrap.style.gap = '16px';
+        inviteWrap.style.width = '100%';
 
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'pc-mode-btn secondary';
-        copyBtn.textContent = 'Скопировать код';
-        copyBtn.addEventListener('click', function() {
-            copyToClipboard(token, null).then(function(ok) {
+        const inviteLabel = document.createElement('div');
+        inviteLabel.className = 'pc-mode-label';
+        inviteLabel.textContent = 'Приглашение для ПК';
+        inviteWrap.appendChild(inviteLabel);
+
+        const inviteArea = document.createElement('textarea');
+        inviteArea.className = 'pc-mode-link';
+        inviteArea.readOnly = true;
+        inviteArea.addEventListener('click', function() { inviteArea.select(); });
+        inviteWrap.appendChild(inviteArea);
+
+        const copyInviteBtn = document.createElement('button');
+        copyInviteBtn.className = 'pc-mode-btn secondary';
+        copyInviteBtn.textContent = 'Скопировать приглашение';
+        copyInviteBtn.addEventListener('click', function() {
+            const text = inviteArea.value.trim();
+            if (!text) return;
+            copyToClipboard(text, inviteArea).then(function(ok) {
                 if (ok && window.Win && window.Win.notify) {
-                    window.Win.notify('Код скопирован', { type: 'success', duration: 2000 });
+                    window.Win.notify('Приглашение скопировано', { type: 'success', duration: 2000 });
                 }
             });
         });
-        card.appendChild(copyBtn);
+        inviteWrap.appendChild(copyInviteBtn);
 
-        const label2 = document.createElement('div');
-        label2.className = 'pc-mode-label';
-        label2.textContent = 'Ответный код от ПК';
-        card.appendChild(label2);
+        const answerLabel = document.createElement('div');
+        answerLabel.className = 'pc-mode-label';
+        answerLabel.textContent = 'Ответная строка от ПК';
+        inviteWrap.appendChild(answerLabel);
 
-        const input = document.createElement('input');
-        input.className = 'pc-mode-input';
-        input.type = 'text';
-        input.maxLength = TOKEN_LEN;
-        input.placeholder = '______';
-        input.autocomplete = 'off';
-        input.autocapitalize = 'characters';
-        card.appendChild(input);
+        const answerInput = document.createElement('textarea');
+        answerInput.className = 'pc-mode-link';
+        answerInput.placeholder = 'Вставьте ответную строку с ПК сюда...';
+        inviteWrap.appendChild(answerInput);
+
+        const connectBtn = document.createElement('button');
+        connectBtn.className = 'pc-mode-btn';
+        connectBtn.textContent = 'Установить соединение';
+        inviteWrap.appendChild(connectBtn);
+
+        const codeLabel = document.createElement('div');
+        codeLabel.className = 'pc-mode-label';
+        codeLabel.textContent = 'Код подтверждения';
+        codeLabel.style.display = 'none';
+        inviteWrap.appendChild(codeLabel);
+
+        const codeDisplay = document.createElement('div');
+        codeDisplay.className = 'pc-mode-code-display';
+        codeDisplay.style.display = 'none';
+        inviteWrap.appendChild(codeDisplay);
+
+        const codeHint = document.createElement('div');
+        codeHint.className = 'pc-mode-hint';
+        codeHint.style.display = 'none';
+        codeHint.textContent = 'Код должен совпасть с кодом, который покажет ПК.';
+        inviteWrap.appendChild(codeHint);
+
+        card.appendChild(inviteWrap);
 
         const errorEl = document.createElement('div');
         errorEl.className = 'pc-mode-error';
         card.appendChild(errorEl);
 
-        const confirmBtn = document.createElement('button');
-        confirmBtn.className = 'pc-mode-btn';
-        confirmBtn.textContent = 'Подтвердить связку';
-        confirmBtn.addEventListener('click', function() {
-            const answer = (input.value || '').trim().toUpperCase();
-            if (!answer) { errorEl.textContent = 'Введите ответный код'; return; }
-            if (answer.length !== TOKEN_LEN) { errorEl.textContent = 'Код должен быть из ' + TOKEN_LEN + ' символов'; return; }
-
-            const t = loadToken();
-            if (!t || t.token !== token) {
-                errorEl.textContent = 'Сессия истекла. Откройте раздел заново.';
-                return;
-            }
-            if (Date.now() - t.created > TOKEN_TTL) {
-                errorEl.textContent = 'Код просрочен. Откройте раздел заново.';
-                return;
-            }
-            if (!t.pcConfirmed) {
-                errorEl.textContent = 'ПК ещё не подтвердил привязку. Нажмите «Продолжить» на ПК.';
-                return;
-            }
-
-            updateToken({ phoneConfirmed: true, confirmedAt: Date.now() });
-            errorEl.style.color = '#2e7d32';
-            errorEl.textContent = 'Готово. Связка установлена.';
-            setTimeout(function() {
-                closeOverlay(ov);
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify('PC Mode подключён', { type: 'success', duration: 3000 });
-                }
-            }, 900);
-        });
-        card.appendChild(confirmBtn);
-
-        const resetBtn = document.createElement('button');
-        resetBtn.className = 'pc-mode-btn secondary';
-        resetBtn.textContent = 'Новый код';
-        resetBtn.addEventListener('click', function() {
-            clearToken();
-            closeOverlay(ov, function() { showPhoneCode(); });
-        });
-        card.appendChild(resetBtn);
-
-        const hint = document.createElement('div');
-        hint.className = 'pc-mode-hint';
-        hint.textContent = 'Код живёт ' + (TOKEN_TTL / 60000) + ' минут. Не закрывайте это окно до подтверждения.';
-        card.appendChild(hint);
-
         const closeBtn = document.createElement('button');
         closeBtn.className = 'pc-mode-btn secondary';
         closeBtn.textContent = 'Закрыть';
         closeBtn.addEventListener('click', function() {
+            if (session) session.close();
             closeOverlay(ov);
         });
         card.appendChild(closeBtn);
@@ -423,10 +455,158 @@
         ov.appendChild(card);
         document.body.appendChild(ov);
 
-        setTimeout(function() { input.focus(); }, 400);
+        let session = null;
+        let currentInvite = null;
+
+        createBtn.addEventListener('click', async function() {
+            errorEl.textContent = '';
+            createBtn.disabled = true;
+            statusEl.textContent = 'Создание приглашения...';
+            statusEl.classList.remove('ok');
+
+            try {
+                session = createHostSession();
+                const invite = await session.createOffer();
+                currentInvite = invite;
+                inviteArea.value = invite;
+                inviteWrap.style.display = 'flex';
+                statusEl.textContent = 'Приглашение готово. Перенесите на ПК.';
+                statusEl.classList.add('ok');
+                createBtn.style.display = 'none';
+            } catch(e) {
+                log('host createOffer error', e);
+                errorEl.textContent = 'Ошибка создания приглашения: ' + (e.message || 'неизвестная');
+                createBtn.disabled = false;
+                statusEl.textContent = 'Готово к созданию приглашения';
+            }
+        });
+
+        connectBtn.addEventListener('click', async function() {
+            if (!session || !currentInvite) {
+                errorEl.textContent = 'Сначала создайте приглашение';
+                return;
+            }
+            const answer = answerInput.value.trim();
+            if (!answer) {
+                errorEl.textContent = 'Вставьте ответную строку';
+                return;
+            }
+            errorEl.textContent = '';
+            connectBtn.disabled = true;
+            statusEl.textContent = 'Установка соединения...';
+            statusEl.classList.remove('ok');
+
+            try {
+                await session.acceptAnswer(answer);
+                statusEl.textContent = 'Ожидание открытия канала...';
+            } catch(e) {
+                log('host acceptAnswer error', e);
+                errorEl.textContent = 'Ошибка: ' + (e.message || 'не удалось установить соединение');
+                connectBtn.disabled = false;
+                statusEl.textContent = 'Готово к вводу ответа';
+            }
+        });
+
+        function createHostSession() {
+            const state = {
+                pc: null,
+                dc: null,
+                closed: false,
+                code: null,
+                onCode: null
+            };
+
+            state.close = function() {
+                if (state.closed) return;
+                state.closed = true;
+                if (state.dc) {
+                    try { state.dc.close(); } catch(e) {}
+                }
+                if (state.pc) {
+                    try { state.pc.close(); } catch(e) {}
+                }
+            };
+
+            state.createOffer = async function() {
+                const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+                state.pc = pc;
+
+                const dc = pc.createDataChannel('pcmode', { ordered: true });
+                state.dc = dc;
+
+                dc.onopen = function() {
+                    log('host DC open');
+                    statusEl.textContent = 'Соединение установлено. Ожидание кода...';
+                    statusEl.classList.add('ok');
+                };
+
+                dc.onmessage = function(event) {
+                    const data = event.data;
+                    if (typeof data !== 'string') return;
+                    let msg;
+                    try { msg = JSON.parse(data); } catch(e) { return; }
+                    if (msg && msg.t === 'code' && typeof msg.code === 'string') {
+                        state.code = msg.code;
+                        codeLabel.style.display = 'block';
+                        codeDisplay.style.display = 'block';
+                        codeDisplay.textContent = msg.code;
+                        codeHint.style.display = 'block';
+                        statusEl.textContent = 'Связка подтверждена';
+                        statusEl.classList.add('ok');
+                        if (state.onCode) state.onCode(msg.code);
+                    }
+                };
+
+                dc.onclose = function() {
+                    log('host DC close');
+                    if (!state.closed) {
+                        statusEl.textContent = 'Соединение закрыто';
+                        statusEl.classList.remove('ok');
+                    }
+                };
+
+                pc.onconnectionstatechange = function() {
+                    log('host conn', pc.connectionState);
+                    if (pc.connectionState === 'failed') {
+                        errorEl.textContent = 'Не удалось установить соединение. Прямой канал заблокирован.';
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                await waitIceComplete(pc);
+
+                return base64UrlEncode(JSON.stringify({
+                    t: 'offer',
+                    sdp: pc.localDescription.sdp
+                }));
+            };
+
+            state.acceptAnswer = async function(answerB64) {
+                if (!state.pc) throw new Error('Сначала создайте приглашение');
+                const json = base64UrlDecode(answerB64);
+                if (!json) throw new Error('Неверная ответная строка');
+                let data;
+                try { data = JSON.parse(json); } catch(e) { throw new Error('Неверный формат ответа'); }
+                if (!data || data.t !== 'answer' || !data.sdp) throw new Error('Это не ответ');
+
+                await state.pc.setRemoteDescription(new RTCSessionDescription({
+                    type: 'answer',
+                    sdp: data.sdp
+                }));
+
+                setTimeout(function() {
+                    if (state.dc && state.dc.readyState !== 'open' && !state.closed) {
+                        errorEl.textContent = 'Канал не открылся за 45 секунд. Прямой канал заблокирован.';
+                    }
+                }, CHANNEL_TIMEOUT_MS);
+            };
+
+            return state;
+        }
     }
 
-    // ==== ПК-сторона: показать окно ввода кода ====
+    // ==== ПК-сторона (guest) ====
     function showPCStart(onDone) {
         let existing = document.getElementById('pcModeOverlay');
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
@@ -449,121 +629,212 @@
         steps.className = 'pc-mode-steps';
         steps.innerHTML =
             '1. На телефоне откройте <b>Настройки → Shnuk PC Mode</b>.<br>' +
-            '2. Скопируйте код, который появится на телефоне.<br>' +
-            '3. Введите его ниже.';
+            '2. Нажмите <b>Создать приглашение</b> и перенесите строку на ПК.<br>' +
+            '3. Вставьте приглашение ниже и нажмите <b>Продолжить</b>.<br>' +
+            '4. Верните ответную строку на телефон и введите код, который появится здесь.';
         card.appendChild(steps);
 
-        const label = document.createElement('div');
-        label.className = 'pc-mode-label';
-        label.textContent = 'Код с телефона';
-        card.appendChild(label);
+        const statusEl = document.createElement('div');
+        statusEl.className = 'pc-mode-status';
+        statusEl.textContent = 'Ожидание приглашения';
+        card.appendChild(statusEl);
 
-        const input = document.createElement('input');
-        input.className = 'pc-mode-input';
-        input.type = 'text';
-        input.maxLength = TOKEN_LEN;
-        input.placeholder = '______';
-        input.autocomplete = 'off';
-        input.autocapitalize = 'characters';
-        card.appendChild(input);
+        const inviteLabel = document.createElement('div');
+        inviteLabel.className = 'pc-mode-label';
+        inviteLabel.textContent = 'Приглашение с телефона';
+        card.appendChild(inviteLabel);
+
+        const inviteInput = document.createElement('textarea');
+        inviteInput.className = 'pc-mode-link';
+        inviteInput.placeholder = 'Вставьте приглашение с телефона сюда...';
+        card.appendChild(inviteInput);
+
+        const connectBtn = document.createElement('button');
+        connectBtn.className = 'pc-mode-btn';
+        connectBtn.textContent = 'Продолжить';
+        card.appendChild(connectBtn);
+
+        const answerWrap = document.createElement('div');
+        answerWrap.style.display = 'none';
+        answerWrap.style.flexDirection = 'column';
+        answerWrap.style.gap = '16px';
+        answerWrap.style.width = '100%';
+
+        const answerLabel = document.createElement('div');
+        answerLabel.className = 'pc-mode-label';
+        answerLabel.textContent = 'Ответная строка для телефона';
+        answerWrap.appendChild(answerLabel);
+
+        const answerArea = document.createElement('textarea');
+        answerArea.className = 'pc-mode-link';
+        answerArea.readOnly = true;
+        answerArea.addEventListener('click', function() { answerArea.select(); });
+        answerWrap.appendChild(answerArea);
+
+        const copyAnswerBtn = document.createElement('button');
+        copyAnswerBtn.className = 'pc-mode-btn secondary';
+        copyAnswerBtn.textContent = 'Скопировать ответную строку';
+        copyAnswerBtn.addEventListener('click', function() {
+            const text = answerArea.value.trim();
+            if (!text) return;
+            copyToClipboard(text, answerArea).then(function(ok) {
+                if (ok && window.Win && window.Win.notify) {
+                    window.Win.notify('Ответная строка скопирована', { type: 'success', duration: 2000 });
+                }
+            });
+        });
+        answerWrap.appendChild(copyAnswerBtn);
+
+        const codeLabel = document.createElement('div');
+        codeLabel.className = 'pc-mode-label';
+        codeLabel.textContent = 'Код подтверждения';
+        codeLabel.style.display = 'none';
+        answerWrap.appendChild(codeLabel);
+
+        const codeDisplay = document.createElement('div');
+        codeDisplay.className = 'pc-mode-code-display';
+        codeDisplay.style.display = 'none';
+        answerWrap.appendChild(codeDisplay);
+
+        const codeHint = document.createElement('div');
+        codeHint.className = 'pc-mode-hint';
+        codeHint.style.display = 'none';
+        codeHint.textContent = 'Этот же код должен появиться на телефоне.';
+        answerWrap.appendChild(codeHint);
+
+        card.appendChild(answerWrap);
 
         const errorEl = document.createElement('div');
         errorEl.className = 'pc-mode-error';
         card.appendChild(errorEl);
 
-        const confirmBtn = document.createElement('button');
-        confirmBtn.className = 'pc-mode-btn';
-        confirmBtn.textContent = 'Продолжить';
-        confirmBtn.addEventListener('click', function() {
-            const val = (input.value || '').trim().toUpperCase();
-            if (val.length !== TOKEN_LEN) {
-                errorEl.textContent = 'Код должен быть из ' + TOKEN_LEN + ' символов';
-                return;
-            }
-            let cur = loadToken();
-            if (!cur || cur.token !== val) {
-                cur = { token: val, created: Date.now(), phoneConfirmed: false, pcConfirmed: false };
-                try { sessionStorage.setItem(TOKEN_KEY, JSON.stringify(cur)); } catch(e) {}
-            }
-            updateToken({ pcConfirmed: true, pcConfirmedAt: Date.now() });
-            showPCAnswer(ov, val, onDone);
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'pc-mode-btn secondary';
+        closeBtn.textContent = 'Закрыть';
+        closeBtn.addEventListener('click', function() {
+            if (session) session.close();
+            closeOverlay(ov, function() {
+                if (onDone) onDone(false);
+            });
         });
-        card.appendChild(confirmBtn);
-
-        const hint = document.createElement('div');
-        hint.className = 'pc-mode-hint';
-        hint.textContent = 'Без связки Shnuk PC Mode не будет работать.';
-        card.appendChild(hint);
+        card.appendChild(closeBtn);
 
         ov.appendChild(card);
         document.body.appendChild(ov);
 
-        setTimeout(function() { input.focus(); }, 400);
-    }
+        let session = null;
 
-    function showPCAnswer(ov, token, onDone) {
-        const card = ov.querySelector('.pc-mode-card');
-        if (!card) { if (onDone) onDone(true); return; }
-        card.innerHTML = '';
+        connectBtn.addEventListener('click', async function() {
+            const invite = inviteInput.value.trim();
+            if (!invite) {
+                errorEl.textContent = 'Вставьте приглашение';
+                return;
+            }
+            errorEl.textContent = '';
+            connectBtn.disabled = true;
+            statusEl.textContent = 'Обработка приглашения...';
+            statusEl.classList.remove('ok');
 
-        const logo = document.createElement('div');
-        logo.className = 'pc-mode-logo';
-        logo.textContent = 'Shnuk PC Mode';
-        card.appendChild(logo);
-
-        const title = document.createElement('div');
-        title.className = 'pc-mode-title';
-        title.textContent = 'Ответный код';
-        card.appendChild(title);
-
-        const steps = document.createElement('div');
-        steps.className = 'pc-mode-steps';
-        steps.innerHTML =
-            '1. На телефоне введите этот код в разделе <b>Shnuk PC Mode</b>.<br>' +
-            '2. Нажмите «Подтвердить связку» на телефоне.<br>' +
-            '3. После этого можно закрыть окно на ПК.';
-        card.appendChild(steps);
-
-        const label = document.createElement('div');
-        label.className = 'pc-mode-label';
-        label.textContent = 'Ответный код для телефона';
-        card.appendChild(label);
-
-        const codeDisplay = document.createElement('div');
-        codeDisplay.className = 'pc-mode-code-display';
-        codeDisplay.textContent = token;
-        card.appendChild(codeDisplay);
-
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'pc-mode-btn secondary';
-        copyBtn.textContent = 'Скопировать код';
-        copyBtn.addEventListener('click', function() {
-            copyToClipboard(token, null).then(function(ok) {
-                if (ok && window.Win && window.Win.notify) {
-                    window.Win.notify('Код скопирован', { type: 'success', duration: 2000 });
-                }
-            });
+            try {
+                session = createGuestSession();
+                const answer = await session.acceptOffer(invite);
+                answerArea.value = answer;
+                answerWrap.style.display = 'flex';
+                statusEl.textContent = 'Ответная строка готова. Перенесите на телефон.';
+                statusEl.classList.add('ok');
+                inviteInput.disabled = true;
+                connectBtn.style.display = 'none';
+            } catch(e) {
+                log('guest acceptOffer error', e);
+                errorEl.textContent = 'Ошибка: ' + (e.message || 'не удалось обработать приглашение');
+                connectBtn.disabled = false;
+                statusEl.textContent = 'Ожидание приглашения';
+            }
         });
-        card.appendChild(copyBtn);
 
-        const doneBtn = document.createElement('button');
-        doneBtn.className = 'pc-mode-btn';
-        doneBtn.textContent = 'Я ввёл код на телефоне';
-        doneBtn.addEventListener('click', function() {
-            updateToken({ phoneConfirmed: true, confirmedAt: Date.now() });
-            closeOverlay(ov, function() {
-                if (window.Win && window.Win.notify) {
-                    window.Win.notify('PC Mode подключён', { type: 'success', duration: 2500 });
+        function createGuestSession() {
+            const state = {
+                pc: null,
+                dc: null,
+                closed: false,
+                code: null
+            };
+
+            state.close = function() {
+                if (state.closed) return;
+                state.closed = true;
+                if (state.dc) {
+                    try { state.dc.close(); } catch(e) {}
                 }
-                if (onDone) onDone(true);
-            });
-        });
-        card.appendChild(doneBtn);
+                if (state.pc) {
+                    try { state.pc.close(); } catch(e) {}
+                }
+            };
 
-        const hint = document.createElement('div');
-        hint.className = 'pc-mode-hint';
-        hint.textContent = 'Код одноразовый. После подтверждения связка активируется на время сессии.';
-        card.appendChild(hint);
+            state.acceptOffer = async function(offerB64) {
+                const json = base64UrlDecode(offerB64);
+                if (!json) throw new Error('Неверное приглашение');
+                let data;
+                try { data = JSON.parse(json); } catch(e) { throw new Error('Неверный формат приглашения'); }
+                if (!data || data.t !== 'offer' || !data.sdp) throw new Error('Это не приглашение');
+
+                const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+                state.pc = pc;
+
+                pc.ondatachannel = function(event) {
+                    const dc = event.channel;
+                    state.dc = dc;
+
+                    dc.onopen = function() {
+                        log('guest DC open');
+                        const code = generateToken();
+                        state.code = code;
+                        try {
+                            dc.send(JSON.stringify({ t: 'code', code: code }));
+                        } catch(e) {
+                            errorEl.textContent = 'Не удалось отправить код по каналу';
+                            return;
+                        }
+                        codeLabel.style.display = 'block';
+                        codeDisplay.style.display = 'block';
+                        codeDisplay.textContent = code;
+                        codeHint.style.display = 'block';
+                        statusEl.textContent = 'Связка подтверждена';
+                        statusEl.classList.add('ok');
+                    };
+
+                    dc.onclose = function() {
+                        log('guest DC close');
+                        if (!state.closed) {
+                            statusEl.textContent = 'Соединение закрыто';
+                            statusEl.classList.remove('ok');
+                        }
+                    };
+                };
+
+                pc.onconnectionstatechange = function() {
+                    log('guest conn', pc.connectionState);
+                    if (pc.connectionState === 'failed') {
+                        errorEl.textContent = 'Не удалось установить соединение. Прямой канал заблокирован.';
+                    }
+                };
+
+                await pc.setRemoteDescription(new RTCSessionDescription({
+                    type: 'offer',
+                    sdp: data.sdp
+                }));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                await waitIceComplete(pc);
+
+                return base64UrlEncode(JSON.stringify({
+                    t: 'answer',
+                    sdp: pc.localDescription.sdp
+                }));
+            };
+
+            return state;
+        }
     }
 
     // ==== Настройки: раздел Shnuk PC Mode ====
@@ -572,50 +843,53 @@
         container.innerHTML = '';
 
         const isPc = isPC();
-        const t = loadToken();
-        const active = t && t.phoneConfirmed && t.pcConfirmed && (Date.now() - t.created < TOKEN_TTL);
 
         const status = document.createElement('div');
         status.style.cssText = 'background:var(--bg-secondary);border:2px solid var(--border-color);padding:16px 20px;margin-bottom:18px;';
         status.innerHTML =
             '<div style="font-size:11px;color:var(--text-muted);letter-spacing:0.8px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Текущее устройство</div>' +
-            '<div style="font-size:18px;font-weight:700;color:var(--text-primary);">' + (isPc ? 'Компьютер' : 'Телефон / планшет') + '</div>' +
-            '<div style="font-size:13px;color:var(--text-muted);margin-top:4px;">' +
-                (active ? 'PC Mode активен для этой сессии.' : 'PC Mode не активен.') +
-            '</div>';
+            '<div style="font-size:18px;font-weight:700;color:var(--text-primary);">' + (isPc ? 'Компьютер' : 'Телефон / планшет') + '</div>';
         container.appendChild(status);
 
         if (!isPc) {
             const intro = document.createElement('div');
             intro.style.cssText = 'font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:14px;';
-            intro.textContent = 'Откройте этот сайт на ПК и введите код, который появится ниже. Затем введите ответный код с ПК в это же окно, чтобы завершить связку.';
+            intro.textContent = 'Создайте приглашение, перенесите его на ПК, вставьте ответную строку обратно и сверьте код подтверждения. Соединение устанавливается напрямую между устройствами по WebRTC.';
             container.appendChild(intro);
 
             const btn = document.createElement('button');
             btn.style.cssText = 'padding:14px 24px;border:none;background:var(--accent);color:var(--text-on-accent);font-family:inherit;font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;text-transform:uppercase;';
             btn.textContent = 'Открыть PC Mode';
             btn.addEventListener('click', function() {
-                showPhoneCode();
+                showPhoneStart();
+            });
+            container.appendChild(btn);
+        } else {
+            const intro = document.createElement('div');
+            intro.style.cssText = 'font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:14px;';
+            intro.textContent = 'Связка запрашивается при запуске системы. Если хотите пройти её сейчас, нажмите кнопку ниже.';
+            container.appendChild(intro);
+
+            const btn = document.createElement('button');
+            btn.style.cssText = 'padding:14px 24px;border:none;background:var(--accent);color:var(--text-on-accent);font-family:inherit;font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;text-transform:uppercase;';
+            btn.textContent = 'Открыть PC Mode';
+            btn.addEventListener('click', function() {
+                showPCStart(function() {});
             });
             container.appendChild(btn);
         }
 
         const hint = document.createElement('div');
         hint.style.cssText = 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:14px;';
-        hint.textContent = 'Связка действует на время текущей сессии. Код одноразовый, живёт ' + (TOKEN_TTL / 60000) + ' минут.';
+        hint.textContent = 'Связка устанавливается напрямую между устройствами. Код подтверждения генерируется на ПК и передаётся телефону по открытому P2P-каналу.';
         container.appendChild(hint);
     }
 
     window.ShnukPCMode = {
         isPC: isPC,
-        isActive: function() {
-            const t = loadToken();
-            return !!(t && t.phoneConfirmed && t.pcConfirmed && (Date.now() - t.created < TOKEN_TTL));
-        },
-        showPhoneCode: showPhoneCode,
+        showPhoneStart: showPhoneStart,
         showPCStart: showPCStart,
-        renderSettingsSection: renderSettingsSection,
-        clearToken: clearToken
+        renderSettingsSection: renderSettingsSection
     };
 
 })();
