@@ -844,8 +844,6 @@
         html.pc-mode .pc-window-content .file-close-btn,
         html.pc-mode .pc-window-content #settingsCloseBtn,
         html.pc-mode .pc-window-content .time-close-btn,
-        html.pc-mode .pc-window-content .audio-close-btn,
-        html.pc-mode .pc-window-content .media-close-btn,
         html.pc-mode .pc-window-content .camera-close-header,
         html.pc-mode .pc-window-content #cooopCloseBtn,
         html.pc-mode .pc-window-content #gameCenterCloseBtn,
@@ -2247,6 +2245,41 @@
             return null;
         }
 
+        function slideDownOut(targetEl, onDone) {
+            if (!targetEl) { if (onDone) onDone(); return; }
+            const rect = targetEl.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) { if (onDone) onDone(); return; }
+
+            const distance = window.innerHeight - rect.top + 60;
+            const duration = 320;
+            const startTime = performance.now();
+
+            targetEl.style.transformOrigin = 'center bottom';
+            targetEl.style.willChange = 'transform, opacity, filter';
+            targetEl.style.pointerEvents = 'none';
+            targetEl.style.transition = 'none';
+
+            function animate(now) {
+                const t = Math.min((now - startTime) / duration, 1);
+                const ease = t < 0.5
+                    ? 4 * t * t * t
+                    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                const ty = distance * ease;
+                const sc = 1 - 0.08 * ease;
+                const blur = ease * 16;
+                const opacity = 1 - Math.pow(t, 1.5);
+                targetEl.style.transform = 'translateY(' + ty + 'px) scale(' + sc + ')';
+                targetEl.style.opacity = String(opacity);
+                targetEl.style.filter = 'blur(' + blur + 'px)';
+                if (t < 1) requestAnimationFrame(animate);
+                else {
+                    if (targetEl.parentNode) targetEl.parentNode.removeChild(targetEl);
+                    if (onDone) onDone();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
         window.ShnukCloseAnimation = function(targetEl, appId, onDone) {
             if (!targetEl) { if (onDone) onDone(); return; }
             const startRect = targetEl.getBoundingClientRect();
@@ -2264,36 +2297,19 @@
             const openedFrom = window.__appOpenedFrom || 'desktop';
             const useMenuAnimation = (openedFrom === 'menu') || wasOpenedFromNotification;
 
+            if (useMenuAnimation) {
+                slideDownOut(targetEl, function() {
+                    window.__appOpenedFrom = 'desktop';
+                    if (wasOpenedFromNotification) window.__notificationOpenedAppId = null;
+                    if (onDone) onDone();
+                });
+                return;
+            }
+
             targetEl.style.transformOrigin = 'center center';
             targetEl.style.willChange = 'transform, opacity, filter';
             targetEl.style.pointerEvents = 'none';
             targetEl.style.transition = 'none';
-
-            if (useMenuAnimation) {
-                const distanceY = window.innerHeight - startRect.top + 40;
-                const duration = 380;
-                const startTime = performance.now();
-                function animateMenu(now) {
-                    const t = Math.min((now - startTime) / duration, 1);
-                    const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-                    const ty = distanceY * ease;
-                    const sc = 1 - 0.12 * ease;
-                    const blur = t * 12;
-                    const opacity = 1 - Math.pow(t, 1.6);
-                    targetEl.style.transform = 'translateY(' + ty + 'px) scale(' + sc + ')';
-                    targetEl.style.opacity = String(opacity);
-                    targetEl.style.filter = 'blur(' + blur + 'px)';
-                    if (t < 1) requestAnimationFrame(animateMenu);
-                    else {
-                        if (targetEl.parentNode) targetEl.parentNode.removeChild(targetEl);
-                        window.__appOpenedFrom = 'desktop';
-                        if (wasOpenedFromNotification) window.__notificationOpenedAppId = null;
-                        if (onDone) onDone();
-                    }
-                }
-                requestAnimationFrame(animateMenu);
-                return;
-            }
 
             let iconEl = findAppIconElement(appId);
             let iconOrigTransform = '';
