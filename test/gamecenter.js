@@ -124,9 +124,6 @@
                     -webkit-backdrop-filter: none !important;
                     background: rgba(0,0,0,0.85) !important;
                 }
-                #gameCenterGameContainer {
-                    z-index: 2147483600 !important;
-                }
             `;
             document.head.appendChild(st);
         }
@@ -244,6 +241,7 @@
 
         activeGameId = id;
 
+        const app = document.getElementById('gameCenterApp');
         const listEl = document.getElementById('gameCenterList');
         const headerEl = document.getElementById('gameCenterHeader');
         if (listEl && listEl.parentNode) listEl.parentNode.removeChild(listEl);
@@ -254,26 +252,27 @@
         activeGameContainer = document.createElement('div');
         activeGameContainer.id = 'gameCenterGameContainer';
         activeGameContainer.style.cssText = `
-            position: fixed;
-            top: var(--livebar-h, 44px);
+            position: absolute;
+            top: 0;
             left: 0;
             width: 100%;
-            height: calc(100% - var(--livebar-h, 44px));
+            height: 100%;
             background: #000000;
-            z-index: 2147483600;
+            z-index: 5;
             overflow: hidden;
             animation: none;
             transition: none;
         `;
-        document.body.appendChild(activeGameContainer);
+        if (app) app.appendChild(activeGameContainer);
+        else document.body.appendChild(activeGameContainer);
 
         activeCloseBtn = document.createElement('button');
         activeCloseBtn.id = 'gameCenterGameCloseBtn';
         activeCloseBtn.textContent = '✕';
         activeCloseBtn.title = 'Выйти из игры';
         activeCloseBtn.style.cssText = `
-            position: fixed;
-            top: calc(var(--livebar-h, 44px) + 14px);
+            position: absolute;
+            top: 14px;
             right: 14px;
             width: 44px;
             height: 44px;
@@ -284,7 +283,7 @@
             font-family: ${FONT_MAIN};
             font-size: 22px;
             font-weight: 700;
-            z-index: 2147483640;
+            z-index: 30;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -306,7 +305,8 @@
             e.stopPropagation();
             returnFromGame();
         });
-        document.body.appendChild(activeCloseBtn);
+        if (app) app.appendChild(activeCloseBtn);
+        else document.body.appendChild(activeCloseBtn);
 
         loadScript(game.file).then(function(ok) {
             if (!ok) {

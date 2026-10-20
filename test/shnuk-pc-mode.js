@@ -122,7 +122,7 @@
                 background: #ffffff;
                 z-index: 2147483647;
                 display: flex;
-                align-items: center;
+                align-items: flex-start;
                 justify-content: center;
                 padding: 24px;
                 box-sizing: border-box;
@@ -131,6 +131,8 @@
                 opacity: 0;
                 animation: pcModeFadeIn 0.4s ease forwards;
                 overflow-y: auto;
+                overflow-x: hidden;
+                -webkit-overflow-scrolling: touch;
             }
             #pcModeOverlay, #pcModeOverlay * {
                 font-family: ${FONT_MAIN} !important;
@@ -139,6 +141,25 @@
             @keyframes pcModeFadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes pcModeFadeOut { from { opacity: 1; } to { opacity: 0; } }
             #pcModeOverlay.closing { animation: pcModeFadeOut 0.3s ease forwards; }
+
+            #pcModeOverlay.scroll-blur {
+                position: fixed;
+                isolation: isolate;
+            }
+            #pcModeOverlay.scroll-blur::after {
+                content: '';
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: 80px;
+                pointer-events: none;
+                z-index: 20;
+                -webkit-backdrop-filter: blur(12px);
+                backdrop-filter: blur(12px);
+                -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+                mask-image: linear-gradient(to top, #000 0%, #000 40%, transparent 100%);
+            }
 
             .pc-mode-card {
                 width: 100%;
@@ -150,6 +171,8 @@
                 flex-direction: column;
                 gap: 16px;
                 margin: auto;
+                position: relative;
+                z-index: 1;
             }
 
             .pc-mode-logo {
@@ -281,6 +304,7 @@
                 .pc-mode-logo { font-size: 20px; }
                 .pc-mode-code-display { font-size: 28px; letter-spacing: 5px; padding: 10px 8px; }
                 .pc-mode-link { font-size: 9px; min-height: 80px; }
+                #pcModeOverlay.scroll-blur::after { height: 70px; }
             }
         `;
         document.head.appendChild(st);
@@ -290,6 +314,7 @@
         injectStyles();
         const ov = document.createElement('div');
         ov.id = 'pcModeOverlay';
+        ov.className = 'scroll-blur';
         return ov;
     }
 
@@ -336,7 +361,6 @@
         });
     }
 
-    // ==== Телефонная сторона (host) ====
     function showPhoneStart() {
         let existing = document.getElementById('pcModeOverlay');
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
@@ -606,7 +630,6 @@
         }
     }
 
-    // ==== ПК-сторона (guest) ====
     function showPCStart(onDone) {
         let existing = document.getElementById('pcModeOverlay');
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
@@ -708,17 +731,6 @@
         errorEl.className = 'pc-mode-error';
         card.appendChild(errorEl);
 
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'pc-mode-btn secondary';
-        closeBtn.textContent = 'Закрыть';
-        closeBtn.addEventListener('click', function() {
-            if (session) session.close();
-            closeOverlay(ov, function() {
-                if (onDone) onDone(false);
-            });
-        });
-        card.appendChild(closeBtn);
-
         ov.appendChild(card);
         document.body.appendChild(ov);
 
@@ -801,6 +813,9 @@
                         codeHint.style.display = 'block';
                         statusEl.textContent = 'Связка подтверждена';
                         statusEl.classList.add('ok');
+                        if (typeof onDone === 'function') {
+                            setTimeout(function() { onDone(true); }, 1200);
+                        }
                     };
 
                     dc.onclose = function() {
@@ -837,7 +852,6 @@
         }
     }
 
-    // ==== Настройки: раздел Shnuk PC Mode ====
     function renderSettingsSection(container) {
         if (!container) return;
         container.innerHTML = '';
@@ -864,6 +878,11 @@
                 showPhoneStart();
             });
             container.appendChild(btn);
+
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:14px;';
+            hint.textContent = 'Связка устанавливается напрямую между устройствами. Код подтверждения генерируется на ПК и передаётся телефону по открытому P2P-каналу.';
+            container.appendChild(hint);
         } else {
             const intro = document.createElement('div');
             intro.style.cssText = 'font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:14px;';
@@ -877,12 +896,12 @@
                 showPCStart(function() {});
             });
             container.appendChild(btn);
-        }
 
-        const hint = document.createElement('div');
-        hint.style.cssText = 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:14px;';
-        hint.textContent = 'Связка устанавливается напрямую между устройствами. Код подтверждения генерируется на ПК и передаётся телефону по открытому P2P-каналу.';
-        container.appendChild(hint);
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:14px;';
+            hint.textContent = 'Связка устанавливается напрямую между устройствами. Код подтверждения генерируется на ПК и передаётся телефону по открытому P2P-каналу.';
+            container.appendChild(hint);
+        }
     }
 
     window.ShnukPCMode = {

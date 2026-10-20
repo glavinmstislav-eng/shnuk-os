@@ -199,22 +199,6 @@
                 updateStorageInfo();
             }
         });
-
-        window.addEventListener('shnuk:audio-closed', function() {
-            const el = document.getElementById('fileApp');
-            if (el) {
-                el.style.display = 'flex';
-                el.style.opacity = '1';
-            }
-        });
-
-        window.addEventListener('shnuk:media-closed', function() {
-            const el = document.getElementById('fileApp');
-            if (el) {
-                el.style.display = 'flex';
-                el.style.opacity = '1';
-            }
-        });
     }
 
     bindFilesListener();
@@ -945,7 +929,7 @@
         closeMenu();
 
         const existing = document.getElementById('appManagerOverlay');
-        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        if (existing && existing.parentNode) document.body.removeChild(existing);
 
         const overlay = document.createElement('div');
         overlay.id = 'appManagerOverlay';
@@ -2442,11 +2426,11 @@
                 .empty-folder .icon { font-size: 32px; display: block; margin-bottom: 20px; color: var(--text-muted); }
 
                 .file-preview-overlay {
-                    position: fixed;
-                    top: var(--livebar-h, 44px); left: 0;
-                    width: 100%; height: calc(100% - var(--livebar-h, 44px));
+                    position: absolute;
+                    top: 0; left: 0;
+                    width: 100%; height: 100%;
                     background: rgba(0,0,0,0.92);
-                    z-index: 100000;
+                    z-index: 200;
                     display: none;
                     align-items: center;
                     justify-content: center;
@@ -2600,11 +2584,11 @@
                 }
 
                 .file-editor-overlay {
-                    position: fixed;
-                    top: var(--livebar-h, 44px); left: 0;
-                    width: 100%; height: calc(100% - var(--livebar-h, 44px));
+                    position: absolute;
+                    top: 0; left: 0;
+                    width: 100%; height: 100%;
                     background: var(--bg-primary);
-                    z-index: 100001;
+                    z-index: 201;
                     display: none;
                     flex-direction: column;
                     font-family: ${FONT_MAIN};
@@ -3409,19 +3393,20 @@
         return false;
     }
 
+    function getFileAppContainer() {
+        return document.getElementById('fileApp');
+    }
+
     function openFile(file) {
         const ext = getExt(file);
 
         if (isAudioFile(file)) {
             closePreview();
-            const el = document.getElementById('fileApp');
-            if (el) el.style.display = 'none';
-
             loadAudioScript().then(function(ok) {
-                if (ok && window.AudioPlayer && typeof window.AudioPlayer.open === 'function') {
-                    window.AudioPlayer.open(file);
+                const container = getFileAppContainer();
+                if (ok && window.AudioPlayer && typeof window.AudioPlayer.open === 'function' && container) {
+                    window.AudioPlayer.open(file, { container: container });
                 } else {
-                    if (el) el.style.display = 'flex';
                     openPreview(file, 'audio');
                 }
             });
@@ -3430,14 +3415,11 @@
 
         if (isVideoFile(file)) {
             closePreview();
-            const el = document.getElementById('fileApp');
-            if (el) el.style.display = 'none';
-
             loadMediaScript().then(function(ok) {
-                if (ok && window.MediaPlayer && typeof window.MediaPlayer.open === 'function') {
-                    window.MediaPlayer.open(file);
+                const container = getFileAppContainer();
+                if (ok && window.MediaPlayer && typeof window.MediaPlayer.open === 'function' && container) {
+                    window.MediaPlayer.open(file, { container: container });
                 } else {
-                    if (el) el.style.display = 'flex';
                     openPreview(file, 'video');
                 }
             });

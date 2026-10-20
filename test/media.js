@@ -34,7 +34,10 @@
         return (typeof v === 'number' && isFinite(v)) ? v : 0;
     }
 
-    function openMedia(fileData) {
+    function openMedia(fileData, options) {
+        options = options || {};
+        const container = options.container || null;
+
         const old = document.getElementById('mediaApp');
         if (old) {
             savePlaybackPosition();
@@ -43,7 +46,7 @@
         }
         isClosing = false;
         if (fileData) currentFile = fileData;
-        createUI();
+        createUI(container);
     }
 
     function closeMedia() {
@@ -160,7 +163,7 @@
         }
     }
 
-    function createUI() {
+    function createUI(externalContainer) {
         if (document.getElementById('mediaApp')) {
             document.getElementById('mediaApp').remove();
         }
@@ -176,22 +179,41 @@
 
         const app = document.createElement('div');
         app.id = 'mediaApp';
-        app.style.cssText = `
-            position: fixed;
-            top: var(--livebar-h, 44px);
-            left: 0;
-            width: 100%;
-            height: calc(100% - var(--livebar-h, 44px));
-            background: #000000;
-            z-index: 100050;
-            display: flex;
-            flex-direction: column;
-            font-family: ${FONT_MAIN};
-            color: #ffffff;
-            opacity: 0;
-            animation: mediaFadeIn 0.3s ease forwards;
-            overflow: hidden;
-        `;
+        if (externalContainer) {
+            app.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #000000;
+                z-index: 150;
+                display: flex;
+                flex-direction: column;
+                font-family: ${FONT_MAIN};
+                color: #ffffff;
+                opacity: 0;
+                animation: mediaFadeIn 0.3s ease forwards;
+                overflow: hidden;
+            `;
+        } else {
+            app.style.cssText = `
+                position: fixed;
+                top: var(--livebar-h, 44px);
+                left: 0;
+                width: 100%;
+                height: calc(100% - var(--livebar-h, 44px));
+                background: #000000;
+                z-index: 100050;
+                display: flex;
+                flex-direction: column;
+                font-family: ${FONT_MAIN};
+                color: #ffffff;
+                opacity: 0;
+                animation: mediaFadeIn 0.3s ease forwards;
+                overflow: hidden;
+            `;
+        }
 
         if (!document.getElementById('mediaStyles')) {
             const style = document.createElement('style');
@@ -531,7 +553,12 @@
         app.appendChild(header);
         app.appendChild(stage);
         app.appendChild(controls);
-        document.body.appendChild(app);
+
+        if (externalContainer) {
+            externalContainer.appendChild(app);
+        } else {
+            document.body.appendChild(app);
+        }
 
         try {
             videoEl.src = file.data;

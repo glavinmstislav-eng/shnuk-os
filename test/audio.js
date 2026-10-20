@@ -36,7 +36,10 @@
         return (typeof v === 'number' && isFinite(v)) ? v : 0;
     }
 
-    function openAudio(fileData) {
+    function openAudio(fileData, options) {
+        options = options || {};
+        const container = options.container || null;
+
         const old = document.getElementById('audioApp');
         if (old) {
             savePlaybackPosition();
@@ -45,7 +48,7 @@
         }
         isClosing = false;
         if (fileData) currentFile = fileData;
-        createUI();
+        createUI(container);
     }
 
     function closeAudio() {
@@ -269,7 +272,7 @@
         };
     }
 
-    function createUI() {
+    function createUI(externalContainer) {
         if (document.getElementById('audioApp')) {
             document.getElementById('audioApp').remove();
         }
@@ -285,22 +288,41 @@
 
         const app = document.createElement('div');
         app.id = 'audioApp';
-        app.style.cssText = `
-            position: fixed;
-            top: var(--livebar-h, 44px);
-            left: 0;
-            width: 100%;
-            height: calc(100% - var(--livebar-h, 44px));
-            background: #ffffff;
-            z-index: 100050;
-            display: flex;
-            flex-direction: column;
-            font-family: ${FONT_MAIN};
-            color: #1a1a1a;
-            opacity: 0;
-            animation: audioFadeIn 0.3s ease forwards;
-            overflow: hidden;
-        `;
+        if (externalContainer) {
+            app.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #ffffff;
+                z-index: 150;
+                display: flex;
+                flex-direction: column;
+                font-family: ${FONT_MAIN};
+                color: #1a1a1a;
+                opacity: 0;
+                animation: audioFadeIn 0.3s ease forwards;
+                overflow: hidden;
+            `;
+        } else {
+            app.style.cssText = `
+                position: fixed;
+                top: var(--livebar-h, 44px);
+                left: 0;
+                width: 100%;
+                height: calc(100% - var(--livebar-h, 44px));
+                background: #ffffff;
+                z-index: 100050;
+                display: flex;
+                flex-direction: column;
+                font-family: ${FONT_MAIN};
+                color: #1a1a1a;
+                opacity: 0;
+                animation: audioFadeIn 0.3s ease forwards;
+                overflow: hidden;
+            `;
+        }
 
         if (!document.getElementById('audioStyles')) {
             const style = document.createElement('style');
@@ -613,7 +635,12 @@
 
         app.appendChild(header);
         app.appendChild(content);
-        document.body.appendChild(app);
+
+        if (externalContainer) {
+            externalContainer.appendChild(app);
+        } else {
+            document.body.appendChild(app);
+        }
 
         document.getElementById('audioCloseBtn').addEventListener('click', closeAudio);
 

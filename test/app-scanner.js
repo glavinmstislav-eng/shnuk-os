@@ -11,8 +11,7 @@
         { id: 'camera', name: 'Камера', icon: 'camera.png' },
         { id: 'recorder', name: 'Звукозапись', icon: 'recording.png' },
         { id: 'cooop', name: 'Cooop', icon: 'cooop.png' },
-        { id: 'gamecenter', name: 'Game Center', icon: 'games.png' },
-        { id: 'shnuk-eva', name: 'Shnuk Eva', icon: 'eva.png' }
+        { id: 'gamecenter', name: 'Game Center', icon: 'games.png' }
     ];
 
     const BASE_PATH = './';

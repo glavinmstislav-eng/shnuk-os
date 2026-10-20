@@ -35,6 +35,12 @@
 
             --search-btn-size: 40px;
             --search-btn-offset: 8px;
+
+            --dock-h: 0px;
+        }
+        html.pc-mode {
+            --dock-h: 64px;
+            --livebar-h: 0px;
         }
 
         [data-theme="evening"] {
@@ -109,6 +115,41 @@
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
             transition: background 0.4s ease, color 0.4s ease;
+        }
+
+        html, body, html *, body * {
+            cursor: url('cursor.png') 4 4, auto !important;
+        }
+
+        html ::-webkit-scrollbar,
+        body ::-webkit-scrollbar,
+        html::-webkit-scrollbar,
+        body::-webkit-scrollbar {
+            cursor: url('cursor.png') 4 4, auto !important;
+        }
+        html ::-webkit-scrollbar-thumb,
+        body ::-webkit-scrollbar-thumb,
+        html::-webkit-scrollbar-thumb,
+        body::-webkit-scrollbar-thumb {
+            cursor: url('cursor.png') 4 4, auto !important;
+        }
+        html ::-webkit-scrollbar-track,
+        body ::-webkit-scrollbar-track,
+        html::-webkit-scrollbar-track,
+        body::-webkit-scrollbar-track {
+            cursor: url('cursor.png') 4 4, auto !important;
+        }
+        html ::-webkit-scrollbar-corner,
+        body ::-webkit-scrollbar-corner,
+        html::-webkit-scrollbar-corner,
+        body::-webkit-scrollbar-corner {
+            cursor: url('cursor.png') 4 4, auto !important;
+        }
+        html ::-webkit-scrollbar-button,
+        body ::-webkit-scrollbar-button,
+        html::-webkit-scrollbar-button,
+        body::-webkit-scrollbar-button {
+            cursor: url('cursor.png') 4 4, auto !important;
         }
 
         html.locked-no-livebar #liveBar,
@@ -444,7 +485,7 @@
             position: fixed;
             left: 0;
             right: 0;
-            bottom: 0;
+            bottom: var(--dock-h, 0px);
             height: 110px;
             pointer-events: none;
             z-index: 22;
@@ -536,7 +577,7 @@
             position: fixed;
             left: 50%;
             transform: translateX(-50%) translateY(20px);
-            bottom: 20px;
+            bottom: calc(20px + var(--dock-h, 0px));
             width: calc(100% - 40px);
             max-width: 620px;
             display: flex;
@@ -585,7 +626,7 @@
         .add-desktop-btn {
             position: fixed;
             left: 50%;
-            bottom: 84px;
+            bottom: calc(84px + var(--dock-h, 0px));
             transform: translateX(-50%) translateY(20px);
             padding: 14px 26px;
             border: none;
@@ -796,10 +837,28 @@
         }
         .html-app-close-btn:hover { background: var(--accent-dark); transform: scale(1.1); }
 
+        html.pc-mode .html-app-close-btn {
+            display: none !important;
+        }
+
+        html.pc-mode .pc-window-content .file-close-btn,
+        html.pc-mode .pc-window-content #settingsCloseBtn,
+        html.pc-mode .pc-window-content .time-close-btn,
+        html.pc-mode .pc-window-content .audio-close-btn,
+        html.pc-mode .pc-window-content .media-close-btn,
+        html.pc-mode .pc-window-content .camera-close-header,
+        html.pc-mode .pc-window-content #cooopCloseBtn,
+        html.pc-mode .pc-window-content #gameCenterCloseBtn,
+        html.pc-mode .pc-window-content #recorderCloseBtn,
+        html.pc-mode .pc-window-content .coll-close,
+        html.pc-mode .pc-window-content #shnukAccountCloseBtn {
+            display: none !important;
+        }
+
         .apps-search-results {
             position: fixed;
             left: 50%;
-            bottom: 84px;
+            bottom: calc(84px + var(--dock-h, 0px));
             transform: translateX(-50%);
             width: calc(100% - 40px);
             max-width: 620px;
@@ -925,12 +984,12 @@
             .desktop-search input { padding: 12px calc(var(--search-btn-size) + var(--search-btn-offset) * 2) 12px 18px; font-size: 15px; }
             .apps-search-bar input { padding: 12px calc(var(--search-btn-size) + var(--search-btn-offset) * 2) 12px 18px; font-size: 15px; }
             .search-submit svg { width: 16px; height: 16px; }
-            .add-desktop-btn { padding: 12px 20px; font-size: 13px; bottom: 76px; }
+            .add-desktop-btn { padding: 12px 20px; font-size: 13px; bottom: calc(76px + var(--dock-h, 0px)); }
             .picker-modal { max-width: 100%; max-height: 85vh; }
             .picker-body { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px; padding: 12px 14px 16px; }
             .picker-item .picker-icon { width: 46px; height: 46px; }
             .picker-item .picker-name { font-size: 10px; }
-            .apps-search-results { bottom: 76px; max-height: 55vh; }
+            .apps-search-results { bottom: calc(76px + var(--dock-h, 0px)); max-height: 55vh; }
             .apps-search-item-icon { width: 30px; height: 30px; font-size: 11px; }
             .apps-search-item-title { font-size: 13px; }
         }
@@ -938,12 +997,11 @@
 
     <script src="os-storage.js"></script>
     <script src="file-storage.js"></script>
+    <script src="pc-windows.js"></script>
 </head>
 <body>
 
-    <div id="osSplash">
-        <video id="osSplashVideo" src="start.mp4" autoplay muted playsinline preload="auto"></video>
-    </div>
+    <div id="osSplash"></div>
 
     <div id="osApp">
         <div class="app-background" id="appBackground"></div>
@@ -998,33 +1056,18 @@
     (function() {
         'use strict';
 
-        var params = new URLSearchParams(window.location.search);
-        var token = params.get('t');
-        var cooopParam = params.get('cooop');
-        var cooopHash = (location.hash && location.hash.indexOf('#cooop=') === 0);
-
-        if ((!token || !token.startsWith('shnuk_')) && !cooopParam && !cooopHash) {
-            document.body.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
-            return;
-        }
-
         setTimeout(function() {
             try {
                 if (window.history && window.history.replaceState) {
-                    var cleanUrl = window.location.pathname;
-                    if (cooopParam) cleanUrl += '?cooop=' + encodeURIComponent(cooopParam);
-                    if (cooopHash) cleanUrl += location.hash;
-                    window.history.replaceState(null, '', cleanUrl);
+                    window.history.replaceState(null, '', window.location.pathname);
                 }
             } catch(e) {}
         }, 1000);
 
         const osApp = document.getElementById('osApp');
         const osSplash = document.getElementById('osSplash');
-        const splashVideo = document.getElementById('osSplashVideo');
 
         let splashHidden = false;
-        let skipSplash = false;
 
         function hideSplash() {
             if (splashHidden) return;
@@ -1036,21 +1079,31 @@
             }, 900);
         }
 
-        function hideSplashNow() {
+        function hideSplashInstant() {
             if (splashHidden) return;
             splashHidden = true;
             if (!osSplash) return;
-            try { if (splashVideo) splashVideo.pause(); } catch(e) {}
+            osSplash.style.display = 'none';
             if (osSplash.parentNode) osSplash.parentNode.removeChild(osSplash);
         }
 
         window.__hideSplash = hideSplash;
 
         function armVideo() {
-            if (!splashVideo) {
+            if (!osSplash) {
                 setTimeout(hideSplash, 500);
                 return;
             }
+
+            const splashVideo = document.createElement('video');
+            splashVideo.id = 'osSplashVideo';
+            splashVideo.src = 'start.mp4';
+            splashVideo.muted = true;
+            splashVideo.playsInline = true;
+            splashVideo.setAttribute('playsinline', '');
+            splashVideo.setAttribute('webkit-playsinline', '');
+            splashVideo.preload = 'auto';
+            osSplash.appendChild(splashVideo);
 
             let ended = false;
 
@@ -1204,18 +1257,6 @@
             }
         }
 
-        async function runPCModeStart() {
-            return new Promise(function(resolve) {
-                if (!window.ShnukPCMode || typeof window.ShnukPCMode.showPCStart !== 'function') {
-                    resolve(true);
-                    return;
-                }
-                window.ShnukPCMode.showPCStart(function(ok) {
-                    resolve(!!ok);
-                });
-            });
-        }
-
         async function launchOS() {
             osApp.classList.add('visible');
             osApp.style.display = 'block';
@@ -1230,7 +1271,6 @@
 
             await loadScriptsSequentially(MIN_SCRIPTS);
 
-            // Проверяем, запущена ли система на ПК
             let onPC = false;
             try {
                 if (window.ShnukPCMode && typeof window.ShnukPCMode.isPC === 'function') {
@@ -1239,16 +1279,9 @@
             } catch(e) {}
 
             if (onPC) {
-                // Скрываем splash заранее, PC Mode имеет свой экран
-                hideSplashNow();
-                osApp.style.display = 'none';
-
-                await runPCModeStart();
-
-                osApp.style.display = 'block';
-                osApp.classList.add('visible');
+                document.documentElement.classList.add('pc-mode');
+                hideSplashInstant();
             } else {
-                // Обычный splash
                 armVideo();
             }
 
@@ -1286,12 +1319,6 @@
             }
 
             if (typeof window.initOS === 'function') window.initOS();
-
-            if (!onPC) {
-                // На телефоне splash завершится сам по событию ended
-            } else {
-                // На ПК уже всё показано
-            }
         }
 
         if (document.readyState === 'loading') {
@@ -1299,8 +1326,6 @@
         } else {
             launchOS();
         }
-
-        setTimeout(hideSplash, 25000);
     })();
     </script>
 
@@ -1317,6 +1342,8 @@
                 });
             }
         } catch(e) {}
+
+        const isPCMode = !!(window.ShnukPCMode && typeof window.ShnukPCMode.isPC === 'function' && window.ShnukPCMode.isPC());
 
         window.confirmInstallWarning = function(options) {
             options = options || {};
@@ -1650,7 +1677,7 @@
             document.documentElement.style.setProperty('--apps-rows', String(s.appsRows));
 
             if (desktopSearchBar) {
-                desktopSearchBar.style.display = s.desktopSearch ? 'flex' : 'none';
+                desktopSearchBar.style.display = (s.desktopSearch && !isPCMode) ? 'flex' : 'none';
             }
         }
 
@@ -1919,33 +1946,13 @@
             if (!r) return;
 
             if (r.kind === 'app') {
-                hideBottomPanel();
                 const appId = r.app.id;
-                const rect = (function() {
-                    const btn = document.querySelector('.btn[data-id="' + appId + '"]');
-                    if (btn) {
-                        const rr = btn.getBoundingClientRect();
-                        if (rr.width > 0 || rr.height > 0) return rr;
-                    }
-                    const item = document.querySelector('.icon-item[data-app-id="' + appId + '"]');
-                    if (item) {
-                        const rr = item.getBoundingClientRect();
-                        if (rr.width > 0 || rr.height > 0) return rr;
-                    }
-                    return null;
-                })();
                 window.__appOpenedFrom = 'menu';
-                openAppWithAnimation(appId, rect, true);
-
-                setTimeout(function() {
-                    const candidates = document.querySelectorAll('.btn[data-id="' + appId + '"], .icon-item[data-app-id="' + appId + '"]');
-                    candidates.forEach(function(el) { highlightElement(el); });
-                }, 400);
+                openAppWithAnimation(appId, null, true);
                 return;
             }
 
             if (r.kind === 'photo' || r.kind === 'file') {
-                hideBottomPanel();
                 const fileId = r.file.id;
                 const parentId = r.file.parentId;
                 if (typeof window.fileInit === 'function') {
@@ -1960,14 +1967,12 @@
             }
 
             if (r.kind === 'notification') {
-                hideBottomPanel();
                 const n = r.notification;
                 await openAppFromNotification(n);
                 return;
             }
 
             if (r.kind === 'livebar') {
-                hideBottomPanel();
                 const act = r.activity;
                 if (act && act.appId && typeof window.ShnukOpenAppById === 'function') {
                     window.ShnukOpenAppById(act.appId, act.appName || null);
@@ -2042,25 +2047,6 @@
             }, 80);
         }
 
-        if (desktopSearchInput) {
-            desktopSearchInput.addEventListener('input', function() {
-                updateSearchSubmitVisibility(this, desktopSearchBtn);
-            });
-            desktopSearchInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    performSearch(this.value.trim());
-                    this.value = '';
-                    updateSearchSubmitVisibility(this, desktopSearchBtn);
-                }
-            });
-        }
-        if (desktopSearchBtn) {
-            desktopSearchBtn.addEventListener('click', function() {
-                performSearch(desktopSearchInput.value.trim());
-                desktopSearchInput.value = '';
-                updateSearchSubmitVisibility(desktopSearchInput, desktopSearchBtn);
-            });
-        }
         if (appsSearchInput) {
             appsSearchInput.addEventListener('input', function() {
                 scheduleSearch();
@@ -2101,20 +2087,6 @@
                     performAppsMenuSearch(appsSearchInput.value);
                 }
             }
-        });
-
-        window.addEventListener('shnuk:file-highlight', function(e) {
-            const detail = e.detail || {};
-            const fileId = detail.id;
-            if (!fileId) return;
-            let tries = 0;
-            const iv = setInterval(function() {
-                tries++;
-                if (tries > 30) { clearInterval(iv); return; }
-                const items = document.querySelectorAll('#fileContent .file-item');
-                if (items.length === 0) return;
-                clearInterval(iv);
-            }, 100);
         });
 
         function isFullscreen() {
@@ -2224,14 +2196,6 @@
             return ordered;
         }
 
-        function findAppIconElement(appId) {
-            let el = document.querySelector('.btn[data-id="' + appId + '"]');
-            if (el) return el;
-            el = document.querySelector('.icon-item[data-app-id="' + appId + '"]');
-            if (el) return el;
-            return null;
-        }
-
         function findOpenAppElement(appId) {
             const domId = APP_DOM_MAP[appId];
             if (domId) {
@@ -2275,10 +2239,26 @@
             } catch(e) {}
         }
 
+        function findAppIconElement(appId) {
+            const iconItem = document.querySelector('.icon-item[data-app-id="' + appId + '"]');
+            if (iconItem) return iconItem;
+            const btn = document.querySelector('.btn[data-id="' + appId + '"]');
+            if (btn) return btn;
+            return null;
+        }
+
         window.ShnukCloseAnimation = function(targetEl, appId, onDone) {
             if (!targetEl) { if (onDone) onDone(); return; }
             const startRect = targetEl.getBoundingClientRect();
             if (startRect.width === 0 || startRect.height === 0) { if (onDone) onDone(); return; }
+
+            if (isPCMode) {
+                try {
+                    if (targetEl.parentNode) targetEl.parentNode.removeChild(targetEl);
+                } catch(e) {}
+                if (onDone) onDone();
+                return;
+            }
 
             const wasOpenedFromNotification = (appId && window.__notificationOpenedAppId === appId);
             const openedFrom = window.__appOpenedFrom || 'desktop';
@@ -2461,9 +2441,27 @@
                 if (window.Win && window.Win.notify) window.Win.notify(T('В режиме Cooop приложения недоступны'), { type: 'info' });
                 return;
             }
-            if (isAppAnimating) return;
             const appData = getAppData(appId);
             if (!appData) return;
+
+            if (isPCMode && window.PCWindows && window.PCWindows.isActive && window.PCWindows.isActive()) {
+                if (appData.type === 'html') {
+                    openHtmlAppPCMode(appData);
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = appData.file + '?t=' + Date.now();
+                script.onload = function() {
+                    if (typeof window[appData.id + 'Init'] === 'function') {
+                        window[appData.id + 'Init']();
+                    } else if (typeof window[appData.id.replace(/-/g, '') + 'Init'] === 'function') {
+                        window[appData.id.replace(/-/g, '') + 'Init']();
+                    }
+                };
+                document.head.appendChild(script);
+                return;
+            }
 
             const alreadyOpen = findOpenAppElement(appId);
             if (alreadyOpen) {
@@ -2586,14 +2584,6 @@
         window.ShnukOpenAppById = function(appId, appName) {
             if (!appId && !appName) return false;
 
-            if (appId) {
-                const alreadyOpen = findOpenAppElement(appId);
-                if (alreadyOpen) {
-                    bringToFront(alreadyOpen);
-                    return true;
-                }
-            }
-
             let appData = null;
             if (appId) appData = getAppData(appId);
             if (!appData && appName) appData = allApps.find(a => a.name === appName);
@@ -2608,7 +2598,8 @@
                         window.__appOpenedFrom = 'notification';
                         window.__notificationOpenedAppId = found.id;
                         if (found.type === 'html') {
-                            openHtmlApp(found);
+                            if (isPCMode) openHtmlAppPCMode(found);
+                            else openHtmlApp(found);
                         } else if (found.file) {
                             const script = document.createElement('script');
                             script.src = found.file + '?t=' + Date.now();
@@ -2630,21 +2621,68 @@
             window.__notificationOpenedAppId = appData.id;
 
             if (appData.type === 'html') {
-                openHtmlApp(appData);
+                if (isPCMode) openHtmlAppPCMode(appData);
+                else openHtmlApp(appData);
                 return true;
             }
 
-            const rect = (function() {
-                const btn = document.querySelector('.btn[data-id="' + appData.id + '"]');
-                if (btn) {
-                    const r = btn.getBoundingClientRect();
-                    if (r.width > 0 || r.height > 0) return r;
-                }
-                return null;
-            })();
-            openAppWithAnimation(appData.id, rect, false);
+            openAppWithAnimation(appData.id, null, false);
             return true;
         };
+
+        function openHtmlAppPCMode(appData) {
+            if (!appData || !appData.html) return;
+
+            const existing = document.querySelector('.html-app-window[data-app-id="' + appData.id + '"]');
+            if (existing) return;
+
+            const token = (window.crypto && window.crypto.randomUUID)
+                ? window.crypto.randomUUID()
+                : 'tok_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+            const container = document.createElement('div');
+            container.className = 'html-app-window';
+            container.dataset.appId = appData.id;
+
+            const iframe = document.createElement('iframe');
+            iframe.sandbox = 'allow-scripts allow-forms allow-popups allow-modals';
+            iframe.name = token;
+
+            let html = appData.html;
+            const tokenScript = '<script>window.__collToken=' + JSON.stringify(token) + ';<\/script>';
+            if (/<head[^>]*>/i.test(html)) {
+                html = html.replace(/<head[^>]*>/i, function(m) { return m + tokenScript; });
+            } else {
+                html = tokenScript + html;
+            }
+
+            iframe.srcdoc = html;
+
+            container.appendChild(iframe);
+            document.body.appendChild(container);
+
+            if (!window.__collTokens) window.__collTokens = {};
+            window.__collTokens[token] = { appId: appData.id, created: Date.now() };
+
+            const onMessage = function(e) {
+                const d = e.data;
+                if (!d || !d.__coll) return;
+                if (!d.token || !window.__collTokens[d.token]) return;
+                if (d.type === 'notify') {
+                    if (window.LiveBar && typeof window.LiveBar.notify === 'function') {
+                        window.LiveBar.notify({
+                            title: d.data.title || '',
+                            body: d.data.body || '',
+                            type: d.data.type || 'info',
+                            appId: appData.id,
+                            appName: appData.name || ''
+                        });
+                    }
+                }
+            };
+            window.addEventListener('message', onMessage);
+            container.__onMessage = onMessage;
+        }
 
         function openHtmlApp(appData) {
             if (!appData || !appData.html) return;
@@ -2746,6 +2784,13 @@
                 renderAllApps();
                 applyScreenSettings();
                 rebuildCollarRegistry();
+
+                if (isPCMode) {
+                    topPanel.style.display = 'none';
+                    showBottomPanel();
+                } else {
+                    if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
+                }
             }).catch(function(err) {
                 if (desktopLoader) desktopLoader.innerHTML = '<span style="color:#cc0000;">' + T('Ошибка') + '</span>';
             });
@@ -2907,12 +2952,11 @@
                 div.appendChild(label);
 
                 div.addEventListener('click', function(e) {
-                    if (!isBottomVisible) return;
                     if (isAppAnimating) return;
-                    const rect = div.getBoundingClientRect();
                     const appId = a.id;
+                    const rect = div.getBoundingClientRect();
                     openAppWithAnimation(appId, rect, true);
-                    hideBottomPanel();
+                    if (!isPCMode) hideBottomPanel();
                 });
                 iconGrid.appendChild(div);
             });
@@ -3026,7 +3070,7 @@
 
         function updateAddDesktopBtn() {
             if (!addDesktopBtn) return;
-            if (isEditMode && isBottomVisible) addDesktopBtn.classList.add('visible');
+            if (isEditMode && isBottomVisible && !isPCMode) addDesktopBtn.classList.add('visible');
             else addDesktopBtn.classList.remove('visible');
         }
 
@@ -3146,6 +3190,7 @@
         }
 
         function toggleEditMode() {
+            if (isPCMode) return;
             isEditMode = !isEditMode;
             topPanel.classList.toggle('editing', isEditMode);
             bottomPanel.classList.toggle('editing', isEditMode);
@@ -3174,6 +3219,7 @@
         }
 
         function hideBottomPanel() {
+            if (isPCMode) return;
             if (!isBottomVisible) return;
             isBottomVisible = false;
             isClosing = true;
@@ -3229,10 +3275,13 @@
             if (target.closest('.html-app-window')) return true;
             if (target.closest('.win-backdrop')) return true;
             if (target.closest('#obRoot')) return true;
+            if (target.closest('.pc-window')) return true;
+            if (target.closest('#pcDock')) return true;
             return false;
         }
 
         function onLongPressStart(e) {
+            if (isPCMode) return;
             if (isEditMode) return;
             if (isBottomVisible) return;
             if (isInteractiveTarget(e.target)) return;
@@ -3266,6 +3315,7 @@
         appBackground.addEventListener('touchcancel', onLongPressEnd, { passive: true });
 
         appBackground.addEventListener('click', function(e) {
+            if (isPCMode) return;
             if (isEditMode && !isInteractiveTarget(e.target)) toggleEditMode();
         });
 
@@ -3295,6 +3345,7 @@
             }
 
             function onStart(e) {
+                if (isPCMode) return;
                 if (isEditMode) return;
                 if (isBottomVisible) return;
                 if (anyAppOpen()) return;
@@ -3350,6 +3401,7 @@
             let mouseMoved = false;
 
             function onMouseDown(e) {
+                if (isPCMode) return;
                 if (isEditMode) return;
                 if (isBottomVisible) return;
                 if (anyAppOpen()) return;
@@ -3386,6 +3438,7 @@
         let startY = 0, isSwiping = false;
         app.addEventListener('touchstart', function(e) { startY = e.touches[0].clientY; isSwiping = true; }, { passive: true });
         app.addEventListener('touchmove', function(e) {
+            if (isPCMode) return;
             if (!isSwiping) return;
             const deltaY = e.touches[0].clientY - startY;
             if (deltaY < -60 && !isBottomVisible) { e.preventDefault(); showBottomPanel(); isSwiping = false; }
@@ -3393,6 +3446,7 @@
         }, { passive: false });
         app.addEventListener('touchend', function() { isSwiping = false; }, { passive: true });
         app.addEventListener('wheel', function(e) {
+            if (isPCMode) return;
             if (e.deltaY < -30 && !isBottomVisible) { e.preventDefault(); showBottomPanel(); }
             else if (e.deltaY > 30 && isBottomVisible) { e.preventDefault(); hideBottomPanel(); }
         }, { passive: false });
@@ -3423,7 +3477,6 @@
 
         loadApps();
         setTimeout(ensureFullscreen, 500);
-        if (window.LiveBar && window.LiveBar.restore) window.LiveBar.restore();
     };
     </script>
 
@@ -3433,7 +3486,8 @@
             'wall1.png', 'wall2.png', 'wall3.png',
             'camera.png', 'settings.png', 'time.png',
             'gamecenter.png', 'file.png', 'store.png',
-            'recording.png', 'cooop.png', 'games.png', 'coll.png', 'myshnuk.png'
+            'recording.png', 'cooop.png', 'games.png', 'coll.png', 'myshnuk.png',
+            'cursor.png'
         ];
         PRELOAD_IMAGES.forEach(function(src) {
             try { var img = new Image(); img.src = src; } catch(e) {}

@@ -586,21 +586,6 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    function renderPCMode() {
-        const container = document.getElementById('pcModeContent');
-        if (!container) return;
-        container.innerHTML = '';
-
-        if (window.ShnukPCMode && typeof window.ShnukPCMode.renderSettingsSection === 'function') {
-            window.ShnukPCMode.renderSettingsSection(container);
-        } else {
-            const fallback = document.createElement('div');
-            fallback.style.cssText = 'font-size:14px;color:var(--text-muted);line-height:1.5;';
-            fallback.textContent = 'Модуль Shnuk PC Mode недоступен.';
-            container.appendChild(fallback);
-        }
-    }
-
     async function renderSecurity() {
         const container = document.getElementById('securityContent');
         if (!container) return;
@@ -1593,8 +1578,8 @@
                 .settings-icon-btn svg { display: block; width: 28px; height: 28px; }
 
                 .settings-dropdown {
-                    position: fixed;
-                    top: calc(var(--livebar-h, 44px) + 20px);
+                    position: absolute;
+                    top: 68px;
                     right: 24px;
                     background: var(--bg-primary);
                     padding: 16px;
@@ -2010,7 +1995,7 @@
                     .settings-header-left h1 { font-size: 24px; }
                     .settings-account-btn { width: 38px; height: 38px; }
                     .settings-account-inner { font-size: 15px; }
-                    .settings-dropdown { top: calc(var(--livebar-h, 44px) + 16px); right: 16px; min-width: 220px; }
+                    .settings-dropdown { top: 60px; right: 16px; min-width: 220px; }
                     .system-image-text { font-size: 32px; letter-spacing: 1.5px; }
                     .system-image-wrap { padding: 12px 0 20px; }
                     .system-info { padding: 14px 16px; }
@@ -2069,11 +2054,6 @@
                 <div class="settings-section-view" id="viewSearchIntel">
                     <div class="settings-section-title">Shnuk Search Intelligence</div>
                     <div id="searchIntelContent"></div>
-                </div>
-
-                <div class="settings-section-view" id="viewPCMode">
-                    <div class="settings-section-title">Shnuk PC Mode</div>
-                    <div id="pcModeContent"></div>
                 </div>
 
                 <div class="settings-section-view" id="viewSecurity">
@@ -2155,7 +2135,6 @@
 
         function getViewByTab(tab) {
             if (tab === 'searchIntel') return document.getElementById('viewSearchIntel');
-            if (tab === 'pcMode') return document.getElementById('viewPCMode');
             if (tab === 'security') return document.getElementById('viewSecurity');
             if (tab === 'system') return document.getElementById('viewSystem');
             return document.getElementById('viewTheme');
@@ -2169,9 +2148,6 @@
             }
             else if (tab === 'searchIntel') {
                 renderSearchIntelligence();
-            }
-            else if (tab === 'pcMode') {
-                renderPCMode();
             }
             else if (tab === 'theme') {
                 renderThemeToggle();
@@ -2249,7 +2225,6 @@
             const sections = [
                 { id: 'theme', name: 'Темы' },
                 { id: 'searchIntel', name: 'Shnuk Search Intelligence' },
-                { id: 'pcMode', name: 'Shnuk PC Mode' },
                 { id: 'security', name: 'Безопасность' },
                 { id: 'system', name: 'Система' }
             ];
@@ -2267,7 +2242,7 @@
                 dropdownMenu.appendChild(btn);
             });
 
-            document.body.appendChild(dropdownMenu);
+            container.appendChild(dropdownMenu);
         }
 
         function updateDropdownActive() {
@@ -2395,7 +2370,7 @@
             setTimeout(function() {
                 const container = document.getElementById('settingsApp');
                 if (!container) return;
-                const tabIds = ['theme', 'searchIntel', 'pcMode', 'security', 'system'];
+                const tabIds = ['theme', 'searchIntel', 'security', 'system'];
                 tabIds.forEach(id => {
                     const v = document.getElementById('view' + id.charAt(0).toUpperCase() + id.slice(1));
                     if (!v) return;
@@ -2416,9 +2391,6 @@
                 }
                 else if (sectionId === 'searchIntel') {
                     renderSearchIntelligence();
-                }
-                else if (sectionId === 'pcMode') {
-                    renderPCMode();
                 }
                 else if (sectionId === 'theme') {
                     renderThemeToggle();
