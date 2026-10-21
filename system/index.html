@@ -572,6 +572,17 @@
             padding: 1px 5px; border-radius: 2px;
             font-weight: 700; letter-spacing: 0.5px;
         }
+        .icon-item.is-open {
+            opacity: 0.5;
+        }
+        .icon-item.is-open::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.05);
+            pointer-events: none;
+            z-index: 1;
+        }
 
         .apps-search-bar {
             position: fixed;
@@ -1945,6 +1956,7 @@
 
             if (r.kind === 'app') {
                 const appId = r.app.id;
+                if (isAppOpen(appId)) return;
                 window.__appOpenedFrom = 'menu';
                 openAppWithAnimation(appId, null, true);
                 return;
@@ -2194,19 +2206,36 @@
             return ordered;
         }
 
-        function findOpenAppElement(appId) {
+        function isAppOpen(appId) {
+            if (!appId) return false;
+            if (window.__shnukOpenApps && window.__shnukOpenApps[appId]) {
+                if (window.__shnukOpenApps[appId].minimized) return false;
+                if (window.__shnukOpenApps[appId].closing) return false;
+            }
             const domId = APP_DOM_MAP[appId];
             if (domId) {
                 const el = document.getElementById(domId);
-                if (el && el.parentNode) return el;
+                if (el && el.parentNode) return true;
             }
             const direct = document.getElementById(appId);
-            if (direct && direct.parentNode) return direct;
+            if (direct && direct.parentNode) return true;
             const guess = document.getElementById(appId + 'App');
-            if (guess && guess.parentNode) return guess;
+            if (guess && guess.parentNode) return true;
             const htmlWin = document.querySelector('.html-app-window[data-app-id="' + appId + '"]');
-            if (htmlWin) return htmlWin;
-            return null;
+            if (htmlWin) return true;
+            return false;
+        }
+
+        function isAppMinimized(appId) {
+            if (!appId) return false;
+            if (window.__shnukOpenApps && window.__shnukOpenApps[appId]) {
+                return !!window.__shnukOpenApps[appId].minimized;
+            }
+            return false;
+        }
+
+        function findOpenAppElement(appId) {
+            return isAppOpen(appId);
         }
 
         function closeAllApps(keepAppId) {
@@ -2287,6 +2316,10 @@
 
             const wasOpenedFromNotification = (appId && window.__notificationOpenedAppId === appId);
 
+            if (appId && window.__shnukOpenApps) {
+                delete window.__shnukOpenApps[appId];
+            }
+
             slideDownOut(targetEl, function() {
                 window.__appOpenedFrom = 'desktop';
                 if (wasOpenedFromNotification) window.__notificationOpenedAppId = null;
@@ -2301,6 +2334,8 @@
             }
             const appData = getAppData(appId);
             if (!appData) return;
+
+            if (isAppOpen(appId)) return;
 
             if (isPCMode && window.PCWindows && window.PCWindows.isActive && window.PCWindows.isActive()) {
                 if (appData.type === 'html') {
@@ -2321,20 +2356,7 @@
                 return;
             }
 
-            const alreadyOpen = findOpenAppElement(appId);
-            if (alreadyOpen) {
-                bringToFront(alreadyOpen);
-                try {
-                    const prevTransition = alreadyOpen.style.transition;
-                    alreadyOpen.style.transition = 'filter 0.25s ease';
-                    alreadyOpen.style.filter = 'brightness(1.15)';
-                    setTimeout(function() {
-                        alreadyOpen.style.filter = '';
-                        alreadyOpen.style.transition = prevTransition;
-                    }, 250);
-                } catch(e) {}
-                return;
-            }
+            if (isAppAnimating) return;
 
             closeAllApps(appId);
             isAppAnimating = true;
@@ -2420,6 +2442,8 @@
                         setTimeout(() => backdrop.remove(), 300);
                         appBackground.classList.remove('blurred');
                         isAppAnimating = false;
+                        if (!window.__shnukOpenApps) window.__shnukOpenApps = {};
+                        window.__shnukOpenApps[appId] = { minimized: false, closing: false, appName: appData.name };
                         if (appData.type === 'html') openHtmlApp(appData);
                         else {
                             const script = document.createElement('script');
@@ -2433,6 +2457,10 @@
                             };
                             document.head.appendChild(script);
                         }
+                        if (fromMenu && !isPCMode && isBottomVisible) {
+                            hideBottomPanel();
+                        }
+                        updateOpenAppIcons();
                     }, 100);
                 }
             }
@@ -2453,6 +2481,7 @@
                         if (appId) found = apps.find(a => a.id === appId);
                         if (!found && appName) found = apps.find(a => a.name === appName);
                         if (!found) return;
+                        if (isAppOpen(found.id)) return;
                         window.__appOpenedFrom = 'notification';
                         window.__notificationOpenedAppId = found.id;
                         if (found.type === 'html') {
@@ -2474,6 +2503,8 @@
                 }
                 return false;
             }
+
+            if (isAppOpen(appData.id)) return false;
 
             window.__appOpenedFrom = 'notification';
             window.__notificationOpenedAppId = appData.id;
@@ -2576,6 +2607,7 @@
                     if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
                     try { delete window.__collTokens[token]; } catch(e) {}
                     try { window.removeEventListener('message', onMessage); } catch(e) {}
+                    updateOpenAppIcons();
                 });
             });
 
@@ -2625,6 +2657,7 @@
                         if (closeBtn.parentNode) closeBtn.parentNode.removeChild(closeBtn);
                         window.removeEventListener('message', onMessage);
                         try { delete window.__collTokens[token]; } catch(e) {}
+                        updateOpenAppIcons();
                     });
                     document.removeEventListener('keydown', onEsc);
                 }
@@ -2742,6 +2775,7 @@
                 btn.addEventListener('click', function(e) {
                     if (isEditMode) return;
                     if (dragState && dragState.moved) return;
+                    if (isAppOpen(appId)) return;
                     const rect = btn.getBoundingClientRect();
                     openAppWithAnimation(appId, rect, false);
                 });
@@ -2788,6 +2822,7 @@
                 div.className = 'icon-item';
                 if (desktopApps.includes(a.id)) div.classList.add('in-desktop');
                 if (a.type === 'html') div.classList.add('html-app');
+                if (isAppOpen(a.id)) div.classList.add('is-open');
                 div.dataset.appId = a.id;
                 div.dataset.appName = a.name;
                 div.style.animationDelay = (Math.min(idx, 24) * 0.025) + 's';
@@ -2812,9 +2847,9 @@
                 div.addEventListener('click', function(e) {
                     if (isAppAnimating) return;
                     const appId = a.id;
+                    if (isAppOpen(appId)) return;
                     const rect = div.getBoundingClientRect();
                     openAppWithAnimation(appId, rect, true);
-                    if (!isPCMode) hideBottomPanel();
                 });
                 iconGrid.appendChild(div);
             });
@@ -2823,6 +2858,17 @@
                 performAppsMenuSearch(appsSearchInput.value);
             }
         }
+
+        function updateOpenAppIcons() {
+            if (!iconGrid) return;
+            const icons = iconGrid.querySelectorAll('.icon-item[data-app-id]');
+            icons.forEach(function(el) {
+                const appId = el.dataset.appId;
+                if (isAppOpen(appId)) el.classList.add('is-open');
+                else el.classList.remove('is-open');
+            });
+        }
+        window.__shnukUpdateOpenAppIcons = updateOpenAppIcons;
 
         let pickerBackdrop = null;
         let pickerEscHandler = null;
@@ -3319,6 +3365,8 @@
                 refreshApps();
             }
         }, 2000);
+
+        setInterval(updateOpenAppIcons, 800);
 
         applyWallpaperFromStorage();
         applyScreenSettings();
